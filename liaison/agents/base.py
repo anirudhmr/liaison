@@ -10,6 +10,7 @@ import numpy as np  # set seed
 import six
 import tensorflow as tf  # set seed
 
+# action, logits, next_state all have to be flat structures (list/nparrays/scalars.)
 StepOutput = collections.namedtuple('StepOutput',
                                     ['action', 'logits', 'next_state'])
 

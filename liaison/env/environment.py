@@ -181,6 +181,9 @@ class Env(object):
     """Allows the environment to be used in a with-statement context."""
     self.close()
 
+  def set_seed(self, seed):
+    raise NotImplementedError
+
 
 # Helper functions for creating TimeStep namedtuples with default settings.
 

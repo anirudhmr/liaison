@@ -5,6 +5,8 @@ from __future__ import absolute_import, division, print_function
 import tensorflow as tf
 from absl import logging
 from easydict import EasyDict as ConfigDict
+from tensorflow.contrib.framework import nest
+from specs import ArraySpec
 
 
 class SyncEveryNSteps:
@@ -31,9 +33,9 @@ class Shell:
       obs_spec,
       agent_class,
       agent_config,
+      batch_size,
       ps_handle,
       agent_scope='shell',
-      batch_size=1,
       sync_period=None,
       use_gpu=False,
       **kwargs,
@@ -44,7 +46,8 @@ class Shell:
     self._sync_checker = SyncEveryNSteps(sync_period)
     self._step_number = 0
 
-    with tf.Graph().as_default() as self._graph:
+    self._graph = tf.Graph()
+    with self._graph.as_default():
       if use_gpu:
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -60,13 +63,13 @@ class Shell:
       self._batch_size_ph = tf.placeholder_with_default(
           batch_size, shape=(), name='shell_batch_size_ph')
       self.sess.run(tf.global_variables_initializer())
+      self._initial_state_op = self._agent.initial_state(self._batch_size_ph)
       dummy_initial_state = self.sess.run(
-          self._agent.initial_state(
-              self._batch_size_ph))  # weights are random.
+          self._initial_state_op)  # weights are random.
 
       self._mk_phs(dummy_initial_state)
       self._step_output = self._agent.step(self._step_type_ph, self._reward_ph,
-                                           self._obs_ph, self._prev_state_ph)
+                                           self._obs_ph, self._next_state_ph)
 
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope=agent_scope)
@@ -75,7 +78,6 @@ class Shell:
                    len(self._variables))
       logging.info('Variable names for syncing: %s',
                    ', '.join(self._variable_names))
-      self.sess.run(tf.initialize_all_variables())
       self._var_name_to_phs = dict()
       self._var_names_to_assign_ops = dict()
       for var in self._variables:
@@ -87,6 +89,14 @@ class Shell:
                                                             ph,
                                                             use_locking=True)
       self._sync_variables()
+      self._next_state = None
+
+  @property
+  def next_state(self):
+    if self._next_state is None:
+      self._next_state = self.sess.run(self._initial_state_op)
+
+    return self._next_state
 
   def _mk_phs(self, initial_state_dummy_spec):
 
@@ -95,16 +105,16 @@ class Shell:
                             shape=spec.shape,
                             name='shell_' + spec.name + '_ph')
 
-    self._step_type_ph = tf.placeholder(dtype=tf.int32,
+    self._step_type_ph = tf.placeholder(dtype=tf.int8,
                                         shape=(None, ),
                                         name='shell_step_type_ph')
     self._reward_ph = tf.placeholder(dtype=tf.float32,
                                      shape=(None, ),
                                      name='shell_reward_ph')
-    self._obs_ph = tf.nest.map_structure(mk_ph, self._obs_spec)
-    self._prev_state_ph = tf.placeholder(dtype=initial_state_dummy_spec.dtype,
+    self._obs_ph = nest.map_structure(mk_ph, self._obs_spec)
+    self._next_state_ph = tf.placeholder(dtype=initial_state_dummy_spec.dtype,
                                          shape=initial_state_dummy_spec.shape,
-                                         name='prev_state_ph')
+                                         name='next_state_ph')
 
   def _sync_variables(self):
     var_vals = self._ps_handle.pull(self._variable_names)
@@ -116,17 +126,15 @@ class Shell:
           feed_dict={self._var_name_to_phs[var_name]: var_vals[var_name]})
     logging.info("Synced weights.")
 
-  def step(self, step_type, reward, obs):
+  def step(self, step_type, reward, observation):
     if self._sync_checker.should_sync(self._step_number):
       self._sync_variables()
 
-    tf.nest.assert_same_structure(self._obs_ph, obs)
-    obs_ph_list = tf.nest.flatten(self._obs_ph)
-    obs = tf.nest.flatten(obs)
-    assert len(obs) == len(obs_ph_list)
+    nest.assert_same_structure(self._obs_ph, observation)
     obs_feed_dict = {
         obs_ph: obs_val
-        for obs_ph, obs_val in zip(obs_ph_list, obs)
+        for obs_ph, obs_val in zip(nest.flatten(self._obs_ph),
+                                   nest.flatten(observation))
     }
 
     step_output = self.sess.run(self._step_output,
@@ -134,6 +142,17 @@ class Shell:
                                     self._step_type_ph: step_type,
                                     self._reward_ph: reward,
                                     self._batch_size_ph: self._batch_size,
-                                    **obs_feed_dict
+                                    self._next_state_ph: self.next_state,
+                                    **obs_feed_dict,
                                 })
+    self._next_state = step_output.next_state
     return step_output
+
+  def step_output_spec(self):
+
+    def mk_spec(tensor):
+      return ArraySpec(dtype=tensor.dtype.as_numpy_dtype,
+                       shape=tensor.shape,
+                       name=tensor.name)
+
+    return dict(nest.map_structure(mk_spec, self._step_output)._asdict())

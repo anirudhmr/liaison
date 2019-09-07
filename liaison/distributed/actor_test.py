@@ -5,8 +5,9 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 from agents import BaseAgent, StepOutput
-from distributed import Shell
+from distributed import Actor, Shell
 from env import StepType, TimeStep
+from env.xor_env import XOREnv
 from specs.specs import ArraySpec, BoundedArraySpec
 
 B = 8
@@ -29,7 +30,7 @@ class DummyAgent(BaseAgent):
     with tf.variable_scope(self._name):
       with tf.name_scope('ur_step'):
         batch_size = tf.shape(step_type)[0]
-        action = tf.fill((B, ), 0)
+        action = tf.fill((batch_size, ), 0)
         logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
         return StepOutput(action, logits, self._dummy_state(batch_size))
 
@@ -42,37 +43,52 @@ class DummyPS(object):
     return {var_name: 0 for var_name in var_names}
 
 
-class ShellTest(tf.test.TestCase):
+class DummyReplay:
 
-  def _get_shell(self):
-    action_spec = BoundedArraySpec((10, 20),
-                                   np.int32,
-                                   0,
-                                   100,
-                                   name='test_spec')
-    obs_spec = dict(
-        state=ArraySpec(shape=(B, 10), dtype=np.float32, name='state_spec'))
-    return Shell(
-        action_spec=action_spec,
-        obs_spec=obs_spec,
+  def push(self, *args, **kwargs):
+    pass
+
+
+TRAJ_LENGTH = 10
+N_ENVS = 2
+SEED = 42
+
+
+class ActorTest(tf.test.TestCase):
+
+  def _get_actor(self):
+
+    shell_config = dict(
         agent_class=DummyAgent,
         agent_config={},
-        batch_size=B,
+        sync_period=5,
         ps_handle=DummyPS(),
-        sync_period=1,
-        use_gpu=False,
+    )
+    return Actor(
+        shell_class=Shell,
+        shell_config=shell_config,
+        env_class=XOREnv,
+        env_configs=[{}] * N_ENVS,
+        traj_length=TRAJ_LENGTH,
+        seed=SEED,
+        batch_size=N_ENVS,
+        replay_handle=DummyReplay(),
     )
 
+  def testInit(self):
+    self._get_actor()
+
   def testStep(self):
+    return
     shell = self._get_shell()
-    for _ in range(100):
+    for _ in range(1000):
       shell.step(
           np.zeros((B, ), np.int32) + StepType.FIRST,
           np.zeros((B, ), np.float32) - 0.5,
           dict(state=np.zeros((B, 10), np.float32)),
       )
     # Be careful about other test functions changing the static variable
-    self.assertEqual(DummyPS.count, 100 + 1)
+    self.assertEqual(DummyPS.count, 1000 + 1)
 
 
 if __name__ == '__main__':
