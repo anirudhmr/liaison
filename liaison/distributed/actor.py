@@ -27,6 +27,7 @@ class Actor:
       seed,
       replay_handle,
       batch_size=1,  # num_envs
+      n_unrolls=None,  # None => loop forever
       **kwargs):
     del kwargs
     self._traj_length = traj_length
@@ -47,13 +48,17 @@ class Actor:
                             step_output_spec=self._shell.step_output_spec())
 
     # blocking call -- runs forever
-    self.run_loop()
+    self.run_loop(n_unrolls)
 
-  def run_loop(self):
+  def run_loop(self, n_unrolls):
     ts = self._env.reset()
     self._traj.reset()
     self._traj.start(next_state=self._shell.next_state, **dict(ts._asdict()))
+    i = 0
     while True:
+      if n_unrolls is not None:
+        if i == n_unrolls:
+          return
       step_output = self._shell.step(step_type=ts.step_type,
                                      reward=ts.reward,
                                      observation=ts.observation)
@@ -65,6 +70,7 @@ class Actor:
         self._push_replay(exp)
         self._traj.start(next_state=self._shell.next_state,
                          **dict(ts._asdict()))
+      i += 1
 
   def _push_replay(self, exp):
     self._replay_handle.push(exp)

@@ -8,7 +8,7 @@ from specs import ArraySpec, BoundedArraySpec
 from tensorflow.contrib.framework import nest
 
 
-class Trajectory:
+class Trajectory(object):
   """
   Needs to collect the step environment outputs and
   agent outputs and stack them up for replay storage.

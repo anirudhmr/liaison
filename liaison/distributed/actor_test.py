@@ -73,22 +73,11 @@ class ActorTest(tf.test.TestCase):
         seed=SEED,
         batch_size=N_ENVS,
         replay_handle=DummyReplay(),
+        n_unrolls=1000,
     )
 
   def testInit(self):
     self._get_actor()
-
-  def testStep(self):
-    return
-    shell = self._get_shell()
-    for _ in range(1000):
-      shell.step(
-          np.zeros((B, ), np.int32) + StepType.FIRST,
-          np.zeros((B, ), np.float32) - 0.5,
-          dict(state=np.zeros((B, 10), np.float32)),
-      )
-    # Be careful about other test functions changing the static variable
-    self.assertEqual(DummyPS.count, 1000 + 1)
 
 
 if __name__ == '__main__':
