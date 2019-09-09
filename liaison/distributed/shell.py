@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function
 
 import tensorflow as tf
 from absl import logging
-from easydict import EasyDict as ConfigDict
+from utils import ConfigDict
 from tensorflow.contrib.framework import nest
 from specs import ArraySpec
 
@@ -55,9 +55,9 @@ class Shell:
       else:
         self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
 
-        self._agent = agent_class(name=agent_scope,
-                                  action_spec=action_spec,
-                                  **agent_config)
+      self._agent = agent_class(name=agent_scope,
+                                action_spec=action_spec,
+                                **agent_config)
 
       self._batch_size = batch_size
       self._batch_size_ph = tf.placeholder_with_default(

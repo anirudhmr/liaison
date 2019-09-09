@@ -68,3 +68,9 @@ class Agent(BaseAgent):
         logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
         return StepOutput(action, logits,
                           self._dummy_state(tf.expand_dims(batch_size, 0)))
+
+  def build_update_ops(self, *args, **kwargs):
+    return
+
+  def update(self, sess, feed_dict):
+    return {}

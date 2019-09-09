@@ -11,6 +11,23 @@ import utils as U
 from absl import logging
 from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
                         ZmqTimeoutError)
+from collections import namedtuple
+# type can be 'info' or 'parameters'
+# if hash is None, then force fetch
+# else, fetch only if hash has changed.
+# var_list: List of variables to fetch
+# agent_scope: Substitute agent scope with learner scope for fetching
+PSRequest = namedtuple('PSRequest',
+                       ['type', 'hash', 'var_list', 'agent_scope'],
+                       defaults=[None, None, None, None])
+
+# type can be 'info' or 'parameters' or 'not_ready' or 'no_change'
+# not_ready indicates that the parameter server has no data to serve.
+# no_change means that the parameters have not changed since last hash.
+# info => dict of learner side info
+# parameters => valid only for the 'parameters' type
+PSResponse = namedtuple('PSResponse', ['type', 'info', 'parameters'],
+                        defaults=[None, None, None])
 
 
 class ParameterPublisher(object):
@@ -19,31 +36,31 @@ class ParameterPublisher(object):
         Using ZmqPub socket
     """
 
-  def __init__(self, port):
+  def __init__(self, port, agent_scope):
     """
         Args:
             port: the port connected to the pub socket
             module_dict: ModuleDict object that exposes model parameters
         """
+    self._agent_scope = agent_scope
     self._publisher = ZmqPub(
         host='*',
         port=port,
         serializer=U.serialize,
     )
 
-  def publish(self, iteration, var_dict, message=''):
+  def publish(self, iteration, var_dict):
     """
         Called by learner. Publishes model parameters with additional info
 
         Args:
             iteration: current learning iteration
             var_dict: Dict of available variables.
-            message: any U.serialize serializable data
         """
     info = {
+        'agent_scope': self._agent_scope,
         'time': time.time(),
         'iteration': iteration,
-        'message': message,
         'variable_list': list(var_dict.keys()),
         'hash': U.pyobj_hash(var_dict),
     }
@@ -186,52 +203,36 @@ class ParameterServer(Process):
   def _set_storage(self, data):
     logging.info('Set storage called on ps')
     self.parameters, self.param_info = data
-    if self.param_info is None:
-      logging.info('_set_storage received None info')
-    else:
-      logging.info('_set_storage received info: {}'.format(self.param_info))
+    logging.info('_set_storage received info: {}'.format(self.param_info))
 
   def _handle_agent_request(self, request):
-    """
-            Reply to agents' request for parameters
+    """Reply to agents' request for parameters."""
 
-        Args:
-            request: 3 types
-             - "info": (None, info)
-             - "parameter": (param, info)
-             - "parameter:<agent-hash>":
-                returns (None, None) if no parameter has been published
-                returns (None, info) if the hash
-                    of server side parameters is the same as the agent's
-                otherwise returns (param, info)
-        """
-    logging.info('Request received of type: %s', request)
-    args = []
-    if isinstance(request, list):
-      args = request[1]
-      request = request[0]
+    request = PSRequest(**request)
+    logging.info('Request received of type: %s', request.type)
 
-    if request == 'info':
-      return None, self.param_info
-    elif request.startswith('parameter'):
-      if self.parameters is None:
-        return None, None
-      else:
-        params_asked_for = {
-            var_name: self.parameters[var_name]
-            for var_name in args
-        }
-      if ':' in request:
-        _, last_hash = request.split(':', 1)
-        current_hash = self.param_info['hash']
-        if last_hash == current_hash:  # param not changed
-          return None, self.param_info
-        else:
-          return params_asked_for, self.param_info
-      else:
-        return params_asked_for, self.param_info
+    if self.param_info is None:
+      return PSResponse(type='not_ready')._asdict()
+
+    if request.type == 'info':
+      return PSResponse(type='info')._asdict()
+
+    elif request.type == 'parameter':
+      if request.hash is not None:
+        if request.hash == self.param_info['hash']:  # param not changed
+          return PSResponse(type='no_change', info=self.param_info)._asdict()
+
+      params_asked_for = {
+          var_name:
+          self.parameters[var_name.replace(request.agent_scope,
+                                           self.param_info['agent_scope'])]
+          for var_name in request.var_list
+      }
+      return PSResponse(type='parameters',
+                        info=self.param_info,
+                        parameters=params_asked_for)._asdict()
     else:
-      raise ValueError('invalid request: ' + str(request))
+      raise ValueError('invalid request type received: %s' % (request.type))
 
 
 class ParameterClient(object):
@@ -240,7 +241,14 @@ class ParameterClient(object):
         latest parameters.
     """
 
-  def __init__(self, host, port, timeout=2):
+  def __init__(
+      self,
+      host,
+      port,
+      agent_scope,
+      timeout=2,
+      not_ready_sleep=2,
+  ):
     """
         Args:
             host: parameter server host
@@ -254,6 +262,8 @@ class ParameterClient(object):
     self._current_info = {}
     self._last_hash = ''
     self.alive = False
+    self._agent_scope = agent_scope
+    self._not_ready_sleep = not_ready_sleep
 
     self._client = ZmqClient(host=self.host,
                              port=self.port,
@@ -262,36 +272,41 @@ class ParameterClient(object):
                              deserializer=U.deserialize)
 
   def fetch_parameter_with_info(self, var_names, force_update=False):
-    """
-            Called by agent to retrieve parameters
-            By default, pulls from PS ONLY WHEN the parameter hash changes
-                to prevent duplicate fetching. No-op when duplicate.
-            Caching can be overriden by force_update
 
-        Args:
-            force_update: forces download of parameter, regardless of
-                currently cached hash
+    if force_update:
+      use_hash = None
+    else:
+      use_hash = self._last_hash
 
-        Returns:
-            (param or None, info or None)
-        """
-    try:
-      if force_update:
-        response = self._client.request(['parameter', var_names])
-      else:
+    while True:
+      try:
         response = self._client.request(
-            ['parameter:' + self._last_hash, var_names])
-    except ZmqTimeoutError:
-      logging.info('ZmQ timed out.')
-      self.on_fetch_parameter_failed()
-      return None, None
-    self.on_fetch_parameter_success()
-    param, info = response
-    if info is None:
-      return None, None
+            PSRequest(type='parameter',
+                      hash=use_hash,
+                      var_list=var_names,
+                      agent_scope=self._agent_scope)._asdict())
+      except ZmqTimeoutError:
+        logging.info('ZmQ timed out.')
+        self.on_fetch_parameter_failed()
+        continue
 
-    self._last_hash = info['hash']
-    return param, info
+      self.on_fetch_parameter_success()
+      response = PSResponse(**response)
+
+      if use_hash is None:
+        assert response.type != 'no_change'
+
+      if response.type == 'not_ready':
+        logging.info('PS not ready.')
+        time.sleep(self._not_ready_sleep)
+
+      elif response.type == 'no_change':
+        assert self._last_hash == response.info['hash']
+        return None, response.info
+
+      else:
+        self._last_hash = response.info['hash']
+        return response.parameters, response.info
 
   def fetch_info(self):
     """
@@ -300,15 +315,23 @@ class ParameterClient(object):
         Returns:
             dictionary of metadata
         """
-    try:
-      response = self._client.request('info')
-    except ZmqTimeoutError:
-      logging.info('ZmQ timed out.')
-      self.on_fetch_parameter_failed()
-      return None
+    while True:
+      try:
+        response = self._client.request(
+            PSRequest(type='info',
+                      hash=self._last_hash,
+                      var_list=None,
+                      agent_scope=self._agent_scope)._asdict())
+      except ZmqTimeoutError:
+        logging.info('ZmQ timed out.')
+        self.on_fetch_parameter_failed()
+        continue
+      break
+
     self.on_fetch_parameter_success()
-    _, info = response
-    return info
+    response = PSResponse(**response)
+    assert response.type == 'info' or response.type == 'not_ready'
+    return response.info
 
   def on_fetch_parameter_failed(self):
     """

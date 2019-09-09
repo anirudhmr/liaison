@@ -45,7 +45,7 @@ class DummyPS(object):
 
 class DummyReplay:
 
-  def push(self, *args, **kwargs):
+  def send(self, *args, **kwargs):
     pass
 
 
@@ -72,7 +72,7 @@ class ActorTest(tf.test.TestCase):
         traj_length=TRAJ_LENGTH,
         seed=SEED,
         batch_size=N_ENVS,
-        replay_handle=DummyReplay(),
+        exp_sender_handle=DummyReplay(),
         n_unrolls=1000,
     )
 

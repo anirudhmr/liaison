@@ -1,4 +1,4 @@
-"""Actor cls. Responsible for batched policy evaluation. Syncs the policy weights with PS and pushes the experience out to replay."""
+"""Actor cls. Responsible for batched policy evaluation. Syncs the policy weights with PS and pushes the experience out to exp_sender."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -13,7 +13,7 @@ class Actor:
   Actor is responsible for the following.
 
   (1) Create a shell and batched environments.
-  (2) Pushes experience out to replay.
+  (2) Pushes experience out to exp_sender.
 
   """
 
@@ -25,13 +25,13 @@ class Actor:
       env_configs,
       traj_length,
       seed,
-      replay_handle,
+      exp_sender_handle,
       batch_size=1,  # num_envs
       n_unrolls=None,  # None => loop forever
       **kwargs):
     del kwargs
     self._traj_length = traj_length
-    self._replay_handle = replay_handle
+    self._exp_sender_handle = exp_sender_handle
     self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
     self._action_spec = self._env.action_spec()
     self._obs_spec = self._env.observation_spec()
@@ -66,11 +66,11 @@ class Actor:
       self._traj.add(step_output=step_output, **dict(ts._asdict()))
       if len(self._traj) == self._traj_length:
         exp = self._traj.stack_and_flatten()
+        self._send_experience(exp)
         self._traj.reset()
-        self._push_replay(exp)
         self._traj.start(next_state=self._shell.next_state,
                          **dict(ts._asdict()))
       i += 1
 
-  def _push_replay(self, exp):
-    self._replay_handle.push(exp)
+  def _send_experience(self, exp):
+    self._exp_sender_handle.send(hash_dict=exp)

@@ -8,6 +8,10 @@ from specs import ArraySpec, BoundedArraySpec
 from tensorflow.contrib.framework import nest
 
 
+def expand_spec(spec):
+  return spec.expand_dims(None, axis=0)
+
+
 class Trajectory(object):
   """
   Needs to collect the step environment outputs and
@@ -29,20 +33,21 @@ class Trajectory(object):
     self._traj = None
     self._action_spec = action_spec
     # Don't use shape in the spec since it's unknown
-    self._traj_spec = dict(step_type=BoundedArraySpec(dtype=np.int8,
-                                                      shape=(),
-                                                      minimum=0,
-                                                      maximum=2,
-                                                      name='traj_step'
-                                                      '_type_spec'),
-                           reward=ArraySpec(dtype=np.float32,
-                                            shape=(),
-                                            name='traj_reward_spec'),
-                           discount=ArraySpec(dtype=np.float32,
-                                              shape=(),
-                                              name='traj_discount_spec'),
-                           observation=obs_spec,
-                           step_output=step_output_spec)
+    self._traj_spec = dict(
+        step_type=BoundedArraySpec(dtype=np.int8,
+                                   shape=(None, None),
+                                   minimum=0,
+                                   maximum=2,
+                                   name='traj_step'
+                                   '_type_spec'),
+        reward=ArraySpec(dtype=np.float32,
+                         shape=(None, None),
+                         name='traj_reward_spec'),
+        discount=ArraySpec(dtype=np.float32,
+                           shape=(None, None),
+                           name='traj_discount_spec'),
+        observation=nest.map_structure(expand_spec, obs_spec),
+        step_output=nest.map_structure(expand_spec, step_output_spec))
 
   def start(self, step_type, reward, discount, observation, next_state):
     self.add(step_type, reward, discount, observation,
@@ -69,8 +74,9 @@ class Trajectory(object):
 
     stacked_trajs = nest.map_structure_up_to(self._traj_spec, f,
                                              self._traj_spec, *self._traj)
-    flattened_trajs = nest.flatten_up_to(self._traj_spec, stacked_trajs)
-    return flattened_trajs
+    return stacked_trajs
+    # flattened_trajs = nest.flatten_up_to(self._traj_spec, stacked_trajs)
+    # return flattened_trajs
 
   def __len__(self):
     if self._traj:

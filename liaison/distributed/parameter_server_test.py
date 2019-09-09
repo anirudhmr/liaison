@@ -17,7 +17,7 @@ from specs.specs import ArraySpec, BoundedArraySpec
 SYMPH_PARAMETER_PUBLISH_HOST = "localhost"
 SYMPH_PARAMETER_PUBLISH_PORT = "6000"
 
-N_SHARDS = 8
+N_SHARDS = 4
 SYMPH_PS_FRONTEND_HOST = "localhost"
 SYMPH_PS_FRONTEND_PORT = "6001"
 SYMPH_PS_BACKEND_PORT = "6002"
@@ -27,12 +27,14 @@ class ParameterServerTest(tf.test.TestCase):
 
   def _get_ps_publisher(self):
 
-    return ParameterPublisher(port=SYMPH_PARAMETER_PUBLISH_PORT)
+    return ParameterPublisher(port=SYMPH_PARAMETER_PUBLISH_PORT,
+                              agent_scope='learner')
 
   def _get_ps_client(self):
     return ParameterClient(port=SYMPH_PS_FRONTEND_PORT,
                            host=SYMPH_PS_FRONTEND_HOST,
-                           timeout=0.1)
+                           timeout=0.1,
+                           agent_scope='shell')
 
   def _get_ps(self):
     return ShardedParameterServer(shards=N_SHARDS, supress_output=True)
@@ -58,10 +60,12 @@ class ParameterServerTest(tf.test.TestCase):
     time.sleep(2)
 
     for i in range(1000):
-      var_dict = dict(x=np.array(i, dtype=np.int32),
-                      y=np.array(i, dtype=np.int32))
+      var_dict = {
+          'learner/x': np.array(i, dtype=np.int32),
+          'learner/y': np.array(i, dtype=np.int32)
+      }
       pub.publish(i, var_dict)
-      vars_to_fetch = ['x']
+      vars_to_fetch = ['shell/x']
       while True:
         param, info = cli.fetch_parameter_with_info(vars_to_fetch)
         if info is None:
@@ -78,8 +82,10 @@ class ParameterServerTest(tf.test.TestCase):
       self.assertListEqual(info['variable_list'], list(var_dict.keys()))
       self.assertListEqual(sorted(param.keys()), sorted(vars_to_fetch))
       self.assertEqual(
-          param, {var_name: var_dict[var_name]
-                  for var_name in vars_to_fetch})
+          param, {
+              var_name: var_dict[var_name.replace('shell', 'learner')]
+              for var_name in vars_to_fetch
+          })
       logging.info('Processed iteration %d successfully', i)
 
     ps.quit()
