@@ -10,6 +10,7 @@ from distributed import Trajectory
 import tensorflow as tf
 from queue import Queue
 from threading import Thread
+from tensorflow.contrib.framework import nest
 
 
 class Learner(object):
@@ -26,11 +27,12 @@ class Learner(object):
                spec_handle,
                ps_publish_handle,
                ps_client_handle,
+               replay_handle,
                batch_size,
                traj_length,
-               publish_every=1,
                agent_scope='learner',
                prefetch_batch_size=1,
+               use_gpu=True,
                **learner_config):
     """
     Args:
@@ -47,11 +49,7 @@ class Learner(object):
 
     self._ps_publish_handle = ps_publish_handle
     self._ps_client_handle = ps_client_handle
-    self._replay_handle = LearnerDataPrefetcher(
-        session_config=self._get_session_config(),
-        batch_size=prefetch_batch_size,
-        main_preprocess=lambda k: k,
-        worker_preprocess=None)
+    self._replay_handle = replay_handle
 
     self._step_number = 0
     self._publish_queue = Queue()
@@ -92,7 +90,7 @@ class Learner(object):
                             shape=spec.shape,
                             name='learner_' + spec.name + '_ph')
 
-    self._traj_phs = nest.map_structure(traj_spec)
+    self._traj_phs = nest.map_structure(mk_ph, traj_spec)
 
   def _initial_publish(self):
     # blocks until connection is successful.
@@ -102,23 +100,28 @@ class Learner(object):
   def _publish_variables(self):
     var_vals = self.sess.run(self._variables)
     var_dict = dict()
-    for var_name, var_val in zip(self._variable_names, var_val):
+    for var_name, var_val in zip(self._variable_names, var_vals):
       var_dict[var_name] = var_val
     self._publish_queue.put((self._step_number, var_dict))
 
   def _publish(self):
     while True:
-      self._ps_publish_handle.publish(self._publish_queue.get())
+      data = self._publish_queue.get()
+      if data is None:
+        return
+      self._ps_publish_handle.publish(data)
 
   def train(self):
-    while True:
+    for _ in range(self.config.n_train_steps):
       batch, = self._replay_handle.get()
       feed_dict = {
           ph: val
-          for ph, val in zip(nest.flatten(self._traj_phs, batch))
+          for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))
       }
       log_vals = self._agent.update(self.sess, feed_dict)
 
       self._step_number += 1
-      if self._step_number % self.config['publish_every'] == 0:
+      if self._step_number % self.config.publish_every == 0:
         self._publish_variables()
+
+    self._publish_queue.put(None)  # exit the thread once training ends.

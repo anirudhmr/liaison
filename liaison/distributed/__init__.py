@@ -9,3 +9,5 @@ from .actor import Actor
 from .exp_sender import ExpSender
 from .exp_collector import ExperienceCollectorServer
 from .data_fetcher import LearnerDataPrefetcher
+
+from .learner import Learner
