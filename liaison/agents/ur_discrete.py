@@ -6,8 +6,8 @@ from __future__ import absolute_import, division, print_function
 import numpy as np
 import tensorflow as tf
 from absl import logging
-from agents import BaseAgent
-from agents import StepOutput
+from liaison.agents import BaseAgent
+from liaison.agents import StepOutput
 
 _ACTION_SPEC_UNBOUNDED = 'action spec `{}` is not correctly bounded.'
 _DTYPE_NOT_INTEGRAL = '`dtype` must be integral, got {}.'

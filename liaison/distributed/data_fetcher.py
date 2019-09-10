@@ -2,7 +2,7 @@ import os
 import queue
 from caraml.zmq import DataFetcher
 from benedict import BeneDict
-import utils as U
+import liaison.utils as U
 from threading import Thread
 
 

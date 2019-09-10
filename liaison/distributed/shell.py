@@ -4,9 +4,9 @@ from __future__ import absolute_import, division, print_function
 
 import tensorflow as tf
 from absl import logging
-from utils import ConfigDict
+from liaison.specs import ArraySpec
+from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
-from specs import ArraySpec
 
 
 class SyncEveryNSteps:

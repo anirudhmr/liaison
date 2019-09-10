@@ -1,6 +1,6 @@
 import weakref
 from threading import Thread
-import utils as U
+import liaison.utils as U
 from caraml.zmq import ZmqReceiver
 
 

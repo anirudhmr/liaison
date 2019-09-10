@@ -7,7 +7,7 @@ import sys
 import time
 from multiprocessing import Process
 
-import utils as U
+import liaison.utils as U
 from absl import logging
 from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
                         ZmqTimeoutError)

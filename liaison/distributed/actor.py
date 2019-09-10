@@ -4,8 +4,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from env import SerialBatchedEnv
-from distributed import Trajectory
+from liaison.env import SerialBatchedEnv
+from liaison.distributed import Trajectory
 
 
 class Actor:

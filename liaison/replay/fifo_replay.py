@@ -1,7 +1,7 @@
 import random
 from collections import deque
-from .base import Replay
-from utils import logging
+from liaison.replay.base import Replay
+from liaison.utils import logging
 
 
 class FIFOReplay(Replay):

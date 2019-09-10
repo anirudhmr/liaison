@@ -2,10 +2,9 @@
 
 from __future__ import absolute_import, division, print_function
 
-from env import Env
-from env import TimeStep
-from specs import BoundedArraySpec, ArraySpec
 import numpy as np
+from liaison.env import Env, TimeStep
+from liaison.specs import ArraySpec, BoundedArraySpec
 from tensorflow.contrib.framework import nest
 
 

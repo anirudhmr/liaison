@@ -2,8 +2,8 @@
 Agent side.
 Send experience chunks (buffered) to Replay node.
 """
-import utils as U
-from session import PeriodicTracker
+import liaison.utils as U
+from liaison.session import PeriodicTracker
 from caraml.zmq import ZmqSender
 
 

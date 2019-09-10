@@ -1,4 +1,4 @@
-from .config import extend_config
+from liaison.session.config import extend_config
 
 # ======================== Agent-Learner side ========================
 BASE_LEARNER_CONFIG = {
@@ -22,22 +22,21 @@ BASE_LEARNER_CONFIG = {
     },
     'parameter_publish': {
         # Minimum amount of time (seconds) between two parameter publish
-        'min_publish_interval': 0.3, 
+        'min_publish_interval': 0.3,
     },
 }
 
-
 # ======================== Env side ========================
 BASE_ENV_CONFIG = {
-    'env_name' : '_str_',
+    'env_name': '_str_',
     'sleep_time': 0.0,
-    'video' : {
-        'record_video' : False,
+    'video': {
+        'record_video': False,
         'max_videos': 10,
         'record_every': 10,
         'save_folder': None,
     },
-    'eval_mode': {}, # for providing different env init args when in eval
+    'eval_mode': {},  # for providing different env init args when in eval
     'action_spec': {},
     'obs_spec': {},
     'frame_stacks': 1,
@@ -52,11 +51,9 @@ BASE_ENV_CONFIG = {
     # },
 }
 
-
 # ======================== Session side ========================
 BASE_SESSION_CONFIG = {
     'folder': '_str_',
-
     'replay': {
         'collector_frontend_host': '_str_',  # upstream from agents' pusher
         'collector_frontend_port': '_int_',
@@ -98,7 +95,8 @@ BASE_SESSION_CONFIG = {
             'agent': '_int_',  # agent.tensorplex.add_scalars()
             # WARN!!: DEPRECATED
             'learner': '_int_',  # learner.tensorplex.add_scalars()
-            'learner_min_update_interval': '_int_', #Update tensorplex at most every ? seconds
+            'learner_min_update_interval':
+            '_int_',  #Update tensorplex at most every ? seconds
         }
     },
     'loggerplex': {
@@ -121,13 +119,16 @@ BASE_SESSION_CONFIG = {
         'prefetch_host': '_str_',
         'prefetch_port': '_int_',
         'prefetch_processes': '_int_',
-        'max_prefetch_queue': '_int_',  # learner side: max number of batches to prefetch
-        'max_preprocess_queue': '_int_',  # learner side: max number of batches to preprocess
+        'max_prefetch_queue':
+        '_int_',  # learner side: max number of batches to prefetch
+        'max_preprocess_queue':
+        '_int_',  # learner side: max number of batches to preprocess
     },
     'checkpoint': {
-        'restore': '_bool_',  # if False, ignore the other configs under 'restore'
+        'restore':
+        '_bool_',  # if False, ignore the other configs under 'restore'
         'restore_folder': None,  # if None, use the same session folder.
-                            # Otherwise restore ckpt from another experiment dir.
+        # Otherwise restore ckpt from another experiment dir.
         'learner': {
             'restore_target': '_int_',
             'mode': '_enum[best,history]_',
@@ -146,10 +147,8 @@ BASE_SESSION_CONFIG = {
     }
 }
 
-
 LOCAL_SESSION_CONFIG = {
     'folder': '_str_',
-
     'replay': {
         'collector_frontend_host': 'localhost',  # upstream from agents' pusher
         'collector_frontend_port': 7001,
@@ -180,7 +179,7 @@ LOCAL_SESSION_CONFIG = {
         'host': 'localhost',
         'port': 7008,
         'tensorboard_port': 6006,
-        'update_schedule': { # TODO: rename this to 'periodic'
+        'update_schedule': {  # TODO: rename this to 'periodic'
             # for TensorplexWrapper:
             'training_env': 20,  # env record every N episodes
             'eval_env': 20,
@@ -188,7 +187,8 @@ LOCAL_SESSION_CONFIG = {
             # for manual updates:
             'agent': 20,  # agent.tensorplex.add_scalars()
             'learner': 20,  # learner.tensorplex.add_scalars()
-            'learner_min_update_interval': 30, #Update tensorplex at most every 30 seconds
+            'learner_min_update_interval':
+            30,  #Update tensorplex at most every 30 seconds
         }
     },
     'loggerplex': {
@@ -207,8 +207,10 @@ LOCAL_SESSION_CONFIG = {
         'prefetch_host': 'localhost',
         'prefetch_port': 7010,
         'prefetch_processes': 2,
-        'max_prefetch_queue': 10,  # learner side: max number of batches to prefetch
-        'max_preprocess_queue': 2,  # learner side: max number of batches to preprocess
+        'max_prefetch_queue':
+        10,  # learner side: max number of batches to prefetch
+        'max_preprocess_queue':
+        2,  # learner side: max number of batches to preprocess
     },
     'checkpoint': {
         'restore': False,  # if False, ignore the other configs under 'restore'
@@ -217,15 +219,17 @@ LOCAL_SESSION_CONFIG = {
             'restore_target': 0,
             'mode': 'history',
             'keep_history': 2,
-            'keep_best': 0, # TODO don't keep best unless we solve the learner score issue
-            'periodic': 100000, # Save every 100000 steps
-            'min_interval': 15 * 60, # No checkpoint less than 15 min apart.
+            'keep_best':
+            0,  # TODO don't keep best unless we solve the learner score issue
+            'periodic': 100000,  # Save every 100000 steps
+            'min_interval': 15 * 60,  # No checkpoint less than 15 min apart.
         },
         'agent': {
             'restore_target': 0,
             'mode': 'history',
             'keep_history': 2,
-            'keep_best': 0, # TODO don't keep best unless we solve the learner score issue
+            'keep_best':
+            0,  # TODO don't keep best unless we solve the learner score issue
             'periodic': 100,
         },
     }
@@ -233,10 +237,8 @@ LOCAL_SESSION_CONFIG = {
 
 LOCAL_SESSION_CONFIG = extend_config(LOCAL_SESSION_CONFIG, BASE_SESSION_CONFIG)
 
-
 KUBE_SESSION_CONFIG = {
     'folder': '_str_',
-
     'replay': {
         'collector_frontend_host': '_str_',  # upstream from agents' pusher
         'sampler_frontend_host': '_str_',  # downstream to Learner request

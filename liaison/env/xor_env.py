@@ -1,6 +1,6 @@
 import numpy as np
-from env import Env
-from env.environment import restart, termination
+from liaison.env import Env
+from liaison.env.environment import restart, termination
 from specs import BoundedArraySpec
 
 

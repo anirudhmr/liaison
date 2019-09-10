@@ -1,10 +1,11 @@
-import time
 import os
-import utils as U
-from session import get_tensorplex_client, get_loggerplex_client
-from distributed import ExperienceCollectorServer
-from caraml.zmq import ZmqServer
+import time
+
+import liaison.utils as U
 from absl import logging
+from caraml.zmq import ZmqServer
+from liaison.distributed import ExperienceCollectorServer
+from liaison.session import get_loggerplex_client, get_tensorplex_client
 
 
 class Replay:

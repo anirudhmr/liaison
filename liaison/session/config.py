@@ -1,7 +1,7 @@
 import json
 import yaml
 import re
-import utils as U
+import liaison.utils as U
 
 
 class ConfigError(Exception):

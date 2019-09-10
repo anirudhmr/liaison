@@ -4,10 +4,10 @@ from __future__ import absolute_import, division, print_function
 
 import numpy as np
 import tensorflow as tf
-from agents import BaseAgent, StepOutput
-from distributed import Shell
-from env import StepType, TimeStep
-from specs.specs import ArraySpec, BoundedArraySpec
+from liaison.agents import BaseAgent, StepOutput
+from liaison.distributed import Shell
+from liaison.env import StepType, TimeStep
+from liaison.specs.specs import ArraySpec, BoundedArraySpec
 
 B = 8
 

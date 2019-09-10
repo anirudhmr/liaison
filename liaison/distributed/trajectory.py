@@ -3,8 +3,8 @@
 from __future__ import absolute_import, division, print_function
 
 import numpy as np
-from agents import StepOutput
-from specs import ArraySpec, BoundedArraySpec
+from liaison.agents import StepOutput
+from liaison.specs import ArraySpec, BoundedArraySpec
 from tensorflow.contrib.framework import nest
 
 

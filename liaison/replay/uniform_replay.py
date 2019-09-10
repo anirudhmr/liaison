@@ -1,10 +1,9 @@
 import random
 from collections import deque
 
-import utils as U
-
+import liaison.utils as U
 from absl import logging
-from .base import Replay
+from liaison.replay.base import Replay
 
 
 class UniformReplay(Replay):

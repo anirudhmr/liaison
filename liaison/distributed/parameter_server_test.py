@@ -8,11 +8,11 @@ import time
 import numpy as np
 import tensorflow as tf
 from absl import logging
-from agents import BaseAgent, StepOutput
-from distributed import (ParameterClient, ParameterPublisher,
-                         ShardedParameterServer, Shell)
-from env import StepType, TimeStep
-from specs.specs import ArraySpec, BoundedArraySpec
+from liaison.agents import BaseAgent, StepOutput
+from liaison.distributed import (ParameterClient, ParameterPublisher,
+                                 ShardedParameterServer, Shell)
+from liaison.env import StepType, TimeStep
+from liaison.specs.specs import ArraySpec, BoundedArraySpec
 
 SYMPH_PARAMETER_PUBLISH_HOST = "localhost"
 SYMPH_PARAMETER_PUBLISH_PORT = "6000"

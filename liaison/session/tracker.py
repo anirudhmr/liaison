@@ -1,10 +1,11 @@
 import itertools
-from collections import deque
-import utils as U
-from tensorplex import TensorplexClient, LoggerplexClient
-from threading import Lock
-import time
 import os
+import time
+from collections import deque
+from threading import Lock
+
+import liaison.utils as U
+from tensorplex import LoggerplexClient, TensorplexClient
 
 
 class PeriodicTracker(object):

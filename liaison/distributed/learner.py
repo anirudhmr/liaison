@@ -4,9 +4,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from utils import logging
-from utils import ConfigDict
-from distributed import Trajectory
+from liaison.utils import logging
+from liaison.utils import ConfigDict
+from liaison.distributed import Trajectory
 import tensorflow as tf
 from queue import Queue
 from threading import Thread

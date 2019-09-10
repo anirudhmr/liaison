@@ -2,17 +2,17 @@
 
 from __future__ import absolute_import, division, print_function
 
-import numpy as np
 import os
 import time
 from threading import Thread
 
+import numpy as np
 import tensorflow as tf
 from absl import logging
-from distributed import ExpSender, LearnerDataPrefetcher
-from replay import ReplayLoadBalancer, UniformReplay
+from liaison.distributed import ExpSender, LearnerDataPrefetcher
+from liaison.replay import ReplayLoadBalancer, UniformReplay
+from liaison.utils import ConfigDict
 from tensorplex import Loggerplex, Tensorplex
-from utils import ConfigDict
 
 _LOCALHOST = 'localhost'
 
