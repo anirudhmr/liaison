@@ -35,12 +35,13 @@ class Shell:
       agent_config,
       batch_size,
       ps_handle,
+      seed,
       agent_scope='shell',
       sync_period=None,
       use_gpu=False,
       **kwargs,
   ):
-    self.config = ConfigDict(kwargs)
+    del kwargs
     self._ps_handle = ps_handle
     self._obs_spec = obs_spec
     self._sync_checker = SyncEveryNSteps(sync_period)
@@ -57,6 +58,7 @@ class Shell:
 
       self._agent = agent_class(name=agent_scope,
                                 action_spec=action_spec,
+                                seed=seed,
                                 **agent_config)
 
       self._batch_size = batch_size

@@ -26,6 +26,7 @@ class Actor:
       traj_length,
       seed,
       exp_sender_handle,
+      session_config={},
       batch_size=1,  # num_envs
       n_unrolls=None,  # None => loop forever
       **kwargs):
@@ -40,7 +41,11 @@ class Actor:
         action_spec=self._action_spec,
         obs_spec=self._obs_spec,
         batch_size=batch_size,
-        **shell_config,
+        seed=seed,
+        **{
+            **shell_config,
+            **session_config
+        },
     )
 
     self._traj = Trajectory(obs_spec=self._obs_spec,
