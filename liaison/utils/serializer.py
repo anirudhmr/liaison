@@ -16,6 +16,14 @@ def pa_deserialize(binary):
   return pa.deserialize(binary)
 
 
+def pickle_serialize(obj):
+  return pickle.dumps(obj)
+
+
+def pickle_deserialize(binary):
+  return pickle.loads(binary)
+
+
 _SERIALIZER = pa_serialize
 _DESERIALIZER = pa_deserialize
 

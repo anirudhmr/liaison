@@ -1,10 +1,10 @@
 import numpy as np
-from liaison.env import Env
+from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination
-from specs import BoundedArraySpec
+from liaison.specs import ArraySpec, BoundedArraySpec
 
 
-class XOREnv(Env):
+class Env(BaseEnv):
   """Single Step environment with reward equal to 1
   for correct XOR value and 0 otherwise."""
 
@@ -39,12 +39,12 @@ class XOREnv(Env):
     return termination(rew, self._observation())
 
   def observation_spec(self):
-    features_spec = BoundedArraySpec((2, ),
-                                     np.float32,
-                                     0,
-                                     1,
-                                     name='features_spec')
+    features_spec = ArraySpec((2, ), np.float32, name='features_spec')
     return dict(features=features_spec)
 
   def action_spec(self):
-    return BoundedArraySpec((), np.int32, 0, 1, name='action_spec')
+    return BoundedArraySpec((),
+                            np.int32,
+                            minimum=0,
+                            maximum=1,
+                            name='action_spec')

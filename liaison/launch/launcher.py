@@ -5,14 +5,12 @@ information one needs to launch a component of surreal
 import os
 import subprocess
 import sys
-import time
 from argparse import ArgumentParser
 
 import faulthandler
 import liaison.utils as U
-import numpy as np
-from distributed import ShardedParameterServer
-from liaison.replay import ReplayLoadBalancer, ShardedReplay
+from liaison.distributed import Actor, Learner, ShardedParameterServer
+from liaison.replay import ReplayLoadBalancer
 from tensorplex import Loggerplex, Tensorplex
 
 faulthandler.enable()
@@ -50,77 +48,12 @@ class Launcher:
     parser.add_argument('component_name',
                         type=str,
                         help='which component to launch')
-    args = parser.parse_args(parser_args)
+    args, _ = parser.parse_known_args(parser_args)
 
     self.config_args = config_args
 
     self.setup(config_args)
     self.launch(args.component_name)
-
-  def launch(self, component_name):
-    """Launches the specific component
-
-        Args:
-            component_name(str): the process to launch
-        """
-    raise NotImplementedError
-
-  def setup(self, args):
-    """
-        Sets up the related states for running components
-
-        Args:
-            args: A list of commandline arguments provided.
-        """
-    pass
-
-
-class SurrealDefaultLauncher(Launcher):
-  """
-        The default launcher instance of surreal.
-    """
-
-  def __init__(self,
-               agent_class,
-               learner_class,
-               replay_class,
-               session_config,
-               env_config,
-               learner_config,
-               eval_mode='eval_stochastic',
-               agent_batch_size=8,
-               eval_batch_size=8,
-               render=False):
-    """
-        Setup an surreal experiment
-
-        Args:
-            agent_class: The Agent subclass to run for agents
-            learner_class: The Agent subclass to run for evals
-            replay_class: The Replay subclass to run for replays
-            session_config: configs passed to all components
-            env_config: configs passed to all components
-            learner_config: configs passed to all components
-            eval_mode: whether evals should be deterministic or
-                stochastic. 'eval_deterministic'/'eval_stochastic'
-                (default: {'eval_stochastic'})
-            agent_batch_size: When running batch_agent,
-                how many agents to fork. (default: {8})
-            eval_batch_size: When running batch_agent,
-                how many evals to fork. (default: {8})
-            render: Whether evals should render (default: {False})
-        """
-    self.agent_class = agent_class
-    self.learner_class = learner_class
-    self.replay_class = replay_class
-    self.session_config = session_config
-    self.env_config = env_config
-    self.learner_config = learner_config
-
-    self.eval_mode = eval_mode
-    self.render = render
-    self.agent_batch_size = agent_batch_size
-    self.eval_batch_size = eval_batch_size
 
   def launch(self, component_name_in):
     """
@@ -144,18 +77,8 @@ class SurrealDefaultLauncher(Launcher):
       component_name = component_name_in
       component_id = None
 
-    if component_name == 'agent':
-      self.run_agent(agent_id=component_id)
-    elif component_name == 'agents':
-      agent_ids = self.get_agent_batch(component_id)
-      self.run_agent_batch(agent_ids)
-    elif component_name == 'eval':
-      self.run_eval(eval_id=component_id,
-                    mode=self.eval_mode,
-                    render=self.render)
-    elif component_name == 'evals':
-      eval_ids = self.get_eval_batch(component_id)
-      self.run_eval_batch(eval_ids, self.eval_mode, self.render)
+    if component_name == 'actor':
+      self.run_actor(actor_id=component_id)
     elif component_name == 'learner':
       self.run_learner()
     elif component_name == 'ps':
@@ -180,163 +103,62 @@ class SurrealDefaultLauncher(Launcher):
         [sys.executable, '-u', sys.argv[0], component_name, '--'] +
         self.config_args)
 
-  def run_agent(self, agent_id):
+  def run_actor(self, actor_id):
     """
-            Launches an agent process with agent_id
+        Launches an actor process with actor_id
 
-        Args:
-            agent_id (int): agent's id
-            iterations (int): if not none, the number of episodes to run before exiting
-        """
-    agent = self.setup_agent(agent_id)
-    agent.main_agent()
-
-  def setup_agent(self, agent_id):
-    """'
-
-        Same as launch_agent, but instead of running agent.main()
-        infinite loop, returns the agent instance
-
-        Args:
-            agent_id: [description]
-        """
-    np.random.seed(int(time.time() * 100000 % 100000))
-
-    session_config, learner_config, env_config = \
-        self.session_config, self.learner_config, self.env_config
-    agent_mode = 'training'
-
-    # env, env_config = make_env(env_config)
-
-    agent = self.agent_class(
-        learner_config=learner_config,
-        env_config=env_config,
-        session_config=session_config,
-        agent_id=agent_id,
-        agent_mode=agent_mode,
-    )
-
-    return agent
-
-  def run_agent_batch(self, agent_ids):
+    Args:
+        actor_id (int): actor's id
     """
-            Launches multiple agent processes with agent_id in agent_ids
-            Useful when you want agents to share a GPU
 
-        Args:
-            agent_ids (list(int)): each agent's id
-        """
-    agents = []
-    for agent_id in agent_ids:
-      component_name = 'agent-{}'.format(agent_id)
-      agent = self.run_component(component_name)
-      agents.append(agent)
-    U.wait_for_popen(agents)
+    agent_config, env_config, sess_config = (self.agent_config,
+                                             self.env_config, self.sess_config)
+    agent_class = U.import_obj(agent_config.class_name,
+                               agent_config.class_path)
 
-  def get_agent_batch(self, batch_id):
-    """
-            Returns the agent_ids corresponding to batch_id
+    shell_class = U.import_obj(sess_config.shell.class_name,
+                               sess_config.shell.class_path)
 
-        Args:
-            batch_id: index of batch
+    env_class = U.import_obj(env_config.class_name, env_config.class_path)
 
-        Returns:
-            agent_ids (list): ids of the agents in the batch
-        """
-    return range(self.agent_batch_size * int(batch_id),
-                 self.agent_batch_size * (int(batch_id) + 1))
+    shell_config = dict(agent_class=agent_class,
+                        agent_config=self.agent_config,
+                        **self.sess_config.shell)
 
-  def run_eval(self, eval_id, mode, render):
-    """
-            Launches an eval processes with id eval_id
+    actor_config = dict(actor_id=actor_id,
+                        shell_class=shell_class,
+                        shell_config=shell_config,
+                        env_class=env_class,
+                        env_configs=[self.env_config] * self.batch_size,
+                        traj_length=self.traj_length,
+                        seed=self.seed,
+                        batch_size=self.batch_size,
+                        **self.sess_config.actor)
 
-        Args:
-            eval_id (int): eval agent's id
-            mode: eval_deterministic or eval_stochastic
-            render: see run_eval
-        """
-    np.random.seed(int(time.time() * 100000 % 100000))
-
-    session_config, learner_config, env_config = \
-        self.session_config, self.learner_config, self.env_config
-
-    # env, env_config = make_env(env_config, 'eval')
-
-    agent_mode = mode
-    assert agent_mode != 'training'
-
-    agent_class = self.agent_class
-    agent = agent_class(learner_config=learner_config,
-                        env_config=env_config,
-                        session_config=session_config,
-                        agent_id=eval_id,
-                        agent_mode=agent_mode,
-                        render=render)
-
-    agent.main_eval()
-
-  def run_eval_batch(self, eval_ids, mode, render):
-    """
-            Launches multiple eval processes with agent_id in agent_ids
-            Useful when you want agents to share a GPU
-
-        Args:
-            eval_ids (list(int)): each eval agent's id
-            mode:
-            render: see run_eval
-        """
-    evals = []
-    for eval_id in eval_ids:
-      component_name = 'eval-{}'.format(eval_id)
-      agent = self.run_component(component_name)
-      evals.append(agent)
-    U.wait_for_popen(evals)
-
-  def get_eval_batch(self, batch_id):
-    """
-            Returns the eval_ids corresponding to batch_id
-
-        Args:
-            batch_id: index of batch
-
-        Returns:
-            eval_ids (list): ids of the agents in the batch
-        """
-    return range(self.eval_batch_size * int(batch_id),
-                 self.eval_batch_size * int(batch_id) + 1)
+    Actor(**actor_config)  # blocking constructor.
 
   def run_learner(self, iterations=None):
     """
-            Launches the learner process.
-            Learner consumes experience from replay
-            and publishes experience to parameter server
-        """
-    learner = self.setup_learner()
-    learner.main()
-
-  def setup_learner(self):
+        Launches the learner process.
+        Learner consumes experience from replay
+        and publishes experience to parameter server
     """
-            Same as run_learner, but returns the Learner instance
-            instead of calling learner.main_loop()
-        """
-    session_config, learner_config, env_config = \
-        self.session_config, self.learner_config, self.env_config
 
-    learner_class = self.learner_class
-    learner = learner_class(learner_config=learner_config,
-                            env_config=env_config,
-                            session_config=session_config)
-
-    return learner
+    agent_class = U.import_obj(agent_config.class_name,
+                               agent_config.class_path)
+    learner = Learner(agent_class=agent_class,
+                      agent_config=self.agent_config,
+                      batch_size=self.batch_size,
+                      traj_length=self.traj_length,
+                      **self.sess_config.learner)
+    learner.main()
 
   def run_ps(self):
     """
-            Lauches the parameter server process.
-            Serves parameters to agents
-        """
-    ps_config = self.session_config.ps
-
-    server = ShardedParameterServer(shards=ps_config.shards)
+        Lauches the parameter server process.
+        Serves parameters to agents
+    """
+    server = ShardedParameterServer(shards=self.sess_config.ps.n_shards)
 
     server.launch()
     server.join()
@@ -349,7 +171,7 @@ class SurrealDefaultLauncher(Launcher):
         """
     loadbalancer = self.run_component('replay_loadbalancer')
     components = [loadbalancer]
-    for replay_id in range(self.learner_config.replay.replay_shards):
+    for replay_id in range(self.sess_config.replay.n_shards):
       component_name = 'replay_worker-{}'.format(replay_id)
       replay = self.run_component(component_name)
       components.append(replay)
@@ -371,19 +193,22 @@ class SurrealDefaultLauncher(Launcher):
         Args:
             replay_id: The id of the replay server
         """
-    replay = self.replay_class(self.learner_config,
-                               self.env_config,
-                               self.session_config,
-                               index=replay_id)
+
+    replay_class = U.import_obj(self.sess_config.replay.class_name,
+                                self.sess_config.replay.class_path)
+
+    replay = replay_class(seed=self.seed,
+                          index=replay_id,
+                          **self.sess_config.replay)
     replay.start_threads()
     replay.join()
 
   def run_tensorboard(self):
     """
-            Launches a tensorboard process
-        """
-    folder = os.path.join(self.session_config.folder, 'tensorboard')
-    tensorplex_config = self.session_config.tensorplex
+        Launches a tensorboard process
+    """
+    folder = os.path.join(self.sess_config.folder, 'tensorboard')
+    tensorplex_config = self.sess_config.tensorplex
     cmd = [
         'tensorboard', '--logdir', folder, '--port',
         str(tensorplex_config.tensorboard_port)
@@ -396,8 +221,8 @@ class SurrealDefaultLauncher(Launcher):
             It receives data from multiple sources and
             send them to tensorboard.
         """
-    folder = os.path.join(self.session_config.folder, 'tensorboard')
-    tensorplex_config = self.session_config.tensorplex
+    folder = os.path.join(self.sess_config.folder, 'tensorboard')
+    tensorplex_config = self.sess_config.tensorplex
 
     tensorplex = Tensorplex(
         folder,
@@ -422,8 +247,8 @@ class SurrealDefaultLauncher(Launcher):
             Launches a loggerplex server.
             It helps distributed logging.
         """
-    folder = self.session_config.folder
-    loggerplex_config = self.session_config.loggerplex
+    folder = self.sess_config.folder
+    loggerplex_config = self.sess_config.loggerplex
 
     loggerplex = Loggerplex(os.path.join(folder, 'logs'),
                             level=loggerplex_config.level,

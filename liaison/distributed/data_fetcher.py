@@ -15,13 +15,18 @@ class LearnerDataPrefetcher(DataFetcher):
         a queue
     """
 
-  def __init__(self,
-               session_config,
-               batch_size,
-               worker_preprocess=None,
-               main_preprocess=None):
-    self.max_fetch_queue = session_config.learner.max_prefetch_queue
-    self.max_preprocess_queue = session_config.learner.max_preprocess_queue
+  def __init__(
+      self,
+      batch_size,
+      max_prefetch_queue,
+      max_fetch_queue,
+      max_preprocess_queue,
+      prefetch_processes,
+      worker_preprocess=None,
+      main_preprocess=None,
+  ):
+    self.max_fetch_queue = max_prefetch_queue
+    self.max_preprocess_queue = max_preprocess_queue
     self.fetch_queue = queue.Queue(maxsize=self.max_fetch_queue)
     self.preprocess_queue = queue.Queue(maxsize=self.max_preprocess_queue)
     self.timer = U.TimeRecorder()
@@ -29,7 +34,7 @@ class LearnerDataPrefetcher(DataFetcher):
     self.sampler_host = os.environ['SYMPH_SAMPLER_FRONTEND_HOST']
     self.sampler_port = os.environ['SYMPH_SAMPLER_FRONTEND_PORT']
     self.batch_size = batch_size
-    self.prefetch_processes = session_config.learner.prefetch_processes
+    self.prefetch_processes = prefetch_processes
     self.prefetch_host = '127.0.0.1'
     self.worker_comm_port = os.environ['SYMPH_PREFETCH_QUEUE_PORT']
     self.worker_preprocess = worker_preprocess

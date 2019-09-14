@@ -110,6 +110,9 @@ class ArraySpec(object):
     """Adds a 1 to the axis index of shape."""
     self._shape = self._shape[0:axis] + (n_repeat, ) + self._shape[axis:]
 
+  def set_shape(self, shape):
+    self._shape = tuple(shape)
+
 
 class BoundedArraySpec(ArraySpec):
   """An `ArraySpec` that specifies minimum and maximum values.
@@ -157,24 +160,8 @@ class BoundedArraySpec(ArraySpec):
         numpy dtype.
     """
     super(BoundedArraySpec, self).__init__(shape, dtype, name)
-
-    try:
-      np.broadcast_to(minimum, shape=shape)
-    except ValueError as numpy_exception:
-      raise ValueError('minimum is not compatible with shape. '
-                       'Message: {!r}.'.format(numpy_exception))
-
-    try:
-      np.broadcast_to(maximum, shape=shape)
-    except ValueError as numpy_exception:
-      raise ValueError('maximum is not compatible with shape. '
-                       'Message: {!r}.'.format(numpy_exception))
-
-    self._minimum = np.array(minimum)
-    self._minimum.setflags(write=False)
-
-    self._maximum = np.array(maximum)
-    self._maximum.setflags(write=False)
+    self._minimum = minimum
+    self._maximum = maximum
 
   @property
   def minimum(self):

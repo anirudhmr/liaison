@@ -2,6 +2,7 @@ import os
 import time
 
 import liaison.utils as U
+from liaison.utils import ConfigDict
 from absl import logging
 from caraml.zmq import ZmqServer
 from liaison.distributed import ExperienceCollectorServer
@@ -15,16 +16,8 @@ class Replay:
         initialize the replay server.
     """
 
-  def __init__(self, learner_config, env_config, session_config, index=0):
-    """
-        """
-    # Note that there're 2 replay configs:
-    # one in learner_config that controls algorithmic
-    # part of the replay logic
-    # one in session_config that controls system settings
-    self.learner_config = learner_config
-    self.env_config = env_config
-    self.session_config = session_config
+  def __init__(self, seed, evict_interval, index=0, **kwargs):
+    self.config = ConfigDict(kwargs)
     self.index = index
 
     collector_port = os.environ['SYMPH_COLLECTOR_BACKEND_PORT']
@@ -40,7 +33,7 @@ class Replay:
                                      bind=False)
     self._sampler_server_thread = None
 
-    self._evict_interval = self.session_config.replay.evict_interval
+    self._evict_interval = evict_interval
     self._evict_thread = None
 
     self._setup_logging()
@@ -109,11 +102,11 @@ class Replay:
   # ======================== internal methods ========================
   def _setup_logging(self):
     self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
-                                     self.session_config)
+                                     self.config)
     self.tensorplex = get_tensorplex_client(
-        '{}/{}'.format('replay', self.index), self.session_config)
+        '{}/{}'.format('replay', self.index), self.config)
     self._tensorplex_thread = None
-    self._has_tensorplex = self.session_config.replay.tensorboard_display
+    self._has_tensorplex = self.config.tensorboard_display
 
     # Origin of all global steps
     self.init_time = time.time()

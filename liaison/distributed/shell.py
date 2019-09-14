@@ -1,12 +1,19 @@
-"""Shell for policy evaluation."""
+"""Shell for policy evaluation.
+
+Env variables used:
+  SYMPH_PS_FRONTEND_HOST
+  SYMPH_PS_FRONTEND_PORT
+"""
 
 from __future__ import absolute_import, division, print_function
 
+import os
 import tensorflow as tf
 from absl import logging
 from liaison.specs import ArraySpec
 from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
+from liaison.distributed import ParameterClient
 
 
 class SyncEveryNSteps:
@@ -31,21 +38,21 @@ class Shell:
       self,
       action_spec,
       obs_spec,
+      batch_size,
+      seed,
+      # Above args provided by actor.
       agent_class,
       agent_config,
-      batch_size,
-      ps_handle,
-      seed,
       agent_scope='shell',
       sync_period=None,
       use_gpu=False,
       **kwargs,
   ):
-    del kwargs
-    self._ps_handle = ps_handle
+    self.config = ConfigDict(kwargs)
     self._obs_spec = obs_spec
     self._sync_checker = SyncEveryNSteps(sync_period)
     self._step_number = 0
+    self._agent_scope = agent_scope
 
     self._graph = tf.Graph()
     with self._graph.as_default():
@@ -90,8 +97,9 @@ class Shell:
         self._var_names_to_assign_ops[var.name] = tf.assign(var,
                                                             ph,
                                                             use_locking=True)
-      self._sync_variables()
-      self._next_state = None
+    self._setup_ps_client()
+    self._sync_variables()
+    self._next_state = None
 
   @property
   def next_state(self):
@@ -118,15 +126,31 @@ class Shell:
                                          shape=initial_state_dummy_spec.shape,
                                          name='next_state_ph')
 
+  def _setup_ps_client(self):
+    """Initialize self._ps_client and connect it to the ps."""
+    self._ps_client = ParameterClient(
+        host=os.environ['SYMPH_PS_FRONTEND_HOST'],
+        port=os.environ['SYMPH_PS_FRONTEND_PORT'],
+        agent_scope=self._agent_scope,
+        timeout=self.config.ps_client_timeout,
+        not_ready_sleep=self.config.ps_client_not_ready_sleep)
+
+  def _pull_vars(self):
+    """get weights from the parameter server."""
+    params, unused_info = self._ps_client.fetch_parameter_with_info(
+        self._variable_names)
+    return params
+
   def _sync_variables(self):
-    var_vals = self._ps_handle.pull(self._variable_names)
-    assert sorted(var_vals.keys()) == sorted(self._variable_names) == sorted(
-        self._var_names_to_assign_ops.keys())
-    for var_name, assign_op in self._var_names_to_assign_ops.items():
-      self.sess.run(
-          assign_op,
-          feed_dict={self._var_name_to_phs[var_name]: var_vals[var_name]})
-    logging.info("Synced weights.")
+    var_vals = self._pull_vars()
+    if var_vals:
+      assert sorted(var_vals.keys()) == sorted(self._variable_names) == sorted(
+          self._var_names_to_assign_ops.keys())
+      for var_name, assign_op in self._var_names_to_assign_ops.items():
+        self.sess.run(
+            assign_op,
+            feed_dict={self._var_name_to_phs[var_name]: var_vals[var_name]})
+      logging.info("Synced weights.")
 
   def step(self, step_type, reward, observation):
     if self._sync_checker.should_sync(self._step_number):

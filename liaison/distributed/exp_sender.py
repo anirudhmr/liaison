@@ -77,7 +77,7 @@ class ExpSender(object):
     self._exp_buffer = ExpBuffer()
     self._flush_tracker = PeriodicTracker(flush_iteration)
 
-  def send(self, hash_dict, nonhash_dict):
+  def send(self, hash_dict, nonhash_dict={}):
     """
         Args:
             hash_dict: Large/Heavy data that should be deduplicated

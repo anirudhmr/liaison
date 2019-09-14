@@ -1,15 +1,9 @@
 import itertools
 
 
-def setup_network(*, agents,
-                  evals,
-                  ps,
-                  replay,
-                  learner,
-                  tensorplex,
-                  loggerplex,
-                  tensorboard):
-    """
+def setup_network(*, agents, evals, ps, replay, learner, tensorplex,
+                  loggerplex, tensorboard):
+  """
         Sets up the communication between surreal
         components using symphony
 
@@ -18,28 +12,31 @@ def setup_network(*, agents,
             ps, replay, learner, tensorplex, loggerplex, tensorboard:
                 symphony processes
     """
-    for proc in itertools.chain(agents, evals):
-        proc.connects('ps-frontend')
-        proc.connects('collector-frontend')
+  for proc in itertools.chain(agents, evals):
+    proc.connects('ps-frontend')
+    proc.connects('collector-frontend')
 
-    ps.binds('ps-frontend')
-    ps.binds('ps-backend')
-    ps.connects('parameter-publish')
+  agents[0].binds('spec')
 
-    replay.binds('collector-frontend')
-    replay.binds('sampler-frontend')
-    replay.binds('collector-backend')
-    replay.binds('sampler-backend')
+  ps.binds('ps-frontend')
+  ps.binds('ps-backend')
+  ps.connects('parameter-publish')
 
-    learner.connects('sampler-frontend')
-    learner.binds('parameter-publish')
-    learner.binds('prefetch-queue')
+  replay.binds('collector-frontend')
+  replay.binds('sampler-frontend')
+  replay.binds('collector-backend')
+  replay.binds('sampler-backend')
 
-    tensorplex.binds('tensorplex')
-    loggerplex.binds('loggerplex')
+  learner.connects('spec')
+  learner.connects('sampler-frontend')
+  learner.binds('parameter-publish')
+  learner.binds('prefetch-queue')
 
-    for proc in itertools.chain(agents, evals, [ps, replay, learner]):
-        proc.connects('tensorplex')
-        proc.connects('loggerplex')
+  tensorplex.binds('tensorplex')
+  loggerplex.binds('loggerplex')
 
-    tensorboard.exposes({'tensorboard': 6006})
+  for proc in itertools.chain(agents, evals, [ps, replay, learner]):
+    proc.connects('tensorplex')
+    proc.connects('loggerplex')
+
+  tensorboard.exposes({'tensorboard': 6006})

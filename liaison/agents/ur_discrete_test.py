@@ -26,14 +26,14 @@ class URDiscreteAgentTest(tf.test.TestCase):
 
   def testInitialState(self):
     agent = self._get_agent_instance()
-    bs_ph = tf.placeholder_with_default((B, ), (None, ))
+    bs_ph = tf.placeholder_with_default(B, ())
     init_state = agent.initial_state(batch_size=bs_ph)
     with self.session(use_gpu=False) as sess:
       sess.run(init_state)
 
   def testStep(self):
     agent = self._get_agent_instance()
-    bs_ph = tf.placeholder_with_default((B, ), (None, ))
+    bs_ph = tf.placeholder_with_default(B, ())
 
     init_state = agent.initial_state(batch_size=bs_ph)
 

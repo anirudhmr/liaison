@@ -215,7 +215,7 @@ class ParameterServer(Process):
       return PSResponse(type='not_ready')._asdict()
 
     if request.type == 'info':
-      return PSResponse(type='info')._asdict()
+      return PSResponse(type='info', info=self.param_info)._asdict()
 
     elif request.type == 'parameter':
       if request.hash is not None:
@@ -272,6 +272,8 @@ class ParameterClient(object):
                              deserializer=U.deserialize)
 
   def fetch_parameter_with_info(self, var_names, force_update=False):
+    """Keeps trying on time out errors and not ready responses until
+      fetch is successful."""
 
     if force_update:
       use_hash = None
@@ -310,11 +312,13 @@ class ParameterClient(object):
 
   def fetch_info(self):
     """
-            Fetch the metadata of parameters on parameter server
+        Fetch the metadata of parameters on parameter server.
+        Keeps trying on time outs. Returns None if response received with
+        status `not_ready`.
 
-        Returns:
-            dictionary of metadata
-        """
+    Returns:
+        dictionary of metadata
+    """
     while True:
       try:
         response = self._client.request(

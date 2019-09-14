@@ -2,15 +2,28 @@
 
 from __future__ import absolute_import, division, print_function
 
+import os
+import time
+
+import liaison.utils as U
 import numpy as np
 import tensorflow as tf
+from absl.testing import absltest
+from caraml.zmq import ZmqServer
 from liaison.agents import BaseAgent, StepOutput
-from liaison.distributed import Actor, Shell
+from liaison.distributed import Actor, ExperienceCollectorServer, Shell
+from liaison.distributed.parameter_server import PSRequest, PSResponse
 from liaison.env import StepType, TimeStep
-from liaison.env.xor_env import XOREnv
+from liaison.env import XOREnv
 from liaison.specs.specs import ArraySpec, BoundedArraySpec
 
 B = 8
+_LOCALHOST = 'localhost'
+PS_FRONTEND_PORT = '6000'
+COLLECTOR_FRONTEND_PORT = '6001'
+TRAJ_LENGTH = 10
+N_ENVS = 2
+SEED = 42
 
 
 class DummyAgent(BaseAgent):
@@ -35,36 +48,78 @@ class DummyAgent(BaseAgent):
         return StepOutput(action, logits, self._dummy_state(batch_size))
 
 
-class DummyPS(object):
-  count = 0
+class DummyPS:
 
-  def pull(self, var_names):
-    DummyPS.count += 1
-    return {var_name: 0 for var_name in var_names}
+  def __init__(self):
+
+    self.param_info = {
+        'time': time.time(),
+        'iteration': 0,
+        'variable_list': [],
+        'hash': U.pyobj_hash({}),
+    }
+
+    self._server = ZmqServer(
+        host=_LOCALHOST,
+        port=PS_FRONTEND_PORT,
+        serializer=U.serialize,
+        deserializer=U.deserialize,
+        bind=True,
+    )
+    self._server_thread = self._server.start_loop(
+        handler=self._handle_agent_request, blocking=False)
+
+  def _handle_agent_request(self, request):
+    """Reply to agents' request for parameters."""
+
+    request = PSRequest(**request)
+
+    if request.type == 'info':
+      return PSResponse(type='info')._asdict()
+
+    elif request.type == 'parameter':
+      if request.hash is not None:
+        if request.hash == self.param_info['hash']:  # param not changed
+          return PSResponse(type='no_change', info=self.param_info)._asdict()
+
+      return PSResponse(type='parameters', info=self.param_info,
+                        parameters={})._asdict()
+    else:
+      raise ValueError('invalid request type received: %s' % (request.type))
 
 
-class DummyReplay:
+class ActorTest(absltest.TestCase):
 
-  def send(self, *args, **kwargs):
-    pass
+  def _setup_env(self):
+    os.environ.update(
+        dict(SYMPH_PS_FRONTEND_HOST=_LOCALHOST,
+             SYMPH_PS_FRONTEND_PORT=PS_FRONTEND_PORT,
+             SYMPH_COLLECTOR_FRONTEND_HOST=_LOCALHOST,
+             SYMPH_COLLECTOR_FRONTEND_PORT=COLLECTOR_FRONTEND_PORT))
 
-
-TRAJ_LENGTH = 10
-N_ENVS = 2
-SEED = 42
-
-
-class ActorTest(tf.test.TestCase):
+  def _setup_exp_collector(self):
+    exp_server = ExperienceCollectorServer(host=_LOCALHOST,
+                                           port=COLLECTOR_FRONTEND_PORT,
+                                           exp_handler=lambda k: None,
+                                           load_balanced=False)
+    exp_server.start()
+    return exp_server
 
   def _get_actor(self):
+
+    self._setup_env()
+    exp_server = self._setup_exp_collector()
+    ps_server = DummyPS()
 
     shell_config = dict(
         agent_class=DummyAgent,
         agent_config={},
         sync_period=5,
-        ps_handle=DummyPS(),
+        ps_client_timeout=2,
+        ps_client_not_ready_sleep=2,
     )
     return Actor(
+        actor_id=0,
         shell_class=Shell,
         shell_config=shell_config,
         env_class=XOREnv,
@@ -72,7 +127,6 @@ class ActorTest(tf.test.TestCase):
         traj_length=TRAJ_LENGTH,
         seed=SEED,
         batch_size=N_ENVS,
-        exp_sender_handle=DummyReplay(),
         n_unrolls=1000,
     )
 
@@ -81,4 +135,4 @@ class ActorTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  absltest.main()

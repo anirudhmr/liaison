@@ -45,7 +45,7 @@ class Agent(BaseAgent):
       raise ValueError(_SHAPE_NOT_SPECIFIED.format(action_spec.shape))
 
   def _dummy_state(self, batch_size):
-    return tf.fill(batch_size, 0)
+    return tf.fill(tf.expand_dims(batch_size, 0), 0)
 
   def initial_state(self, batch_size):
     return self._dummy_state(batch_size)
@@ -66,8 +66,7 @@ class Agent(BaseAgent):
 
         action = tf.cast(L + (base * (R - L)), self._action_spec.dtype)
         logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
-        return StepOutput(action, logits,
-                          self._dummy_state(tf.expand_dims(batch_size, 0)))
+        return StepOutput(action, logits, self._dummy_state(batch_size))
 
   def build_update_ops(self, *args, **kwargs):
     return

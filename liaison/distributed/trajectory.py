@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import copy
 import numpy as np
 from liaison.agents import StepOutput
 from liaison.specs import ArraySpec, BoundedArraySpec
@@ -9,7 +10,9 @@ from tensorflow.contrib.framework import nest
 
 
 def expand_spec(spec):
-  return spec.expand_dims(None, axis=0)
+  spec = copy.deepcopy(spec)
+  spec.expand_dims(None, axis=0)
+  return spec
 
 
 class Trajectory(object):
@@ -31,15 +34,13 @@ class Trajectory(object):
       step_output_spec,
   ):
     self._traj = None
+    # per step action spec so not expanding its shape.
     self._action_spec = action_spec
     # Don't use shape in the spec since it's unknown
     self._traj_spec = dict(
-        step_type=BoundedArraySpec(dtype=np.int8,
-                                   shape=(None, None),
-                                   minimum=0,
-                                   maximum=2,
-                                   name='traj_step'
-                                   '_type_spec'),
+        step_type=ArraySpec(dtype=np.int8,
+                            shape=(None, None),
+                            name='traj_step_type_spec'),
         reward=ArraySpec(dtype=np.float32,
                          shape=(None, None),
                          name='traj_reward_spec'),
@@ -65,7 +66,11 @@ class Trajectory(object):
   def reset(self):
     self._traj = []
 
-  def stack_and_flatten(self):
+  @property
+  def spec(self):
+    return self._traj_spec
+
+  def stack(self):
     stacked_trajs = []
 
     def f(spec, *l):
@@ -75,11 +80,31 @@ class Trajectory(object):
     stacked_trajs = nest.map_structure_up_to(self._traj_spec, f,
                                              self._traj_spec, *self._traj)
     return stacked_trajs
-    # flattened_trajs = nest.flatten_up_to(self._traj_spec, stacked_trajs)
-    # return flattened_trajs
 
   def __len__(self):
     if self._traj:
       return len(self._traj)
     else:
       return 0
+
+  @staticmethod
+  def format_traj_spec(self, traj_spec, bs, traj_length):
+    """Fills in the missing shape fields of the traj spec."""
+
+    # All keys starting with following should get traj_length first dimension
+    t_plus_one = [
+        'step_type', 'reward', 'discount', 'observation',
+        'step_output/next_state'
+    ]
+    t = ['step_output/action', 'step_output/logits']
+
+    def f(path, v):
+      if any([path.startswith(v, x) for x in t_plus_one]):
+        v.set_shape((traj_length + 1, bs) + v.shape[2:])
+      else:
+        v.set_shape((traj_length, bs) + v.shape[2:])
+
+      return v
+
+    traj_spec = nest.map_structure(f, traj_spec)
+    return traj_spec

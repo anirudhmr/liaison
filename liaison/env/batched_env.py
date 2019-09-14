@@ -9,7 +9,7 @@ from tensorflow.contrib.framework import nest
 
 
 def stack_specs(*specs):
-  for spec in specs:
+  for spec in specs[1:]:
     assert spec.shape == specs[0].shape
     assert spec.dtype == specs[0].dtype
     assert spec.name == specs[0].name
@@ -28,7 +28,8 @@ def stack_specs(*specs):
         max_max,
         name='batched_' + ('spec' if specs[0].name is None else specs[0].name))
   else:
-    spec = specs[0].expand_dims(len(specs), axis=0)
+    specs[0].expand_dims(len(specs), axis=0)
+    spec = specs[0]
 
   return spec
 

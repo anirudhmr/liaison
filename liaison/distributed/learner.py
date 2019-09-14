@@ -1,15 +1,25 @@
-"""Learner for distributed RL."""
+"""Learner for distributed RL.
+Requires env variables:
+  SYMPH_PS_FRONTEND_HOST
+  SYMPH_PS_FRONTEND_PORT
+  SYMPH_PS_PARAMETER_PUBLISH_PORT
+  SYMPH_SPEC_HOST
+  SYMPH_SPEC_PORT
+"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-from liaison.utils import logging
-from liaison.utils import ConfigDict
-from liaison.distributed import Trajectory
-import tensorflow as tf
-from queue import Queue
+import os
 from threading import Thread
+
+import liaison.utils as U
+import tensorflow as tf
+from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
+                        ZmqTimeoutError)
+from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
+                                 ParameterPublisher, Trajectory)
+from liaison.utils import ConfigDict, logging
+from queue import Queue
 from tensorflow.contrib.framework import nest
 
 
@@ -21,19 +31,17 @@ class Learner(object):
   # Fetches experience data for training
 
   def __init__(self,
-               session_config,
                agent_class,
                agent_config,
-               spec_handle,
-               ps_publish_handle,
-               ps_client_handle,
-               replay_handle,
                batch_size,
                traj_length,
                agent_scope='learner',
                prefetch_batch_size=1,
+               max_prefetch_queue=1,
+               max_preprocess_queue=1,
+               prefetch_processes=1,
                use_gpu=True,
-               **learner_config):
+               **session_config):
     """
     Args:
       session_config: Learner config
@@ -41,15 +49,25 @@ class Learner(object):
       agent_config: Agent config to pass to
       actor_handle: Needed to remotely fetch action_spec and obs_scope
       batch_size: batch_size
-      ps_publish_handle: handle to parameter publisher.
+      traj_length: trajectory length to expect from experience
+      agent_scope: Agent scope to initialize tf variables within
+      prefetch_batch_size: # of batches to fetch for every request to replay
+      max_prefetch_queue: Max-size of the prefetch queue.
+      max_preprocess_queue: Max-size of the preprocess queue.
+      prefetch_process: # of processes to run in parallel for prefetching.
     """
-    self.config = ConfigDict(**learner_config)
-    traj_spec = spec_handle.get_traj_spec(batch_size, traj_length)
-    action_spec = spec_handle.get_action_spec(batch_size, traj_length)
+    self.config = ConfigDict(**session_config)
+    self._prefetch_batch_size = prefetch_batch_size
+    self._max_prefetch_queue = max_prefetch_queue
+    self._max_preprocess_queue = max_preprocess_queue
+    self._prefetch_processes = prefetch_processes
 
-    self._ps_publish_handle = ps_publish_handle
-    self._ps_client_handle = ps_client_handle
-    self._replay_handle = replay_handle
+    self._agent_scope = agent_scope
+    self._setup_ps_publisher()
+    self._setup_ps_client_handle()
+    self._setup_exp_fetcher()
+    self._setup_spec_client()
+    self._get_specs()
 
     self._step_number = 0
     self._publish_queue = Queue()
@@ -66,12 +84,12 @@ class Learner(object):
         self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
 
       self._agent = agent_class(name=agent_scope,
-                                action_spec=action_spec,
+                                action_spec=self._action_spec,
                                 **agent_config)
 
       self.sess.run(tf.global_variables_initializer())
 
-      self._mk_phs(traj_spec)
+      self._mk_phs(self._traj_spec)
       self._agent.build_update_ops(**self._traj_phs)
 
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
@@ -92,9 +110,50 @@ class Learner(object):
 
     self._traj_phs = nest.map_structure(mk_ph, traj_spec)
 
+  def _get_specs(self):
+    while True:
+      try:
+        self._traj_spec, self._action_spec = self.spec_client.request(
+            (batch_size, traj_length))
+      except ZmqTimeoutError:
+        logging.info('ZmQ timed out for the spec server.')
+        continue
+      break
+
+  def _setup_spec_client(self):
+    self.spec_client = ZmqClient(host=os.environ['SYMPH_SPEC_HOST'],
+                                 port=os.environ['SYMPH_SPEC_PORT'],
+                                 serializer=U.pickle_serialize,
+                                 deserializer=U.pickle_deserialize,
+                                 timeout=4)
+
+  def _setup_exp_fetcher(self):
+    self._exp_fetcher = LearnerDataPrefetcher(
+        batch_size=self._prefetch_batch_size,
+        max_prefetch_queue=self._max_prefetch_queue,
+        max_fetch_queue=self._max_fetch_queue,
+        max_preprocess_queue=self._max_preprocess_queue,
+        prefetch_processes=self._prefetch_processes,
+        worker_preprocess=None,
+        main_preprocess=None)
+    self._exp_fetcher.start()
+
+  def _setup_ps_client_handle(self):
+    """Initialize self._ps_client and connect it to the ps."""
+    self._ps_client = ParameterClient(
+        host=os.environ['SYMPH_PS_FRONTEND_HOST'],
+        port=os.environ['SYMPH_PS_FRONTEND_PORT'],
+        agent_scope=self._agent_scope)
+
+  def _setup_ps_publisher(self):
+    self._ps_publisher = ParameterPublisher(
+        port=os.environ['SYMPH_PS_PARAMETER_PUBLISH_PORT'],
+        agent_scope=self._agent_scope)
+
   def _initial_publish(self):
+    self._publish_variables()
     # blocks until connection is successful.
-    self._ps_client_handle.fetch_info()
+    self._ps_client.fetch_info()
     self._publish_variables()
 
   def _publish_variables(self):
@@ -109,7 +168,7 @@ class Learner(object):
       data = self._publish_queue.get()
       if data is None:
         return
-      self._ps_publish_handle.publish(data)
+      self._ps_publisher.publish(*data)
 
   def train(self):
     for _ in range(self.config.n_train_steps):
