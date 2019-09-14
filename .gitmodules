@@ -1,3 +1,6 @@
 [submodule "Argon"]
 	path = Argon
 	url = git@github.com:aravic/Argon.git
+[submodule "caraml"]
+	path = caraml
+	url = ./caraml/
