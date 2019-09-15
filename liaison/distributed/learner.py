@@ -67,7 +67,7 @@ class Learner(object):
     self._setup_ps_client_handle()
     self._setup_exp_fetcher()
     self._setup_spec_client()
-    self._get_specs()
+    self._get_specs(batch_size, traj_length)
 
     self._step_number = 0
     self._publish_queue = Queue()
@@ -110,7 +110,7 @@ class Learner(object):
 
     self._traj_phs = nest.map_structure(mk_ph, traj_spec)
 
-  def _get_specs(self):
+  def _get_specs(self, batch_size, traj_length):
     while True:
       try:
         self._traj_spec, self._action_spec = self.spec_client.request(

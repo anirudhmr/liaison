@@ -8,7 +8,7 @@ from absl import logging, app
 from argon import ArgumentParser, to_nested_dicts
 from liaison.launch.launcher import Launcher
 
-parser = ArgumentParser('main entry script for all spawned processes.')
+parser = ArgumentParser('main entry script for all spawned liaison processes.')
 # agent_config
 parser.add_config_file(name='agent', required=True)
 
@@ -17,6 +17,9 @@ parser.add_config_file(name='env', required=True)
 
 # sess_config
 parser.add_config_file(name='sess', required=True)
+
+# network_config
+parser.add_config_file(name='network', required=True)
 
 parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
 parser.add_argument('--traj_length',
