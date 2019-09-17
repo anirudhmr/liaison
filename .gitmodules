@@ -4,3 +4,6 @@
 [submodule "caraml"]
 	path = caraml
 	url = git@github.com:aravic/caraml.git
+[submodule "xmanager"]
+	path = xmanager
+	url = git@github.com:aravic/xmanager.git
