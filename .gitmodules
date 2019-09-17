@@ -8,5 +8,5 @@
 	path = xmanager
 	url = git@github.com:aravic/xmanager.git
 [submodule "symphony"]
-  path=symphony
-  url=git@github.com:aravic/symphony.git
+	path = symphony
+	url = git@github.com:aravic/symphony.git
