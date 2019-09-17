@@ -13,7 +13,7 @@ class UniformReplay(Replay):
     self._memory = deque(maxlen=self.config.memory_size)
     self._next_idx = 0
     self.set_seed(seed)
-    if self.evict_interval:
+    if self._evict_interval:
       raise Exception("evict interval should be None for uniform replay.")
 
   def insert(self, exp_dict):

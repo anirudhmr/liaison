@@ -2,7 +2,7 @@
 Requires env variables:
   SYMPH_PS_FRONTEND_HOST
   SYMPH_PS_FRONTEND_PORT
-  SYMPH_PS_PARAMETER_PUBLISH_PORT
+  SYMPH_PARAMETER_PUBLISH_PORT
   SYMPH_SPEC_HOST
   SYMPH_SPEC_PORT
 """
@@ -18,6 +18,7 @@ from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
                         ZmqTimeoutError)
 from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
                                  ParameterPublisher, Trajectory)
+from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from queue import Queue
 from tensorflow.contrib.framework import nest
@@ -35,21 +36,28 @@ class Learner(object):
                agent_config,
                batch_size,
                traj_length,
+               seed,
+               loggers,
+               system_loggers,
                agent_scope='learner',
                prefetch_batch_size=1,
                max_prefetch_queue=1,
+               max_fetch_queue=1,
                max_preprocess_queue=1,
                prefetch_processes=1,
                use_gpu=True,
+               publish_every=1,
                **session_config):
     """
     Args:
       session_config: Learner config
       agent_class: Agent class to invoke
       agent_config: Agent config to pass to
-      actor_handle: Needed to remotely fetch action_spec and obs_scope
       batch_size: batch_size
       traj_length: trajectory length to expect from experience
+      seed: seed,
+      loggers: Log training metrics
+      system_loggers: Log system metrics
       agent_scope: Agent scope to initialize tf variables within
       prefetch_batch_size: # of batches to fetch for every request to replay
       max_prefetch_queue: Max-size of the prefetch queue.
@@ -60,19 +68,25 @@ class Learner(object):
     self._prefetch_batch_size = prefetch_batch_size
     self._max_prefetch_queue = max_prefetch_queue
     self._max_preprocess_queue = max_preprocess_queue
+    self._max_fetch_queue = max_fetch_queue
     self._prefetch_processes = prefetch_processes
+    self._loggers = loggers
+    self._system_loggers = system_loggers
+    self._batch_size = batch_size
+    self._traj_length = traj_length
 
     self._agent_scope = agent_scope
     self._setup_ps_publisher()
     self._setup_ps_client_handle()
     self._setup_exp_fetcher()
     self._setup_spec_client()
-    self._get_specs(batch_size, traj_length)
+    self._get_specs()
 
     self._step_number = 0
     self._publish_queue = Queue()
     self._publish_thread = Thread(target=self._publish)
     self._publish_thread.start()
+    self._publish_tracker = PeriodicTracker(publish_every)
 
     self._graph = tf.Graph()
     with self._graph.as_default():
@@ -85,6 +99,7 @@ class Learner(object):
 
       self._agent = agent_class(name=agent_scope,
                                 action_spec=self._action_spec,
+                                seed=seed,
                                 **agent_config)
 
       self.sess.run(tf.global_variables_initializer())
@@ -106,15 +121,16 @@ class Learner(object):
     def mk_ph(spec):
       return tf.placeholder(dtype=spec.dtype,
                             shape=spec.shape,
-                            name='learner_' + spec.name + '_ph')
+                            name='learner/' + spec.name.replace(':', '_') +
+                            '_ph')
 
     self._traj_phs = nest.map_structure(mk_ph, traj_spec)
 
-  def _get_specs(self, batch_size, traj_length):
+  def _get_specs(self):
     while True:
       try:
         self._traj_spec, self._action_spec = self.spec_client.request(
-            (batch_size, traj_length))
+            (self._batch_size, self._traj_length))
       except ZmqTimeoutError:
         logging.info('ZmQ timed out for the spec server.')
         continue
@@ -147,7 +163,7 @@ class Learner(object):
 
   def _setup_ps_publisher(self):
     self._ps_publisher = ParameterPublisher(
-        port=os.environ['SYMPH_PS_PARAMETER_PUBLISH_PORT'],
+        port=os.environ['SYMPH_PARAMETER_PUBLISH_PORT'],
         agent_scope=self._agent_scope)
 
   def _initial_publish(self):
@@ -170,17 +186,45 @@ class Learner(object):
         return
       self._ps_publisher.publish(*data)
 
-  def train(self):
+  def _get_next_exp(self):
+    """Generates iterator to fetch next experience batch."""
+    while True:
+      batches = self._exp_fetcher.get()
+      for batch in batches:
+        yield batch
+
+  def main(self):
+    exp_iter = self._get_next_exp()
     for _ in range(self.config.n_train_steps):
-      batch, = self._replay_handle.get()
+      additional_system_logs = dict()
+      with U.Timer() as batch_timer:
+        batch = next(exp_iter)
+
       feed_dict = {
           ph: val
           for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))
       }
-      log_vals = self._agent.update(self.sess, feed_dict)
+      with U.Timer() as step_timer:
+        log_vals = self._agent.update(self.sess, feed_dict)
+
+      if self._publish_tracker.track_increment():
+        with U.Timer() as publish_timer:
+          self._publish_variables()
+
+        additional_system_logs = dict(
+            publish_time_sec=publish_timer.to_seconds())
+
+      for logger in self._loggers:
+        logger.write(log_vals)
+
+      for logger in self._system_loggers:
+        logger.write(
+            dict(sps=self._batch_size * self._traj_length /
+                 float(step_timer.to_seconds()),
+                 per_step_time_sec=step_timer.to_seconds(),
+                 batch_fetch_time_sec=batch_timer.to_seconds(),
+                 **additional_system_logs))
 
       self._step_number += 1
-      if self._step_number % self.config.publish_every == 0:
-        self._publish_variables()
 
     self._publish_queue.put(None)  # exit the thread once training ends.

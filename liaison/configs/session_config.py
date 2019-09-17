@@ -5,7 +5,7 @@ def get_config():
   config = ConfigDict()
 
   config.learner = ConfigDict()
-  config.learner.publish_every = 100
+  config.learner.publish_every = 1000
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
   config.learner.prefetch_batch_size = 1
@@ -42,6 +42,7 @@ def get_config():
 
   config.loggerplex = ConfigDict()
   config.loggerplex.enable_local_logger = True
+  config.loggerplex.time_format = 'hms'
   config.loggerplex.local_logger_level = 'info'
   config.loggerplex.local_logger_time_format = 'hms'
   config.loggerplex.overwrite = True
@@ -51,7 +52,7 @@ def get_config():
   config.tensorplex = ConfigDict()
   config.tensorplex.tensorboard_port = '9000'
   config.tensorplex.max_processes = 2
-  config.tensorplex.agent_bin_size = 4
+  config.tensorplex.agent_bin_size = 64
 
   config.ps = ConfigDict()
   config.ps.n_shards = 1

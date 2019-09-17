@@ -30,12 +30,9 @@ class Trajectory(object):
   def __init__(
       self,
       obs_spec,
-      action_spec,
       step_output_spec,
   ):
     self._traj = None
-    # per step action spec so not expanding its shape.
-    self._action_spec = action_spec
     # Don't use shape in the spec since it's unknown
     self._traj_spec = dict(
         step_type=ArraySpec(dtype=np.int8,
@@ -88,7 +85,7 @@ class Trajectory(object):
       return 0
 
   @staticmethod
-  def format_traj_spec(self, traj_spec, bs, traj_length):
+  def format_traj_spec(traj_spec, bs, traj_length):
     """Fills in the missing shape fields of the traj spec."""
 
     # All keys starting with following should get traj_length first dimension
@@ -99,12 +96,12 @@ class Trajectory(object):
     t = ['step_output/action', 'step_output/logits']
 
     def f(path, v):
-      if any([path.startswith(v, x) for x in t_plus_one]):
+      if any([path.startswith(x) for x in t_plus_one]):
         v.set_shape((traj_length + 1, bs) + v.shape[2:])
       else:
         v.set_shape((traj_length, bs) + v.shape[2:])
 
       return v
 
-    traj_spec = nest.map_structure(f, traj_spec)
+    traj_spec = nest.map_structure_with_paths(f, traj_spec)
     return traj_spec

@@ -11,6 +11,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import logging
 
 from liaison.env import SerialBatchedEnv
 
@@ -42,6 +43,7 @@ class Actor:
       **sess_config):
 
     del sess_config
+    assert isinstance(actor_id, int)
     self._traj_length = traj_length
     self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
     self._action_spec = self._env.action_spec()
@@ -55,7 +57,6 @@ class Actor:
     )
 
     self._traj = Trajectory(obs_spec=self._obs_spec,
-                            action_spec=self._action_spec,
                             step_output_spec=self._shell.step_output_spec())
 
     if actor_id == 0:
@@ -97,5 +98,10 @@ class Actor:
     self._exp_sender.send(hash_dict=exp)
 
   def _start_spec_server(self):
-    self.spec_server = SpecServer(port=os.environ['SYMPH_SPEC_PORT'],
-                                  traj_spec=self._traj.spec)
+    logging.info("Starting spec server.")
+    print("Starting spec server.")
+
+    self._spec_server = SpecServer(port=os.environ['SYMPH_SPEC_PORT'],
+                                   traj_spec=self._traj.spec,
+                                   action_spec=self._action_spec)
+    self._spec_server.start()

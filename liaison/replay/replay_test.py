@@ -26,6 +26,7 @@ SYMPH_TENSORPLEX_PORT = '6011'
 
 BATCH_SIZE = 4
 MAX_REPLAY_SIZE = 100
+SEED = 42
 
 
 def run_loggerplex(session_config):
@@ -109,7 +110,7 @@ class ReplayTest(tf.test.TestCase):
   def _get_session_config(self):
     session_config = ConfigDict()
     session_config.folder = '/tmp/replay_test'
-    session_config.seed = 42
+    session_config.seed = SEED
 
     session_config.replay = ConfigDict()
     session_config.replay.evict_interval = None
@@ -138,9 +139,10 @@ class ReplayTest(tf.test.TestCase):
 
   def _get_uniform_replay(self):
 
-    return UniformReplay(learner_config=self._get_learner_config(),
-                         session_config=self._get_session_config(),
-                         env_config=ConfigDict())
+    return UniformReplay(
+        seed=SEED,
+        **self._get_session_config().replay,
+    )
 
   def _get_data_fetcher(self):
     return LearnerDataPrefetcher(session_config=self._get_session_config(),

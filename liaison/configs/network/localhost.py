@@ -9,10 +9,9 @@ def get_config():
                      setup_commands=['cd /home/ubuntu/ml4opt/liaison/'],
                      components=[
                          'learner',
-                         'actor',
+                         'actor-*',
                          'replay',
                          'ps',
-                         'agent-*',
                          'tensorplex',
                          'loggerplex',
                          'tensorboard',

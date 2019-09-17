@@ -27,6 +27,11 @@ parser.add_argument('--traj_length',
                     default=100,
                     help='Length of the experience trajectories')
 parser.add_argument('--seed', type=int, default=42)
+parser.add_argument('--experiment_id', type=int, required=True)
+parser.add_argument('--experiment_name', type=str, required=True)
+parser.add_argument('--work_id', type=int, required=True)
+parser.add_argument('--results_folder', type=str, required=True)
+parser.add_argument('--n_actors', type=int)
 
 
 class LauncherSetup(Launcher):
@@ -40,13 +45,19 @@ class LauncherSetup(Launcher):
     args = parser.parse_args(args=argv)
 
     self.args = args
+    self.experiment_id = args.experiment_id
+    self.work_id = args.work_id
+    self.experiment_name = args.experiment_name
     self.batch_size = args.batch_size
     self.traj_length = args.traj_length
     self.seed = args.seed
+    self.results_folder = args.results_folder
+    self.n_actors = args.n_actors
 
     self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))
     self.sess_config = ConfigDict(to_nested_dicts(args.sess_config))
+    self.network_config = ConfigDict(to_nested_dicts(args.network_config))
 
 
 def main(_):

@@ -1,15 +1,18 @@
-import sys
-import os
-import inspect
+import argparse
 import collections
 import functools
-import argparse
-import re
+import inspect
+import json
+import os
 import pprint
-from enum import Enum, EnumMeta
+import re
+import sys
 import time
 from contextlib import contextmanager
-from threading import Thread, Lock
+from threading import Lock, Thread
+
+from enum import Enum, EnumMeta
+from liaison.utils import ConfigDict
 
 
 def report_exitcode(code, name='process'):
@@ -716,3 +719,25 @@ def start_thread(func, daemon=True, args=None, kwargs=None):
   )
   t.start()
   return t
+
+
+def ConfigDict_to_dict(config):
+  if config is None:
+    return config
+  d = dict()
+  for k, v in config.items():
+    if isinstance(v, ConfigDict):
+      d[k] = ConfigDict_to_dict(v)
+    else:
+      d[k] = v
+
+  return d
+
+
+def pretty_dumps(j):
+  return json.dumps(j, indent=4, sort_keys=True)
+
+
+def pretty_dump(j, fname):
+  with open(fname, 'w') as f:
+    f.write(pretty_dumps(j))

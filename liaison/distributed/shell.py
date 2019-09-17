@@ -51,6 +51,7 @@ class Shell:
     self.config = ConfigDict(kwargs)
     self._obs_spec = obs_spec
     self._sync_checker = SyncEveryNSteps(sync_period)
+    assert self._sync_checker.should_sync(0)  # must sync at the beginning
     self._step_number = 0
     self._agent_scope = agent_scope
 
@@ -98,7 +99,6 @@ class Shell:
                                                             ph,
                                                             use_locking=True)
     self._setup_ps_client()
-    self._sync_variables()
     self._next_state = None
 
   @property
@@ -171,7 +171,10 @@ class Shell:
                                     self._next_state_ph: self.next_state,
                                     **obs_feed_dict,
                                 })
+    if self._step_number % 100 == 0:
+      print(step_output)
     self._next_state = step_output.next_state
+    self._step_number += 1
     return step_output
 
   def step_output_spec(self):

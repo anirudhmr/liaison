@@ -7,7 +7,7 @@ def get_config():
   config = ConfigDict()
 
   # required fields.
-  config.class_path = ""  # should be rel to the parent directory.
+  config.class_path = "liaison.env.xor_env"  # should be rel to the parent directory.
   config.class_name = "Env"
 
   return config

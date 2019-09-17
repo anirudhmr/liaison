@@ -1,11 +1,6 @@
 class CommandGenerator:
 
-  def __init__(self,
-               *,
-               num_agents,
-               num_evals,
-               executable,
-               config_commands=None,
+  def __init__(self, *, executable, config_commands=None,
                ignore_python='auto'):
     """
         Args:
@@ -19,8 +14,6 @@ class CommandGenerator:
                 'auto': True when executable does not end with '.py'
                 useful for using excecutables
         """
-    self.num_agents = num_agents
-    self.num_evals = num_evals
     self.executable = executable
     self.config_commands = config_commands
     if ignore_python == 'auto':

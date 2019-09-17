@@ -1,22 +1,29 @@
 import itertools
 
 
-def setup_network(*, agents, ps, replay, learner, tensorplex, loggerplex,
-                  tensorboard, irs):
+def setup_network(*,
+                  actors,
+                  ps,
+                  replay,
+                  learner,
+                  tensorplex,
+                  loggerplex,
+                  tensorboard=None,
+                  irs=None):
   """
         Sets up the communication between surreal
         components using symphony
 
         Args:
-            agents, (list): list of symphony processes
+            actors, (list): list of symphony processes
             ps, replay, learner, tensorplex, loggerplex, tensorboard:
                 symphony processes
     """
-  for proc in agents:
+  for proc in actors:
     proc.connects('ps-frontend')
     proc.connects('collector-frontend')
 
-  agents[0].binds('spec')
+  actors[0].binds('spec')
 
   ps.binds('ps-frontend')
   ps.binds('ps-backend')
@@ -35,11 +42,13 @@ def setup_network(*, agents, ps, replay, learner, tensorplex, loggerplex,
   tensorplex.binds('tensorplex')
   loggerplex.binds('loggerplex')
 
-  irs.binds('irs')
+  # irs.binds('irs-frontend')
+  # irs.binds('irs-backend')
 
-  for proc in itertools.chain(agents, [ps, replay, learner]):
+  for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
     proc.connects('loggerplex')
-    proc.connects('irs')
+    # proc.connects('irs-frontend')
 
-  tensorboard.exposes({'tensorboard': 6006})
+  if tensorboard:
+    tensorboard.exposes({'tensorboard': 6006})

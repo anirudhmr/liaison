@@ -57,7 +57,9 @@ class LearnerDataPrefetcher(DataFetcher):
   def _preprocess_loop(self):
     while True:
       sharedmem_obj = self.fetch_queue.get(block=True)
-      batch = self.main_preprocess(sharedmem_obj.data)
+      batch = sharedmem_obj.data
+      if self.main_preprocess is not None:
+        batch = self.main_preprocess(batch)
       self.preprocess_queue.put(batch)
 
   def _put(self, _, data):

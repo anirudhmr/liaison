@@ -16,6 +16,7 @@ class SpecServer(Thread):
     self._traj_spec = traj_spec
     self._action_spec = action_spec
     self.port = port
+    super(SpecServer, self).__init__()
 
   def run(self):
     self._server = ZmqServer(

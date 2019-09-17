@@ -6,10 +6,13 @@ import os
 import subprocess
 import sys
 from argparse import ArgumentParser
+from threading import Thread
 
 import faulthandler
 import liaison.utils as U
 from liaison.distributed import Actor, Learner, ShardedParameterServer
+from liaison.loggers import (ConsoleLogger, DownSampleLogger, NoOpLogger,
+                             TensorplexLogger)
 from liaison.replay import ReplayLoadBalancer
 from tensorplex import Loggerplex, Tensorplex
 
@@ -137,6 +140,21 @@ class Launcher:
 
     Actor(**actor_config)  # blocking constructor.
 
+  def _setup_learner_loggers(self):
+    loggers = []
+    loggers.append(ConsoleLogger())
+    loggers.append(TensorplexLogger(client_id='learner'))
+    return loggers
+
+  def _setup_learner_system_loggers(self):
+    loggers = []
+    loggers.append(ConsoleLogger(name='system'))
+    loggers.append(
+        Tensorplex(client_id='learner',
+                   host=os.environ['SYMPH_SYSTEM_TENSORPLEX_HOST'],
+                   port=os.environ['SYMPH_SYSTEM_TENSORPLEX_PORT']))
+    return loggers
+
   def run_learner(self, iterations=None):
     """
         Launches the learner process.
@@ -144,12 +162,14 @@ class Launcher:
         and publishes experience to parameter server
     """
 
-    agent_class = U.import_obj(agent_config.class_name,
-                               agent_config.class_path)
+    agent_class = U.import_obj(self.agent_config.class_name,
+                               self.agent_config.class_path)
     learner = Learner(agent_class=agent_class,
                       agent_config=self.agent_config,
                       batch_size=self.batch_size,
                       traj_length=self.traj_length,
+                      seed=self.seed,
+                      loggers=self._setup_learner_loggers(),
                       **self.sess_config.learner)
     learner.main()
 
@@ -207,7 +227,8 @@ class Launcher:
     """
         Launches a tensorboard process
     """
-    folder = os.path.join(self.sess_config.folder, 'tensorboard')
+    # Visualize all work units with tensorboard.
+    folder = os.path.join(self.results_folder, 'tensorplex')
     tensorplex_config = self.sess_config.tensorplex
     cmd = [
         'tensorboard', '--logdir', folder, '--port',
@@ -221,33 +242,44 @@ class Launcher:
             It receives data from multiple sources and
             send them to tensorboard.
         """
-    folder = os.path.join(self.sess_config.folder, 'tensorboard')
+    folder1 = os.path.join(self.results_folder, 'tensorplex_metrics',
+                           str(self.work_id))
+    folder2 = os.path.join(self.results_folder, 'tensorplex_system_profiles',
+                           str(self.work_id))
     tensorplex_config = self.sess_config.tensorplex
+    threads = []
 
-    tensorplex = Tensorplex(
-        folder,
-        max_processes=tensorplex_config.max_processes,
-    )
-    """
-            Tensorboard categories:
-                learner/replay/eval: algorithmic level, e.g. reward, ...
-                ***-core: low level metrics, i/o speed, computation time, etc.
-                ***-system: Metrics derived from raw metric data in core,
-                    i.e. exp_in/exp_out
-        """
-    (tensorplex.register_normal_group('learner').register_indexed_group(
-        'agent', tensorplex_config.agent_bin_size).register_indexed_group(
-            'eval', 4).register_indexed_group('replay', 10))
+    for folder, port in zip(
+        [folder1, folder2],
+        ['SYMPH_TENSORPLEX_PORT', 'SYMPH_TENSORPLEX_SYSTEM_PORT']):
+      tensorplex = Tensorplex(
+          folder,
+          max_processes=tensorplex_config.max_processes,
+      )
+      """
+        Tensorboard categories:
+          learner/replay/eval: algorithmic level, e.g. reward, ...
+          ***-core: low level metrics, i/o speed, computation time, etc.
+          ***-system: Metrics derived from raw metric data in core,
+                      i.e. exp_in/exp_out
+      """
+      tensorplex.register_normal_group('learner').register_indexed_group(
+          'actor', tensorplex_config.agent_bin_size).register_indexed_group(
+              'replay', 100).register_indexed_group('ps', 100)
 
-    port = os.environ['SYMPH_TENSORPLEX_PORT']
-    tensorplex.start_server(port=port)
+      thread = Thread(target=tensorplex.start_server, kwargs=dict(port=port))
+      thread.start()
+      threads.append(thread)
+
+    for thread in threads:
+      thread.join()
 
   def run_loggerplex(self):
     """
             Launches a loggerplex server.
             It helps distributed logging.
         """
-    folder = self.sess_config.folder
+    folder = os.path.join(self.results_folder, 'loggerplex', str(self.work_id))
     loggerplex_config = self.sess_config.loggerplex
 
     loggerplex = Loggerplex(os.path.join(folder, 'logs'),
