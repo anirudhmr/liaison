@@ -7,6 +7,7 @@ from copy import copy
 
 import liaison.utils as U
 from argon import ArgumentParser, to_nested_dicts
+from caraml.zmq import ZmqClient
 from liaison.launch import CommandGenerator, setup_network
 from liaison.launch.xmanager_client import XManagerClient
 from liaison.utils import ConfigDict, ConfigDict_to_dict
@@ -105,9 +106,17 @@ class TurrealParser(SymphonyParser):
       cmds = env_cmds + preamble_cmds + proc.cmds
       commands[proc.name] = cmds
 
-    return self._xm_client.record_commands(exp_id=exp_id,
-                                           commands=commands,
-                                           dry_run=dry_run)
+    self._xm_client.record_commands(exp_id=exp_id,
+                                    commands=commands,
+                                    dry_run=dry_run)
+    return commands
+
+  def _register_commands_with_irs(self, commands, host, port):
+    self._cli = ZmqClient(host=host,
+                          port=port,
+                          serializer='pyarrow',
+                          deserializer='pyarrow')
+    self._cli.request(['register_commands', [], commands])
 
   def action_create(self, args):
     """
@@ -121,7 +130,7 @@ class TurrealParser(SymphonyParser):
     if '{experiment_name}' in results_folder:
       results_folder = results_folder.format(
           experiment_name=args.experiment_name)
-    cluster = self.create_cluster()
+    cluster = self.create_cluster(nodes)
     experiment_name = self._process_experiment_name(args.experiment_name)
     exp = cluster.new_experiment(experiment_name, preamble_cmds=PREAMBLE_CMDS)
 
@@ -136,13 +145,15 @@ class TurrealParser(SymphonyParser):
         "--n_actors",
         str(args.n_actors),
     ]
+    wid = 0
     if '{exp_id}' in results_folder:
       results_folder = results_folder.format(exp_id=exp_id)
+
     print('Experiment ID: %d' % exp_id)
     print('Results folder: %s' % (results_folder))
     algorithm_args += ["--experiment_id", str(exp_id)]
     algorithm_args += ["--experiment_name", experiment_name]
-    algorithm_args += ["--work_id", str(0)]
+    algorithm_args += ["--work_id", str(wid)]
     algorithm_args += ["--results_folder", results_folder]
     algorithm_args += [
         "--network_config_file", self._network_config_args.network_config_file
@@ -166,6 +177,11 @@ class TurrealParser(SymphonyParser):
                          component_config.ps.setup_commands +
                          [cmd_gen.get_command('ps')])
 
+    irs = exp.new_process('irs',
+                          cmds=[component_config.irs.ssh_command] +
+                          component_config.irs.setup_commands +
+                          [cmd_gen.get_command('irs')])
+
     tensorboard = exp.new_process(
         'tensorboard',
         cmds=[component_config.tensorboard.ssh_command] +
@@ -177,12 +193,6 @@ class TurrealParser(SymphonyParser):
         cmds=[component_config.tensorplex.ssh_command] +
         component_config.tensorplex.setup_commands +
         [cmd_gen.get_command('tensorplex')])
-
-    loggerplex = exp.new_process(
-        'loggerplex',
-        cmds=[component_config.loggerplex.ssh_command] +
-        component_config.loggerplex.setup_commands +
-        [cmd_gen.get_command('loggerplex')])
 
     actors = []
     for i in range(args.n_actors):
@@ -205,17 +215,25 @@ class TurrealParser(SymphonyParser):
         ps=ps,
         tensorboard=tensorboard,
         tensorplex=tensorplex,
-        loggerplex=loggerplex,
+        irs=irs,
     )
 
-    self._record_commands(exp_id,
-                          exp.preamble_cmds,
-                          procs=[
-                              *actors, learner, replay, ps, tensorboard,
-                              tensorplex, loggerplex
-                          ],
-                          dry_run=args.dry_run)
+    commands = self._record_commands(exp_id,
+                                     exp.preamble_cmds,
+                                     procs=[
+                                         *actors,
+                                         learner,
+                                         replay,
+                                         ps,
+                                         tensorboard,
+                                         tensorplex,
+                                         irs,
+                                     ],
+                                     dry_run=args.dry_run)
     cluster.launch(exp, dry_run=args.dry_run)
+    self._register_commands_with_irs(commands,
+                                     host=irs.env['SYMPH_IRS_FRONTEND_HOST'],
+                                     port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
 
   def main(self):
     assert sys.argv.count('--') <= 1, \

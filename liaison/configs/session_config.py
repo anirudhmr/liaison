@@ -6,6 +6,7 @@ def get_config():
 
   config.learner = ConfigDict()
   config.learner.publish_every = 1000
+  config.learner.checkpoint_every = 1000
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
   config.learner.prefetch_batch_size = 1
@@ -15,6 +16,8 @@ def get_config():
 
   config.actor = ConfigDict()
   config.actor.n_unrolls = None  # loop forever.
+  config.actor.use_parallel_envs = True
+  config.actor.use_threaded_envs = False
 
   config.shell = ConfigDict()
   # shell class path is default to the distributed folder.
@@ -50,11 +53,21 @@ def get_config():
   config.loggerplex.show_level = True
 
   config.tensorplex = ConfigDict()
-  config.tensorplex.tensorboard_port = '9000'
+  config.tensorplex.tensorboard_preferred_ports = [
+      6006 + i for i in range(100)
+  ]
+  config.tensorplex.systemboard_preferred_ports = [
+      7007 + i for i in range(100)
+  ]
   config.tensorplex.max_processes = 2
   config.tensorplex.agent_bin_size = 64
 
   config.ps = ConfigDict()
   config.ps.n_shards = 1
+
+  config.irs = ConfigDict()
+  config.irs.n_shards = 1
+  config.irs.max_to_keep = 10
+  config.irs.keep_ckpt_every_n_hrs = 1
 
   return config

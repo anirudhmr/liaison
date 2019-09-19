@@ -2,7 +2,7 @@ import logging
 
 import liaison.utils as U
 
-from .base import BaseLogger
+from . import BaseLogger
 
 
 class Logger(BaseLogger):

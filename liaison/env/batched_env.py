@@ -34,23 +34,20 @@ def stack_specs(*specs):
   return spec
 
 
-class SerialBatchedEnv(Env):
+class BatchedEnv(Env):
 
-  def __init__(self, n_envs, env_class, env_configs, seed, **kwargs):
-    del kwargs
+  def __init__(self, n_envs, env_class, env_configs, seed):
     assert n_envs >= 1
     assert len(env_configs) == n_envs
+    self._n_envs = n_envs
+    self._env_configs = env_configs
+    self._env_class = env_class
+    self.seed = seed
 
-    self._envs = []
-    for i in range(n_envs):
-      env = env_class(id=i, seed=seed, **env_configs[i])
-      self._envs.append(env)
+  def _stack_specs(self, specs):
+    return nest.map_structure(stack_specs, *specs)
 
-    obs_specs = [env.observation_spec() for env in self._envs]
-    self._obs_spec = nest.map_structure(stack_specs, *obs_specs)
-    action_specs = [env.action_spec() for env in self._envs]
-    self._action_spec = nest.map_structure(stack_specs, *action_specs)
-
+  def _make_traj_spec(self, obs_spec):
     self._traj_spec = dict(step_type=BoundedArraySpec(dtype=np.int8,
                                                       shape=(),
                                                       minimum=0,
@@ -64,7 +61,8 @@ class SerialBatchedEnv(Env):
                                dtype=np.float32,
                                shape=(),
                                name='batched_env_discount_spec'),
-                           observation=self._obs_spec)
+                           observation=obs_spec)
+    return self._traj_spec
 
   def observation_spec(self):
     return self._obs_spec
@@ -72,15 +70,8 @@ class SerialBatchedEnv(Env):
   def action_spec(self):
     return self._action_spec
 
-  def reset(self):
-    timesteps = []
-    for env in self._envs:
-      ts = env.reset()
-      timesteps.append(ts)
-
-    return self._stack_ts(timesteps)
-
   def _stack_ts(self, timesteps):
+    """Should be called after _make_traj_spec."""
 
     dict_tss = []
     for ts in timesteps:
@@ -92,15 +83,3 @@ class SerialBatchedEnv(Env):
     stacked_ts = nest.map_structure_up_to(self._traj_spec, f, self._traj_spec,
                                           *dict_tss)
     return TimeStep(**stacked_ts)
-
-  def step(self, action):
-    timesteps = []
-    for i, env in enumerate(self._envs):
-      ts = env.step(action[i])
-      timesteps.append(ts)
-
-    return self._stack_ts(timesteps)
-
-  def set_seed(self, seed):
-    for env in self._envs:
-      env.set_seed(seed)

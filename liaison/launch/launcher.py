@@ -13,6 +13,7 @@ import liaison.utils as U
 from liaison.distributed import Actor, Learner, ShardedParameterServer
 from liaison.loggers import (ConsoleLogger, DownSampleLogger, NoOpLogger,
                              TensorplexLogger)
+from liaison.irs import IRSServer
 from liaison.replay import ReplayLoadBalancer
 from tensorplex import Loggerplex, Tensorplex
 
@@ -94,10 +95,14 @@ class Launcher:
       self.run_replay_worker(replay_id=component_id)
     elif component_name == 'tensorboard':
       self.run_tensorboard()
+    elif component_name == 'systemboard':
+      self.run_systemboard()
     elif component_name == 'tensorplex':
       self.run_tensorplex()
     elif component_name == 'loggerplex':
       self.run_loggerplex()
+    elif component_name == 'irs':
+      self.run_irs()
     else:
       raise ValueError('Unexpected component {}'.format(component_name))
 
@@ -143,16 +148,16 @@ class Launcher:
   def _setup_learner_loggers(self):
     loggers = []
     loggers.append(ConsoleLogger())
-    loggers.append(TensorplexLogger(client_id='learner'))
+    loggers.append(TensorplexLogger(client_id='learner/learner'))
     return loggers
 
   def _setup_learner_system_loggers(self):
     loggers = []
     loggers.append(ConsoleLogger(name='system'))
     loggers.append(
-        Tensorplex(client_id='learner',
-                   host=os.environ['SYMPH_SYSTEM_TENSORPLEX_HOST'],
-                   port=os.environ['SYMPH_SYSTEM_TENSORPLEX_PORT']))
+        TensorplexLogger(client_id='learner/learner',
+                         host=os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST'],
+                         port=os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']))
     return loggers
 
   def run_learner(self, iterations=None):
@@ -170,6 +175,7 @@ class Launcher:
                       traj_length=self.traj_length,
                       seed=self.seed,
                       loggers=self._setup_learner_loggers(),
+                      system_loggers=self._setup_learner_system_loggers(),
                       **self.sess_config.learner)
     learner.main()
 
@@ -185,10 +191,10 @@ class Launcher:
 
   def run_replay(self):
     """
-            Launches the replay process.
-            Replay collects experience from agents
-            and serve them to learner
-        """
+        Launches the replay process.
+        Replay collects experience from agents
+        and serve them to learner
+    """
     loadbalancer = self.run_component('replay_loadbalancer')
     components = [loadbalancer]
     for replay_id in range(self.sess_config.replay.n_shards):
@@ -223,18 +229,22 @@ class Launcher:
     replay.start_threads()
     replay.join()
 
+  def _launch_tensorboard(self, folder, port):
+
+    cmd = ['tensorboard', '--logdir', folder, '--port', str(port)]
+    subprocess.call(cmd)
+
   def run_tensorboard(self):
     """
         Launches a tensorboard process
     """
     # Visualize all work units with tensorboard.
-    folder = os.path.join(self.results_folder, 'tensorplex')
-    tensorplex_config = self.sess_config.tensorplex
-    cmd = [
-        'tensorboard', '--logdir', folder, '--port',
-        str(tensorplex_config.tensorboard_port)
-    ]
-    subprocess.call(cmd)
+    folder = os.path.join(self.results_folder, 'tensorplex_metrics')
+    self._launch_tensorboard(folder, os.environ['SYMPH_TENSORBOARD_PORT'])
+
+  def run_systemboard(self):
+    folder = os.path.join(self.results_folder, 'tensorplex_system_profiles')
+    self._launch_tensorboard(folder, os.environ['SYMPH_SYSTEMBOARD_PORT'])
 
   def run_tensorplex(self):
     """
@@ -249,9 +259,10 @@ class Launcher:
     tensorplex_config = self.sess_config.tensorplex
     threads = []
 
-    for folder, port in zip(
-        [folder1, folder2],
-        ['SYMPH_TENSORPLEX_PORT', 'SYMPH_TENSORPLEX_SYSTEM_PORT']):
+    for folder, port in zip([folder1, folder2], [
+        os.environ['SYMPH_TENSORPLEX_PORT'],
+        os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']
+    ]):
       tensorplex = Tensorplex(
           folder,
           max_processes=tensorplex_config.max_processes,
@@ -289,3 +300,24 @@ class Launcher:
                             time_format=loggerplex_config.time_format)
     port = os.environ['SYMPH_LOGGERPLEX_PORT']
     loggerplex.start_server(port)
+
+  def run_irs(self):
+    self._irs_server = IRSServer(
+        results_folder=self.results_folder,
+        agent_config=self.agent_config,
+        env_config=self.env_config,
+        sess_config=self.sess_config,
+        network_config=self.network_config,
+        exp_name=self.experiment_name,
+        exp_id=self.experiment_id,
+        work_id=self.work_id,
+        configs_folder=os.path.join(self.results_folder, 'config',
+                                    str(self.work_id)),
+        src_folder=os.path.join(self.results_folder, 'src', str(self.work_id)),
+        checkpoint_folder=os.path.join(self.results_folder, 'checkpoints',
+                                       str(self.work_id)),
+        cmd_folder=os.path.join(self.results_folder, 'cmds',
+                                str(self.work_id)),
+        **self.sess_config.irs)
+    self._irs_server.launch()
+    self._irs_server.join()

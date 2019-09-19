@@ -5,23 +5,29 @@ Requires env variables:
   SYMPH_PARAMETER_PUBLISH_PORT
   SYMPH_SPEC_HOST
   SYMPH_SPEC_PORT
+  SYMPH_IRS_FRONTEND_HOST
+  SYMPH_IRS_FRONTEND_PORT
 """
 
 from __future__ import absolute_import, division, print_function
 
+import logging
 import os
+import uuid
 from threading import Thread
 
 import liaison.utils as U
 import tensorflow as tf
-from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
-                        ZmqTimeoutError)
+from caraml.zmq import (ZmqClient, ZmqFileUploader, ZmqProxyThread, ZmqPub,
+                        ZmqServer, ZmqSub, ZmqTimeoutError)
 from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
                                  ParameterPublisher, Trajectory)
 from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from queue import Queue
 from tensorflow.contrib.framework import nest
+
+TEMP_FOLDER = '/tmp/liaison/'
 
 
 class Learner(object):
@@ -47,6 +53,7 @@ class Learner(object):
                prefetch_processes=1,
                use_gpu=True,
                publish_every=1,
+               checkpoint_every=100,
                **session_config):
     """
     Args:
@@ -82,14 +89,15 @@ class Learner(object):
     self._setup_spec_client()
     self._get_specs()
 
-    self._step_number = 0
     self._publish_queue = Queue()
     self._publish_thread = Thread(target=self._publish)
     self._publish_thread.start()
     self._publish_tracker = PeriodicTracker(publish_every)
+    self._checkpoint_every = checkpoint_every
 
     self._graph = tf.Graph()
     with self._graph.as_default():
+      self._global_step_op = tf.train.get_or_create_global_step(self._graph)
       if use_gpu:
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -102,11 +110,11 @@ class Learner(object):
                                 seed=seed,
                                 **agent_config)
 
-      self.sess.run(tf.global_variables_initializer())
-
       self._mk_phs(self._traj_spec)
       self._agent.build_update_ops(**self._traj_phs)
 
+      self.sess.run(tf.global_variables_initializer())
+      self._saver = tf.train.Saver()
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope=agent_scope)
       self._variable_names = [var.name for var in self._variables]
@@ -177,7 +185,7 @@ class Learner(object):
     var_dict = dict()
     for var_name, var_val in zip(self._variable_names, var_vals):
       var_dict[var_name] = var_val
-    self._publish_queue.put((self._step_number, var_dict))
+    self._publish_queue.put((self.global_step, var_dict))
 
   def _publish(self):
     while True:
@@ -193,6 +201,49 @@ class Learner(object):
       for batch in batches:
         yield batch
 
+  def _get_file_uploader(self):
+    return ZmqFileUploader(host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
+                           port=os.environ['SYMPH_IRS_FRONTEND_PORT'],
+                           serializer='pyarrow',
+                           deserializer='pyarrow')
+
+  def _send_metagraph(self):
+    fname = os.path.join(TEMP_FOLDER, str(uuid.uuid4()), 'learner.meta')
+    with self._graph.as_default():
+      tf.train.export_meta_graph(filename=fname)
+
+    file_uploader = self._get_file_uploader()
+    file_uploader.send('register_metagraph',
+                       src_fname=fname,
+                       dst_fname='learner.meta',
+                       dst_dir_name='')
+    U.f_remove(fname)
+
+  def _create_ckpt(self):
+    # save the model
+    export_path = os.path.join(TEMP_FOLDER, str(uuid.uuid4()))
+    U.f_mkdir(export_path)
+    logging.info('Using %s folder for checkpointing ' % export_path)
+    with self._graph.as_default():
+      self._saver.save(self.sess,
+                       export_path + '/learner',
+                       global_step=self.global_step,
+                       write_meta_graph=False)
+
+    file_uploader = self._get_file_uploader()
+    for fname in os.listdir(export_path):
+      if fname.endswith('.meta'):
+        continue
+      file_uploader.send('register_checkpoint',
+                         src_fname=os.path.join(export_path, fname),
+                         dst_fname=fname,
+                         dst_dir_name='%d/' % self.global_step)
+    U.f_remove(export_path)
+
+  @property
+  def global_step(self):
+    return self.sess.run(self._global_step_op)
+
   def main(self):
     exp_iter = self._get_next_exp()
     for _ in range(self.config.n_train_steps):
@@ -207,24 +258,30 @@ class Learner(object):
       with U.Timer() as step_timer:
         log_vals = self._agent.update(self.sess, feed_dict)
 
+      if self.global_step == 1:  # after first sess.run finishes.
+        self._send_metagraph()
+
       if self._publish_tracker.track_increment():
         with U.Timer() as publish_timer:
           self._publish_variables()
 
-        additional_system_logs = dict(
-            publish_time_sec=publish_timer.to_seconds())
+        additional_system_logs['publish_time_sec'] = publish_timer.to_seconds()
+
+      if self.global_step % self._checkpoint_every == 0:
+        with U.Timer() as ckpt_timer:
+          self._create_ckpt()
+        additional_system_logs['ckpt_time_sec'] = ckpt_timer.to_seconds()
 
       for logger in self._loggers:
         logger.write(log_vals)
 
       for logger in self._system_loggers:
         logger.write(
-            dict(sps=self._batch_size * self._traj_length /
+            dict(global_step=self.global_step,
+                 sps=self._batch_size * self._traj_length /
                  float(step_timer.to_seconds()),
                  per_step_time_sec=step_timer.to_seconds(),
                  batch_fetch_time_sec=batch_timer.to_seconds(),
                  **additional_system_logs))
-
-      self._step_number += 1
 
     self._publish_queue.put(None)  # exit the thread once training ends.

@@ -13,7 +13,7 @@ from __future__ import absolute_import, division, print_function
 import os
 import logging
 
-from liaison.env import SerialBatchedEnv
+from liaison.env import SerialBatchedEnv, ParallelBatchedEnv
 
 from .exp_sender import ExpSender
 from .spec_server import SpecServer
@@ -40,12 +40,21 @@ class Actor:
       seed,
       batch_size=1,  # num_envs
       n_unrolls=None,  # None => loop forever
+      use_parallel_envs=False,
+      use_threaded_envs=False,
       **sess_config):
 
     del sess_config
     assert isinstance(actor_id, int)
     self._traj_length = traj_length
-    self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
+    if use_parallel_envs:
+      self._env = ParallelBatchedEnv(batch_size,
+                                     env_class,
+                                     env_configs,
+                                     seed,
+                                     use_threads=use_threaded_envs)
+    else:
+      self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
     self._action_spec = self._env.action_spec()
     self._obs_spec = self._env.observation_spec()
     self._shell = shell_class(

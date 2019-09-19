@@ -101,8 +101,8 @@ class Replay:
 
   # ======================== internal methods ========================
   def _setup_logging(self):
-    self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
-                                     self.config)
+    # self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
+    #                                  self.config)
     self.tensorplex = get_tensorplex_client(
         '{}/{}'.format('replay', self.index), self.config)
     self._tensorplex_thread = None

@@ -7,8 +7,9 @@ def setup_network(*,
                   replay,
                   learner,
                   tensorplex,
-                  loggerplex,
+                  loggerplex=None,
                   tensorboard=None,
+                  systemboard=None,
                   irs=None):
   """
         Sets up the communication between surreal
@@ -40,15 +41,19 @@ def setup_network(*,
   learner.binds('prefetch-queue')
 
   tensorplex.binds('tensorplex')
-  loggerplex.binds('loggerplex')
+  tensorplex.binds('tensorplex-system')
+  # loggerplex.binds('loggerplex')
 
-  # irs.binds('irs-frontend')
-  # irs.binds('irs-backend')
+  irs.binds('irs-frontend')
+  irs.binds('irs-backend')
 
   for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
-    proc.connects('loggerplex')
-    # proc.connects('irs-frontend')
+    proc.connects('tensorplex-system')
+    proc.connects('irs-frontend')
+    # proc.connects('loggerplex')
 
   if tensorboard:
-    tensorboard.exposes({'tensorboard': 6006})
+    tensorboard.exposes(dict(tensorboard=6006))
+  if systemboard:
+    systemboard.exposes(dict(systemboard=6007))

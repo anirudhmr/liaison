@@ -69,7 +69,9 @@ class Agent(BaseAgent):
         return StepOutput(action, logits, self._dummy_state(batch_size))
 
   def build_update_ops(self, *args, **kwargs):
-    return
+    global_step = tf.train.get_or_create_global_step()
+    self._incr_op = tf.assign(global_step, global_step + 1)
 
   def update(self, sess, feed_dict):
-    return {}
+    gs = sess.run(self._incr_op)
+    return {'steps/global_step': gs}

@@ -5,10 +5,11 @@ from __future__ import absolute_import, division, print_function
 import os
 from multiprocessing import Process
 
-from liaison.irs import IRSWorker
 import liaison.utils as U
 from absl import logging
 from caraml.zmq import ZmqProxyThread
+from git import Repo
+from liaison.irs import IRSWorker
 from liaison.utils import ConfigDict
 """
   Request format:
@@ -20,11 +21,10 @@ from liaison.utils import ConfigDict
 class Server(object):
 
   def __init__(self, results_folder, agent_config, env_config, sess_config,
-               network_config, exp_name, exp_id, work_id, shards, **kwargs):
+               network_config, exp_name, exp_id, work_id, n_shards, **kwargs):
     """Results folder should be for the current work unit."""
     self.config = ConfigDict(**kwargs)
-    self.results_folder = results_folder
-    self.shards = shards
+    self.n_shards = n_shards
 
     # Serving parameter to agents
     self.frontend_port = os.environ['SYMPH_IRS_FRONTEND_PORT']
@@ -42,8 +42,8 @@ class Server(object):
                            experiment_name=exp_name,
                            exp_id=exp_id,
                            work_id=work_id,
-                           irs_n_shards=shards,
-                           **kwargs)
+                           irs_n_shards=n_shards)
+    self._register_src()
 
   def launch(self):
     """
@@ -57,10 +57,10 @@ class Server(object):
     self.proxy.start()
 
     self.workers = []
-    for i in range(self.shards):
+    for i in range(self.n_shards):
       worker = IRSWorker(serving_host='localhost',
                          serving_port=self.backend_port,
-                         results_folder=self.results_folder)
+                         **self.config)
       worker.start()
       self.workers.append(worker)
 
@@ -80,26 +80,37 @@ class Server(object):
 
   def _register_configs(self, agent_config, env_config, sess_config,
                         network_config, **kwargs):
-    U.f_mkdir(os.path.join(self.results_folder, 'configs'))
-    U.pretty_dump(
-        agent_config,
-        os.path.join(self.results_folder, 'configs', 'agent_config.json'))
+    config_folder = self.config.configs_folder
+    U.f_mkdir(config_folder)
+    U.pretty_dump(agent_config, os.path.join(config_folder,
+                                             'agent_config.json'))
 
-    U.pretty_dump(
-        env_config,
-        os.path.join(self.results_folder, 'configs', 'env_config.json'))
+    U.pretty_dump(env_config, os.path.join(config_folder, 'env_config.json'))
 
-    U.pretty_dump(
-        sess_config,
-        os.path.join(self.results_folder, 'configs', 'sess_config.json'))
+    U.pretty_dump(sess_config, os.path.join(config_folder, 'sess_config.json'))
 
-    U.pretty_dump(
-        network_config,
-        os.path.join(self.results_folder, 'configs', 'network_config.json'))
+    U.pretty_dump(network_config,
+                  os.path.join(config_folder, 'network_config.json'))
 
-    U.pretty_dump(
-        kwargs, os.path.join(self.results_folder, 'configs',
-                             'misc_config.json'))
+    U.pretty_dump(kwargs, os.path.join(config_folder, 'misc_config.json'))
 
-  def _register_src_code(self):
-    pass
+  def _register_src(self):
+    src_folder = self.config.src_folder
+    U.f_mkdir(src_folder)
+    repo = Repo('./')
+    commit = repo.head.commit
+    src = dict(
+        branch_name=repo.active_branch.name,
+        commit_summary=commit.summary,
+        commit_id=str(commit),
+        commit_datetime=commit.committed_datetime.strftime(
+            '%Y-%m-%d %H:%M:%S UTC'),
+    )
+    U.pretty_dump(src, os.path.join(src_folder, 'git_info.txt'))
+
+    with open(os.path.join(src_folder, 'git_diff.txt'), 'w') as f:
+      f.write(repo.git.diff(repo.head.commit.tree))
+
+    os.system('conda list > %s' %
+              os.path.join(src_folder, 'conda_env_list.txt'))
+    U.compress_tar('./liaison/', os.path.join(src_folder, 'liaison.tar.gz'))
