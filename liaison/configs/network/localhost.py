@@ -5,8 +5,8 @@ from liaison.utils import ConfigDict
 
 def get_config():
   config = dict(
-      localhost=dict(ssh_command='',
-                     setup_commands=['cd /home/ubuntu/ml4opt/liaison/'],
+      localhost=dict(use_ssh=False,
+                     shell_setup_commands=['cd /home/ubuntu/ml4opt/liaison/'],
                      components=[
                          'learner',
                          'actor-*',
@@ -15,6 +15,7 @@ def get_config():
                          'tensorplex',
                          'loggerplex',
                          'tensorboard',
+                         'systemboard',
                          'irs',
                      ]))
 

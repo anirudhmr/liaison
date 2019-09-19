@@ -13,6 +13,7 @@ from liaison.launch.xmanager_client import XManagerClient
 from liaison.utils import ConfigDict, ConfigDict_to_dict
 from symphony.commandline import SymphonyParser
 from symphony.engine import Cluster
+from symphony.tmux import Node
 
 ENV_ACTIVATE_CMD = 'conda activate symphony'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
@@ -68,20 +69,6 @@ class TurrealParser(SymphonyParser):
           experiment_name, new_name))
     return new_name
 
-  def _network_to_component_config(self, network_config):
-    """Inverts host -> component dict."""
-    component_config = ConfigDict()
-    for host, v in network_config.items():
-      if isinstance(v, dict):  # ignore --network_config_file
-        print(host, v)
-        for comp in v.components:
-          component_config[comp] = ConfigDict(
-              host=host,
-              ssh_command=v.ssh_command,
-              setup_commands=v.setup_commands,
-          )
-    return component_config
-
   def _setup_xmanager_client(self, args):
 
     self._xm_client = XManagerClient(host=args.xmanager_server_host,
@@ -118,6 +105,17 @@ class TurrealParser(SymphonyParser):
                           deserializer='pyarrow')
     self._cli.request(['register_commands', [], commands])
 
+  def _get_nodes(self, network_config):
+    nodes = []
+    component2node = dict()
+    for node_ip, node_config in network_config.items():
+      node = Node(node_ip, **node_config)
+      for comp in node_config.components:
+        component2node[comp] = node
+      nodes.append(node)
+
+    return nodes, component2node
+
   def action_create(self, args):
     """
         Spin up a multi-node distributed Surreal experiment.
@@ -125,12 +123,12 @@ class TurrealParser(SymphonyParser):
     """
     network_config = self._network_config_args.network_config
     network_config = ConfigDict(to_nested_dicts(network_config))
-    component_config = self._network_to_component_config(network_config)
+    nodes, component_to_node = self._get_nodes(network_config)
     results_folder = args.results_folder
     if '{experiment_name}' in results_folder:
       results_folder = results_folder.format(
           experiment_name=args.experiment_name)
-    cluster = self.create_cluster(nodes)
+    cluster = self.create_cluster()
     experiment_name = self._process_experiment_name(args.experiment_name)
     exp = cluster.new_experiment(experiment_name, preamble_cmds=PREAMBLE_CMDS)
 
@@ -163,49 +161,39 @@ class TurrealParser(SymphonyParser):
                                config_commands=algorithm_args)
 
     learner = exp.new_process('learner',
-                              cmds=[component_config.learner.ssh_command] +
-                              component_config.learner.setup_commands +
-                              [cmd_gen.get_command('learner')])
+                              component_to_node['learner'],
+                              cmds=[cmd_gen.get_command('learner')])
 
     replay = exp.new_process('replay',
-                             cmds=[component_config.replay.ssh_command] +
-                             component_config.replay.setup_commands +
-                             [cmd_gen.get_command('replay')])
+                             component_to_node['replay'],
+                             cmds=[cmd_gen.get_command('replay')])
 
     ps = exp.new_process('ps',
-                         cmds=[component_config.ps.ssh_command] +
-                         component_config.ps.setup_commands +
-                         [cmd_gen.get_command('ps')])
+                         component_to_node['ps'],
+                         cmds=[cmd_gen.get_command('ps')])
 
     irs = exp.new_process('irs',
-                          cmds=[component_config.irs.ssh_command] +
-                          component_config.irs.setup_commands +
-                          [cmd_gen.get_command('irs')])
+                          component_to_node['irs'],
+                          cmds=[cmd_gen.get_command('irs')])
 
-    tensorboard = exp.new_process(
-        'tensorboard',
-        cmds=[component_config.tensorboard.ssh_command] +
-        component_config.tensorboard.setup_commands +
-        [cmd_gen.get_command('tensorboard')])
+    tensorboard = exp.new_process('tensorboard',
+                                  component_to_node['tensorboard'],
+                                  cmds=[cmd_gen.get_command('tensorboard')])
 
-    tensorplex = exp.new_process(
-        'tensorplex',
-        cmds=[component_config.tensorplex.ssh_command] +
-        component_config.tensorplex.setup_commands +
-        [cmd_gen.get_command('tensorplex')])
+    tensorplex = exp.new_process('tensorplex',
+                                 component_to_node['tensorplex'],
+                                 cmds=[cmd_gen.get_command('tensorplex')])
 
     actors = []
     for i in range(args.n_actors):
       actor_name = 'actor-{}'.format(i)
-      if 'actor-*' in component_config:
+      if 'actor-*' in component_to_node:
         key = 'actor-*'
       else:
         key = actor_name
-      add_cmds = [component_config[key].ssh_command
-                  ] + component_config[key].setup_commands
       actor = exp.new_process(actor_name,
-                              cmds=add_cmds +
-                              [cmd_gen.get_command(actor_name)])
+                              component_to_node[key],
+                              cmds=[cmd_gen.get_command(actor_name)])
       actors.append(actor)
 
     setup_network(
