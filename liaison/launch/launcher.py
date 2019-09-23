@@ -11,8 +11,7 @@ from threading import Thread
 import faulthandler
 import liaison.utils as U
 from liaison.distributed import Actor, Learner, ShardedParameterServer
-from liaison.loggers import (ConsoleLogger, DownSampleLogger, NoOpLogger,
-                             TensorplexLogger)
+from liaison.loggers import (ConsoleLogger, DownSampleLogger, TensorplexLogger)
 from liaison.irs import IRSServer
 from liaison.replay import ReplayLoadBalancer
 from tensorplex import Loggerplex, Tensorplex

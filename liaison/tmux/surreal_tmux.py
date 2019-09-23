@@ -19,6 +19,14 @@ ENV_ACTIVATE_CMD = 'conda activate symphony'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
 PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
 
+RESOURCES = {
+    'file': [],
+    'dir': [
+        'liaison/',
+        'caraml/',
+    ]
+}
+
 
 class TurrealParser(SymphonyParser):
 
@@ -108,13 +116,30 @@ class TurrealParser(SymphonyParser):
   def _get_nodes(self, network_config):
     nodes = []
     component2node = dict()
-    for node_ip, node_config in network_config.items():
-      node = Node(node_ip, **node_config)
+
+    if 'host_names' in network_config:
+      host_names_to_ip = network_config.host_names
+    else:
+      # TODO: Use default host names file here.
+      host_names_to_ip = {}
+
+    for host_name, node_config in network_config.hosts.items():
+      node = Node(host_names_to_ip[host_name], **node_config)
       for comp in node_config.components:
         component2node[comp] = node
       nodes.append(node)
 
     return nodes, component2node
+
+  def _setup_nodes(self, nodes):
+    for node in nodes:
+      if node.use_ssh:
+        for fname in RESOURCES[
+            'file']:  # should be relative to liaison directory
+          node.put_file(U.f_expand(fname), os.path.join(node.base_dir, fname))
+        for dirname in RESOURCES['dir']:
+          node.put_dir(U.f_expand(dirname),
+                       os.path.join(node.base_dir, dirname))
 
   def action_create(self, args):
     """
@@ -124,6 +149,8 @@ class TurrealParser(SymphonyParser):
     network_config = self._network_config_args.network_config
     network_config = ConfigDict(to_nested_dicts(network_config))
     nodes, component_to_node = self._get_nodes(network_config)
+    self._setup_nodes(nodes)
+    sys.exit(0)
     results_folder = args.results_folder
     if '{experiment_name}' in results_folder:
       results_folder = results_folder.format(

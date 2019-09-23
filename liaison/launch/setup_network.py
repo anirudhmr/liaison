@@ -54,6 +54,6 @@ def setup_network(*,
     # proc.connects('loggerplex')
 
   if tensorboard:
-    tensorboard.exposes()
+    tensorboard.binds('tensorboard')
   if systemboard:
-    systemboard.exposes()
+    systemboard.binds('systemboard')
