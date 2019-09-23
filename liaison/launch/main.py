@@ -31,7 +31,7 @@ parser.add_argument('--experiment_id', type=int, required=True)
 parser.add_argument('--experiment_name', type=str, required=True)
 parser.add_argument('--work_id', type=int, required=True)
 parser.add_argument('--results_folder', type=str, required=True)
-parser.add_argument('--n_actors', type=int)
+parser.add_argument('--n_actors', type=int, required=True)
 
 
 class LauncherSetup(Launcher):

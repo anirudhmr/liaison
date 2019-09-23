@@ -39,6 +39,6 @@ class BatchedEnv(BaseBatchedEnv):
 
     return self._stack_ts(timesteps)
 
-  def set_seed(self, seed):
+  def set_seeds(self, seed):
     for env in self._envs:
       env.set_seed(seed)

@@ -20,11 +20,9 @@ PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
 PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
 
 RESOURCES = {
-    'file': [],
-    'dir': [
-        'liaison/',
-        'caraml/',
-    ]
+    'file': ['.gitmodules', 'README.md'],
+    'dir':
+    ['.git/', 'liaison/', 'caraml/', 'Argon/', 'symphony/', 'Tensorplex/']
 }
 
 
@@ -149,8 +147,6 @@ class TurrealParser(SymphonyParser):
     network_config = self._network_config_args.network_config
     network_config = ConfigDict(to_nested_dicts(network_config))
     nodes, component_to_node = self._get_nodes(network_config)
-    self._setup_nodes(nodes)
-    sys.exit(0)
     results_folder = args.results_folder
     if '{experiment_name}' in results_folder:
       results_folder = results_folder.format(
@@ -211,6 +207,7 @@ class TurrealParser(SymphonyParser):
                                  component_to_node['tensorplex'],
                                  cmds=[cmd_gen.get_command('tensorplex')])
 
+    actor_pg = exp.new_process_group('actor-*')
     actors = []
     for i in range(args.n_actors):
       actor_name = 'actor-{}'.format(i)
@@ -218,9 +215,9 @@ class TurrealParser(SymphonyParser):
         key = 'actor-*'
       else:
         key = actor_name
-      actor = exp.new_process(actor_name,
-                              component_to_node[key],
-                              cmds=[cmd_gen.get_command(actor_name)])
+      actor = actor_pg.new_process(actor_name,
+                                   component_to_node[key],
+                                   cmds=[cmd_gen.get_command(actor_name)])
       actors.append(actor)
 
     setup_network(
