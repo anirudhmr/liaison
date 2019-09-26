@@ -1,9 +1,10 @@
 import itertools
+import copy
 from collections import namedtuple
 
 from ortools.linear_solver import pywraplp
 
-from .mip_primitives import Constraint, Objective, Process, Variable
+from .mip_primitives import Constraint, Objective, Process, Variable, Expression
 
 
 class LiaisonScheduler:
@@ -70,27 +71,63 @@ class LiaisonScheduler:
       self._wunits[-1].append(proc)
       self._assignment_vars[-1].append(ass_vars)
 
+  def _add_abs_to_obj(self, expr, var_name, obj):
+    """Returns a variable constrained to equal abs(expr)."""
+    # Create helper variable d such that
+    # d = [expr]+ using the following constraints
+    # d >= 0 and d >= expr
+    expr = copy.copy(expr)
+    d = Variable(var_name, 0, None, self._variable_constraints)
+    self._varnames2var[var_name] = d
+    # d >= expr => expr - d <= 0
+    expr.add_term(d.name, -1)
+    self._misc_constraints.append(expr.to_constraint('LE', 0))
+    obj.add_term(d.name, 1)  # now minimize d
+    return d
+
+  def _add_max_to_obj(self, exprs, var_name, obj):
+    """see https://www.fico.com/en/resource-download-file/3217"""
+    d = Variable(var_name)
+    self._varnames2var[var_name] = d
+    # add d >= expr  =>  expr - d <= 0
+    for expr in exprs:
+      expr = copy.copy(expr)
+      expr.add_term(d.name, -1)
+      c = expr.to_constraint(sense='LE', rhs=0)
+      self._misc_constraints.append(c)
+
+    obj.add_term(d.name, 1)
+    return d
+
+  def _add_neg_min_to_obj(self, exprs, var_name, obj):
+    d = Variable(var_name)
+    self._varnames2var[var_name] = d
+    # add d <= expr  =>  expr - d <= 0
+    for expr in exprs:
+      expr = copy.copy(expr)
+      expr.add_term(d.name, -1)
+      c = expr.to_constraint(sense='LE', rhs=0)
+      self._misc_constraints.append(c)
+
+    obj.add_term(d.name, -1)
+    return d
+
   def _get_objective(self):
     # first lets do the overload part of the objective
     # For server i, the term is [L_i - C_i]+
     overload_obj = Objective()
     overload_ds = []
     for server_id, server in enumerate(self._servers):
-      # Create helper variable d such that
-      # d = [L_i - C_i]+ using the following constraints
-      # d >= 0 and d >= L_i - C_i
-      # (expressed below equivalently as L_i - d <= C_i)
-      # and objective is to minimize d
-      d = Variable('server_%d/overload_helper_var' % server_id, 0, None,
-                   self._variable_constraints)
-      self._varnames2var['server_%d/overload_helper_var' % server_id] = d
-      overload_obj.add_term(d.name, 1)  # Minimize d
-      c = Constraint(sense='LE', rhs=server.cpu)
-      c.add_term(d.name, -1)
+      # Compute the expression L_i - C_i
+      expr = Expression()
+      expr.add_constant(-server.cpu)
       for wid, wunit in enumerate(self._wunits):
         for ass_var, proc in zip(self._assignment_vars[wid], wunit):
-          c.add_term(ass_var[server_id].name, proc.cpu_cost)
-      self._misc_constraints.append(c)
+          expr.add_term(ass_var[server_id].name, proc.cpu_cost)
+
+      d = self._add_abs_to_obj(expr,
+                               'server_%d/overload_helper_var' % server_id,
+                               overload_obj)
       overload_ds.append(d)
 
     # Next let's do load balancing.
@@ -98,29 +135,13 @@ class LiaisonScheduler:
     # We seek to minimize max_overload - min_overload as a
     # way to load balance the excess overloads.
     load_balancing_obj = Objective()
-    d_max = Variable('load_balancing_max_helper', 0, None,
-                     self._variable_constraints)
-    d_min = Variable('load_balancing_min_helper', 0, None,
-                     self._variable_constraints)
-    self._varnames2var['load_balancing_max_helper'] = d_max
-    self._varnames2var['load_balancing_min_helper'] = d_min
-    load_balancing_obj.add_term(d_max.name, 1)
-    load_balancing_obj.add_term(d_min.name, -1)
+    d_max = self._add_max_to_obj([d.to_expression() for d in overload_ds],
+                                 'load_balancing_max_helper',
+                                 load_balancing_obj)
 
-    for server_id, server in enumerate(self._servers):
-      # d is [L_i - C_i]+ calculated from the previous step.
-      d = overload_ds[server_id]
-      # add d_min <= d
-      c = Constraint(sense='LE', rhs=0)
-      c.add_term(d_min.name, 1)
-      c.add_term(d.name, -1)
-      self._misc_constraints.append(c)
-
-      # add d_max >= d
-      c = Constraint(sense='GE', rhs=0)
-      c.add_term(d_max.name, 1)
-      c.add_term(d.name, -1)
-      self._misc_constraints.append(c)
+    d_min = self._add_neg_min_to_obj([d.to_expression() for d in overload_ds],
+                                     'load_balancing_min_helper',
+                                     load_balancing_obj)
 
     # Now, Let's do work unit consolidation.
     # If processes of a work unit in total
@@ -128,17 +149,11 @@ class LiaisonScheduler:
     work_unit_consolidation_obj = Objective()
     for wid, wunit in enumerate(self._wunits):
       for server_id, server in enumerate(self._servers):
-        d = Variable('wu_%d/server_%d_consolidation_helper' % (wid, server_id),
-                     0, 1, self._variable_constraints)
-        self._varnames2var['wu_%d/server_%d_consolidation_helper' %
-                           (wid, server_id)] = d
-        work_unit_consolidation_obj.add_term(d.name, 1)
-        for process_vars in self._assignment_vars[wid]:
-          # d >= x_i
-          c = Constraint(sense='GE', rhs=0)
-          c.add_term(d.name, 1)
-          c.add_term(process_vars[server_id].name, -1)
-          self._misc_constraints.append(c)
+        self._add_max_to_obj([
+            process_vars[server_id].to_expression()
+            for process_vars in self._assignment_vars[wid]
+        ], 'wu_%d/server_%d_consolidation_helper' % (wid, server_id),
+                             work_unit_consolidation_obj)
 
     final_objective = Objective.combine_objectives(
         [overload_obj, load_balancing_obj, work_unit_consolidation_obj], [

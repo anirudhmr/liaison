@@ -44,6 +44,11 @@ class Variable:
     if self.upper_bound:
       solver.variables.set_upper_bounds(self.name, self.upper_bound)
 
+  def to_expression(self):
+    e = Expression()
+    e.add_term(self.name, 1)
+    return e
+
 
 class Process:
 
@@ -97,6 +102,27 @@ class Constraint:
         lin_expr=[cplex.SparsePair(ind=self.var_names, val=self.coeffs)],
         senses=[sense],
         rhs=[self.rhs])
+
+
+class Expression:
+
+  def __init__(self):
+    self.var_names = []
+    self.coeffs = []
+    self.constant = 0
+
+  def add_constant(self, constant):
+    self.constant += constant
+
+  def add_term(self, var_name, coeff):
+    self.var_names.append(var_name)
+    self.coeffs.append(coeff)
+
+  def to_constraint(self, sense, rhs):
+    c = Constraint(sense, rhs)
+    for var_name, coeff in zip(self.var_names, self.coeffs):
+      c.add_term(var_name, coeff)
+    return c
 
 
 class Objective:
