@@ -1,4 +1,7 @@
-import cplex
+try:
+  import cplex
+except ModuleNotFoundError:
+  pass
 
 
 class Variable:
