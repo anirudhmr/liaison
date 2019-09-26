@@ -76,6 +76,10 @@ class Constraint:
     self.var_names.append(var_name)
     self.coeffs.append(coeff)
 
+  def add_terms(self, var_names, coeffs):
+    for var_name, coeff in zip(var_names, coeffs):
+      self.add_term(var_name, coeff)
+
   def add_to_ortools_solver(self, solver, varnames2vars):
     infinity = solver.infinity()
     if self.sense == 'LE':
@@ -106,10 +110,10 @@ class Constraint:
 
 class Expression:
 
-  def __init__(self):
+  def __init__(self, constant=0):
     self.var_names = []
     self.coeffs = []
-    self.constant = 0
+    self.constant = constant
 
   def add_constant(self, constant):
     self.constant += constant
@@ -119,7 +123,7 @@ class Expression:
     self.coeffs.append(coeff)
 
   def to_constraint(self, sense, rhs):
-    c = Constraint(sense, rhs)
+    c = Constraint(sense, rhs - self.constant)
     for var_name, coeff in zip(self.var_names, self.coeffs):
       c.add_term(var_name, coeff)
     return c

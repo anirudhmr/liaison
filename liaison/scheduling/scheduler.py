@@ -24,6 +24,7 @@ class LiaisonScheduler:
     self._servers = servers
     self._wunits = []
     self._assignment_vars = []
+    self._gpu_assignment_vars = []
     self._varnames2var = dict()
 
     # Minimum achievable objective value if
@@ -54,12 +55,14 @@ class LiaisonScheduler:
       self._varnames2var[var_name] = var
       assignment_vars.append(var)
       c.add_term(var_name, 1)
+
     self._assignment_constraints.append(c)
     return assignment_vars
 
   def add_work_unit(self, wu):
     self._wunits.append([])
     self._assignment_vars.append([])
+    self._gpu_assignment_vars.append([])
     for proc_id, process in enumerate(wu):
       proc = Process(proc_id, process.cpu_cost, process.mem_cost,
                      process.gpu_compute_cost, process.gpu_mem_cost)
@@ -71,52 +74,93 @@ class LiaisonScheduler:
       self._wunits[-1].append(proc)
       self._assignment_vars[-1].append(ass_vars)
 
-  def _add_abs_to_obj(self, expr, var_name, obj):
-    """Returns a variable constrained to equal abs(expr)."""
-    # Create helper variable d such that
-    # d = [expr]+ using the following constraints
-    # d >= 0 and d >= expr
-    expr = copy.copy(expr)
-    d = Variable(var_name, 0, None, self._variable_constraints)
-    self._varnames2var[var_name] = d
-    # d >= expr => expr - d <= 0
-    expr.add_term(d.name, -1)
-    self._misc_constraints.append(expr.to_constraint('LE', 0))
-    obj.add_term(d.name, 1)  # now minimize d
-    return d
+  def _compute_max(self, exprs, var_name, Ls, Us):
+    """
+      Let U' = max(Us)
+      expr[i] must lie between Ls[i] and Us[i]
+      y >= expr_i
+      y <= expr_i + (U' - L_i)* (1 - d_i)
+      sum d_i = 1
+    """
+    U1 = max(Us)
+    ds = []
+    for i in range(len(exprs)):
+      d = Variable('%s/helper/d%d' % (var_name, i), 0, 1,
+                   self._variable_constraints)
+      self._varnames2var['%s/helper/d%d' % (var_name, i)] = d
+      ds.append(d)
 
-  def _add_max_to_obj(self, exprs, var_name, obj):
-    """see https://www.fico.com/en/resource-download-file/3217"""
-    d = Variable(var_name)
-    self._varnames2var[var_name] = d
-    # add d >= expr  =>  expr - d <= 0
+    y = Variable(var_name)
+    self._varnames2var[var_name] = y
+
+    # y >= expr_i
+    # expr_i - y <= 0
     for expr in exprs:
-      expr = copy.copy(expr)
-      expr.add_term(d.name, -1)
-      c = expr.to_constraint(sense='LE', rhs=0)
+      c = expr.to_constraint('LE', 0)
+      c.add_term(y.name, -1)
       self._misc_constraints.append(c)
 
-    obj.add_term(d.name, 1)
-    return d
-
-  def _add_neg_min_to_obj(self, exprs, var_name, obj):
-    d = Variable(var_name)
-    self._varnames2var[var_name] = d
-    # add d <= expr  =>  expr - d <= 0
-    for expr in exprs:
-      expr = copy.copy(expr)
-      expr.add_term(d.name, -1)
-      c = expr.to_constraint(sense='LE', rhs=0)
+    # y <= expr + (U' - L_i)* (1 - d2)
+    # expr - y + (U' - L_i)* (1 - d2) >= 0
+    # expr - y + (L_i - U')* d2 >= L_i - U'
+    for expr, d, l in zip(exprs, ds, Ls):
+      c = expr.to_constraint('GE', l - U1)
+      c.add_terms([y.name, d.name], [-1, (l - U1)])
       self._misc_constraints.append(c)
 
-    obj.add_term(d.name, -1)
-    return d
+    # sum d_i = 1
+    c = Constraint('E', 1)
+    c.add_terms([d.name for d in ds], [1] * len(ds))
+    self._misc_constraints.append(c)
+    return y
 
-  def _get_objective(self):
-    # first lets do the overload part of the objective
-    # For server i, the term is [L_i - C_i]+
-    overload_obj = Objective()
+  def _compute_min(self, exprs, var_name, Ls, Us):
+    """
+      Let L' = min(Ls)
+      expr[i] must lie between Ls[i] and Us[i]
+      y <= expr_i
+      y >= expr_i - (U_i - L')* (1 - d_i)
+      sum d_i = 1
+    """
+    L1 = min(Ls)
+    ds = []
+    for i in range(len(exprs)):
+      d = Variable('%s/helper/d%d' % (var_name, i), 0, 1,
+                   self._variable_constraints)
+      self._varnames2var['%s/helper/d%d' % (var_name, i)] = d
+      ds.append(d)
+
+    y = Variable(var_name)
+    self._varnames2var[var_name] = y
+
+    # y <= expr_i
+    # expr_i - y >= 0
+    for expr in exprs:
+      c = expr.to_constraint('GE', 0)
+      c.add_term(y.name, -1)
+      self._misc_constraints.append(c)
+
+    # y >= expr - (U_i - L')* (1 - d_i)
+    # expr - y - (U_i - L')* (1 - d_i) <= 0
+    # expr - y + (U_i - L')* d_i <= U_i - L'
+    for expr, d, u in zip(exprs, ds, Us):
+      c = expr.to_constraint('LE', u - L1)
+      c.add_terms([y.name, d.name], [-1, (u - L1)])
+      self._misc_constraints.append(c)
+
+    # sum d_i = 1
+    c = Constraint('E', 1)
+    c.add_terms([d.name for d in ds], [1] * len(ds))
+    self._misc_constraints.append(c)
+    return y
+
+  def _compute_relu(self, expr, var_name, L, U):
+    return self._compute_max([expr, Expression(0)], var_name, [L, 0], [U, 0])
+
+  def _get_overload_components(self):
+    """Returns [L_i - C_i]+ for each server i"""
     overload_ds = []
+    max_load = sum([proc.cpu_cost for wunit in self._wunits for proc in wunit])
     for server_id, server in enumerate(self._servers):
       # Compute the expression L_i - C_i
       expr = Expression()
@@ -125,35 +169,55 @@ class LiaisonScheduler:
         for ass_var, proc in zip(self._assignment_vars[wid], wunit):
           expr.add_term(ass_var[server_id].name, proc.cpu_cost)
 
-      d = self._add_abs_to_obj(expr,
-                               'server_%d/overload_helper_var' % server_id,
-                               overload_obj)
+      d = self._compute_relu(expr, 'server_%d/overload_helper_var' % server_id,
+                             -server.cpu, max_load - server.cpu)
       overload_ds.append(d)
+    return overload_ds
+
+  def _get_objective(self):
+    # first lets do the overload part of the objective
+    # For server i, the term is [L_i - C_i]+
+    max_load = sum([proc.cpu_cost for wunit in self._wunits for proc in wunit])
+    overload_ds = self._get_overload_components()
+
+    overload_obj = Objective()
+    for d in overload_ds:
+      overload_obj.add_term(d.name, 1)
 
     # Next let's do load balancing.
     # For server i, the overload is defined as [L_i - C_i]+
     # We seek to minimize max_overload - min_overload as a
     # way to load balance the excess overloads.
-    load_balancing_obj = Objective()
-    d_max = self._add_max_to_obj([d.to_expression() for d in overload_ds],
-                                 'load_balancing_max_helper',
-                                 load_balancing_obj)
+    d_max = self._compute_max(
+        [d.to_expression() for d in overload_ds], 'load_balancing_max_helper',
+        [0] * len(overload_ds),
+        [max_load - server.cpu for server in self._servers])
 
-    d_min = self._add_neg_min_to_obj([d.to_expression() for d in overload_ds],
-                                     'load_balancing_min_helper',
-                                     load_balancing_obj)
+    d_min = self._compute_min(
+        [d.to_expression() for d in overload_ds], 'load_balancing_min_helper',
+        [0] * len(overload_ds),
+        [max_load - server.cpu for server in self._servers])
+
+    load_balancing_obj = Objective()
+    load_balancing_obj.add_term(d_max.name, 1)
+    load_balancing_obj.add_term(d_min.name, -1)
 
     # Now, Let's do work unit consolidation.
     # If processes of a work unit in total
     # use n servers add a penalty proportional to n
     work_unit_consolidation_obj = Objective()
     for wid, wunit in enumerate(self._wunits):
+      # get count of the number of distinct servers
+      # used by the work unit.
       for server_id, server in enumerate(self._servers):
-        self._add_max_to_obj([
-            process_vars[server_id].to_expression()
-            for process_vars in self._assignment_vars[wid]
-        ], 'wu_%d/server_%d_consolidation_helper' % (wid, server_id),
-                             work_unit_consolidation_obj)
+        e = Expression()
+        for process_vars in self._assignment_vars[wid]:
+          e.add_term(process_vars[server_id].name, 1)
+
+        v = self._compute_min([Expression(1), e],
+                              'wu_%d/server_%d_consolidation_helper' %
+                              (wid, server_id), [1, 0], [1, len(wunit)])
+        work_unit_consolidation_obj.add_term(v.name, 1)
 
     final_objective = Objective.combine_objectives(
         [overload_obj, load_balancing_obj, work_unit_consolidation_obj], [
