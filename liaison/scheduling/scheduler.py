@@ -21,9 +21,6 @@ class LiaisonScheduler:
     self._load_balancing_obj_coeff = load_balancing_obj_coeff
     self._wu_consolidation_obj_coeff = wu_consolidation_obj_coeff
     self._servers = servers
-    self._solver = pywraplp.Solver(
-        'Liaison Schedule Solver',
-        pywraplp.Solver.CBC_MIXED_INTEGER_PROGRAMMING)
     self._wunits = []
     self._assignment_vars = []
     self._varnames2var = dict()
@@ -151,26 +148,33 @@ class LiaisonScheduler:
     self._min_objective += len(self._wunits) * self._wu_consolidation_obj_coeff
     return final_objective
 
-  def solve(self):
+  def _get_all_constraints(self, ignore_variable_constraints=False):
+    constraints = self._mem_constraints + self._misc_constraints + self._assignment_constraints
+    if ignore_variable_constraints:
+      return constraints
+    else:
+      return constraints + self._variable_constraints
+
+  def solve_or_tools(self, time_limit=None):
+    """TODO: Implement time_limit."""
     obj = self._get_objective()
-    solver = self._solver
+    solver = pywraplp.Solver('Liaison Schedule Solver',
+                             pywraplp.Solver.CBC_MIXED_INTEGER_PROGRAMMING)
     varnames2ortoolsvar = {
         k: v.convert_to_ortools_solver_format(solver)
         for k, v in self._varnames2var.items()
     }
-    obj = obj.add_to_ortools_solver(solver, varnames2ortoolsvar)
-    for constraint in itertools.chain(self._mem_constraints +
-                                      self._misc_constraints +
-                                      self._assignment_constraints +
-                                      self._variable_constraints):
+    for constraint in self._get_all_constraints(
+        ignore_variable_constraints=True):
       constraint.add_to_ortools_solver(solver, varnames2ortoolsvar)
+    obj = obj.add_to_ortools_solver(solver, varnames2ortoolsvar)
 
     print('Number of variables =', solver.NumVariables())
     print('Number of constraints =', solver.NumConstraints())
 
     result_status = solver.Solve()
     assert result_status == pywraplp.Solver.OPTIMAL
-    print('Objective value =', obj.Value() - self._min_objective)
+    print('Objective value =', obj.Value())
 
     assignment = []
     for wu_vars in self._assignment_vars:
@@ -180,4 +184,34 @@ class LiaisonScheduler:
         for server_var in process_vars:
           server_var = varnames2ortoolsvar[server_var.name]
           assignment[-1][-1].append(int(server_var.solution_value()))
+    return assignment
+
+  def solve_cplex(self, time_limit=None):
+    import cplex
+    obj = self._get_objective()
+    solver = cplex.Cplex()
+    if time_limit:
+      solver.parameters.timelimit.set(time_limit)
+    for v in self._varnames2var.values():
+      v.add_to_cplex_solver(solver)
+    for constraint in self._get_all_constraints(
+        ignore_variable_constraints=True):
+      constraint.add_to_cplex_solver(solver)
+    obj.add_to_cplex_solver(solver)
+
+    print('Number of variables =', solver.variables.get_num())
+    print('Number of constraints =', solver.linear_constraints.get_num())
+
+    solver.solve()
+    print(solver.solution.get_status())
+    print('Objective value =',
+          solver.solution.get_objective_value() - self._min_objective)
+
+    assignment = []
+    for wu_vars in self._assignment_vars:
+      assignment.append([])
+      for process_vars in wu_vars:
+        assignment[-1].append(
+            solver.solution.get_values(
+                [server_var.name for server_var in process_vars]))
     return assignment

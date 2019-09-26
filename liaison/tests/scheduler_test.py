@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-from absl.testing import absltest
+from absl.testing import absltest, parameterized
 from liaison.scheduling import LiaisonScheduler
 
 SERVER = namedtuple('Server', ['cpu', 'mem', 'gpu_compute', 'gpu_mem'])
@@ -8,7 +8,7 @@ PROCESS = namedtuple(
     'Process', ['cpu_cost', 'mem_cost', 'gpu_compute_cost', 'gpu_mem_cost'])
 
 
-class SchedulingTest(absltest.TestCase):
+class SchedulingTest(parameterized.TestCase):
 
   def _setup(self):
     N_WORK_UNITS = 3
@@ -26,16 +26,37 @@ class SchedulingTest(absltest.TestCase):
 
     return servers, work_units
 
-  def testSolve(self):
+  def _large_setup(self):
+    N_WORK_UNITS = 4
+    N_PROCS = 10
+    N_SERVERS = 32
+
+    servers = [SERVER(8, 64, None, None)] * N_SERVERS
+    work_units = []
+    for i in range(N_WORK_UNITS):
+      procs = []
+      for j in range(N_PROCS):
+        proc = PROCESS(4, 0, None, None)
+        procs.append(proc)
+      work_units.append(procs)
+
+    return servers, work_units
+
+  @parameterized.parameters((True, ))
+  def testSolve(self, large=False):
     # First situation
-    servers, work_units = self._setup()
+    if large:
+      f = self._large_setup
+    else:
+      f = self._setup
+    servers, work_units = f()
     solver = LiaisonScheduler(servers,
                               overload_obj_coeff=1,
                               load_balancing_obj_coeff=1,
-                              wu_consolidation_obj_coeff=8 + .1)
+                              wu_consolidation_obj_coeff=16.1)
     for wu in work_units:
       solver.add_work_unit(wu)
-    assignment = solver.solve()
+    assignment = solver.solve_cplex(time_limit=90)
     for wu_id, wu_assignment in enumerate(assignment):
       print('--------------------------')
       print('Work unit id: %d' % wu_id)

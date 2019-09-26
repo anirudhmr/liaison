@@ -1,3 +1,6 @@
+import cplex
+
+
 class Variable:
 
   def __init__(self,
@@ -30,6 +33,14 @@ class Variable:
       upper_bound = infinity
     return solver.IntVar(lower_bound, upper_bound, self.name)
 
+  def add_to_cplex_solver(self, solver):
+    solver.variables.add(names=[self.name])
+    solver.variables.set_types(self.name, solver.variables.type.integer)
+    if self.lower_bound:
+      solver.variables.set_lower_bounds(self.name, self.lower_bound)
+    if self.upper_bound:
+      solver.variables.set_upper_bounds(self.name, self.upper_bound)
+
 
 class Process:
 
@@ -45,7 +56,7 @@ class Constraint:
 
   def __init__(self, sense, rhs):
     """
-      senses: "E", L", G", "LE", "GE"
+      senses: "E", "LE", "GE"
     """
     self.sense = sense
     assert isinstance(rhs, float) or isinstance(rhs, int)
@@ -65,16 +76,24 @@ class Constraint:
       ct = solver.Constraint(self.rhs, infinity, '')
     elif self.sense == 'E':
       ct = solver.Constraint(self.rhs, self.rhs, '')
-    elif self.sense == 'L':
-      ct = solver.Constraint(-infinity, self.rhs - 1, '')
-    elif self.sense == 'G':
-      ct = solver.Constraint(self.rhs - 1, infinity, '')
     else:
       raise Exception('Unknown option %s' % self.sense)
 
     for var_name, coeff in zip(self.var_names, self.coeffs):
       ct.SetCoefficient(varnames2vars[var_name], coeff)
     return ct
+
+  def add_to_cplex_solver(self, solver):
+    sense = self.sense
+    if sense == 'LE':
+      sense = 'L'  # different terminology
+    elif sense == 'GE':
+      sense = 'G'
+
+    solver.linear_constraints.add(
+        lin_expr=[cplex.SparsePair(ind=self.var_names, val=self.coeffs)],
+        senses=[sense],
+        rhs=[self.rhs])
 
 
 class Objective:
@@ -89,14 +108,6 @@ class Objective:
     self.var_names.append(var_name)
     self.coeffs.append(coeff)
 
-  def add_to_ortools_solver(self, solver, varnames2vars):
-    objective = solver.Objective()
-    objective.SetMinimization()
-    for var_name, coeff in zip(self.var_names, self.coeffs):
-      assert var_name in varnames2vars
-      objective.SetCoefficient(varnames2vars[var_name], coeff)
-    return objective
-
   @staticmethod
   def combine_objectives(objs, coeffs):
     assert len(objs) == len(coeffs)
@@ -105,3 +116,14 @@ class Objective:
       for var_name, coeff in zip(obj.var_names, obj.coeffs):
         combined_obj.add_term(var_name, obj_coeff * coeff)
     return combined_obj
+
+  def add_to_ortools_solver(self, solver, varnames2vars):
+    objective = solver.Objective()
+    objective.SetMinimization()
+    for var_name, coeff in zip(self.var_names, self.coeffs):
+      assert var_name in varnames2vars
+      objective.SetCoefficient(varnames2vars[var_name], coeff)
+    return objective
+
+  def add_to_cplex_solver(self, solver):
+    solver.objective.set_linear(zip(self.var_names, self.coeffs))
