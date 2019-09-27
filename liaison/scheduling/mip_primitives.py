@@ -1,3 +1,4 @@
+import copy
 try:
   import cplex
 except ModuleNotFoundError:
@@ -6,25 +7,10 @@ except ModuleNotFoundError:
 
 class Variable:
 
-  def __init__(self,
-               name,
-               lower_bound=None,
-               upper_bound=None,
-               constraints=None):
+  def __init__(self, name, lower_bound=None, upper_bound=None):
     self.name = name
     self.lower_bound = lower_bound
     self.upper_bound = upper_bound
-    # add lower bound and upper bound to constraints if given.
-    if constraints:
-      assert isinstance(constraints, list)
-      if lower_bound is not None:
-        c = Constraint('GE', lower_bound)
-        c.add_term(name, 1)
-        constraints.append(c)
-      if upper_bound is not None:
-        c = Constraint('LE', upper_bound)
-        c.add_term(name, 1)
-        constraints.append(c)
 
   def convert_to_ortools_solver_format(self, solver):
     infinity = solver.infinity()
@@ -50,19 +36,9 @@ class Variable:
     return e
 
 
-class Process:
-
-  def __init__(self, id, cpu_cost, mem_cost, gpu_compute_cost, gpu_mem_cost):
-    self._id = id
-    self.cpu_cost = cpu_cost
-    self.mem_cost = mem_cost
-    self.gpu_compute_cost = gpu_compute_cost
-    self.gpu_mem_cost = gpu_mem_cost
-
-
 class Constraint:
 
-  def __init__(self, sense, rhs):
+  def __init__(self, sense, rhs, name=None):
     """
       senses: "E", "LE", "GE"
     """
@@ -73,12 +49,19 @@ class Constraint:
     self.coeffs = []
 
   def add_term(self, var_name, coeff):
+    assert isinstance(var_name, str)
     self.var_names.append(var_name)
     self.coeffs.append(coeff)
 
   def add_terms(self, var_names, coeffs):
-    for var_name, coeff in zip(var_names, coeffs):
-      self.add_term(var_name, coeff)
+    assert isinstance(var_names[0], str)
+    self.var_names.extend(var_names)
+    self.coeffs.extend(coeffs)
+
+  def add_expression(self, expr):
+    assert expr.constant == 0
+    self.var_names.extend(expr.var_names)
+    self.coeffs.extend(expr.coeffs)
 
   def add_to_ortools_solver(self, solver, varnames2vars):
     infinity = solver.infinity()
@@ -122,17 +105,43 @@ class Expression:
     self.var_names.append(var_name)
     self.coeffs.append(coeff)
 
+  def add_terms(self, var_names, coeffs):
+    self.var_names.extend(var_names)
+    self.coeffs.extend(coeffs)
+
+  def scale_by(self, const):
+    self.coeffs = [coeff * const for coeff in self.coeffs]
+    self.constant *= const
+
   def to_constraint(self, sense, rhs):
     c = Constraint(sense, rhs - self.constant)
     for var_name, coeff in zip(self.var_names, self.coeffs):
       c.add_term(var_name, coeff)
     return c
 
+  @staticmethod
+  def sum_expressions(exprs):
+    e = Expression()
+    for expr in exprs:
+      e.add_constant(expr.constant)
+      e.add_terms(expr.var_names, expr.coeffs)
+    return e
+
+  @staticmethod
+  def diff_expressions(e1, e2):
+    e = e1.copy()
+    e.add_constant(-e2.constant)
+    e.add_terms(e2.var_names, list(map(lambda k: -k, e2.coeffs)))
+    return e
+
+  def copy(self):
+    return copy.deepcopy(self)
+
 
 class Objective:
   """Always minimize the objective."""
 
-  def __init__(self):
+  def __init__(self, name=None):
     self.var_names = []
     self.coeffs = []
 
@@ -150,6 +159,11 @@ class Objective:
         combined_obj.add_term(var_name, obj_coeff * coeff)
     return combined_obj
 
+  def add_expression(self, expr):
+    # ignore expression constant.
+    self.var_names.extend(expr.var_names)
+    self.coeffs.extend(expr.coeffs)
+
   def add_to_ortools_solver(self, solver, varnames2vars):
     objective = solver.Objective()
     objective.SetMinimization()
@@ -160,3 +174,112 @@ class Objective:
 
   def add_to_cplex_solver(self, solver):
     solver.objective.set_linear(zip(self.var_names, self.coeffs))
+
+
+class MIPTracker:
+  """
+    Keeps track of created variables and constraints and objectives.
+  """
+
+  def __init__(self):
+    self.varnames2var = dict()
+    self.constraints = []
+    self.objectives = []
+
+  def new_variable(self, var_name, *args, **kwargs):
+    v = Variable(var_name, *args, **kwargs)
+    self.varnames2var[v.name] = v
+    return v
+
+  def new_constraint(self, sense, rhs, name):
+    c = Constraint(sense, rhs, name=name)
+    self.add_constraint(c)
+    return c
+
+  def new_objective(self, name):
+    o = Objective(name=name)
+    self.objectives.append(o)
+    return o
+
+  def add_constraint(self, c):
+    self.constraints.append(c)
+
+
+def compute_max(exprs, var_name, Ls, Us, mip):
+  """
+    Let U' = max(Us)
+    expr[i] must lie between Ls[i] and Us[i]
+    y >= expr_i
+    y <= expr_i + (U' - L_i)* (1 - d_i)
+    sum d_i = 1
+  """
+  U1 = max(Us)
+  ds = []
+  for i in range(len(exprs)):
+    d = mip.new_variable('%s/helper/d%d' % (var_name, i), 0, 1)
+    ds.append(d)
+
+  y = mip.new_variable(var_name)
+
+  # y >= expr_i
+  # expr_i - y <= 0
+  for expr in exprs:
+    c = expr.to_constraint('LE', 0)
+    c.add_term(y.name, -1)
+    mip.add_constraint(c)
+
+  # y <= expr + (U' - L_i)* (1 - d2)
+  # expr - y + (U' - L_i)* (1 - d2) >= 0
+  # expr - y + (L_i - U')* d2 >= L_i - U'
+  for expr, d, l in zip(exprs, ds, Ls):
+    c = expr.to_constraint('GE', l - U1)
+    c.add_terms([y.name, d.name], [-1, (l - U1)])
+    mip.add_constraint(c)
+
+  # sum d_i = 1
+  c = Constraint('E', 1)
+  c.add_terms([d.name for d in ds], [1] * len(ds))
+  mip.add_constraint(c)
+  return y
+
+
+def compute_min(exprs, var_name, Ls, Us, mip):
+  """
+    Let L' = min(Ls)
+    expr[i] must lie between Ls[i] and Us[i]
+    y <= expr_i
+    y >= expr_i - (U_i - L')* (1 - d_i)
+    sum d_i = 1
+  """
+  L1 = min(Ls)
+  ds = []
+  for i in range(len(exprs)):
+    d = mip.new_variable('%s/helper/d%d' % (var_name, i), 0, 1)
+    ds.append(d)
+
+  y = mip.new_variable(var_name)
+
+  # y <= expr_i
+  # expr_i - y >= 0
+  for expr in exprs:
+    c = expr.to_constraint('GE', 0)
+    c.add_term(y.name, -1)
+    mip.add_constraint(c)
+
+  # y >= expr - (U_i - L')* (1 - d_i)
+  # expr - y - (U_i - L')* (1 - d_i) <= 0
+  # expr - y + (U_i - L')* d_i <= U_i - L'
+  for expr, d, u in zip(exprs, ds, Us):
+    c = expr.to_constraint('LE', u - L1)
+    c.add_terms([y.name, d.name], [-1, (u - L1)])
+    mip.add_constraint(c)
+
+  # sum d_i = 1
+  c = Constraint('E', 1)
+  c.add_terms([d.name for d in ds], [1] * len(ds))
+  mip.add_constraint(c)
+  return y
+
+
+def compute_relu(expr, var_name, L, U, mip):
+  return compute_max([expr, Expression(0)], var_name, [L, 0], [U, 0], mip)

@@ -1,10 +1,23 @@
+"""
+  Schedules multiple work units without
+  violating memory constraints
+"""
 import itertools
-import copy
 from collections import namedtuple
 
 from ortools.linear_solver import pywraplp
 
-from .mip_primitives import Constraint, Objective, Process, Variable, Expression
+from .mip_primitives import (Constraint, Expression, Objective, Variable,
+                             MIPTracker, compute_min, compute_max,
+                             compute_relu)
+
+
+class Process:
+
+  def __init__(self, id, cpu_cost, mem_cost):
+    self._id = id
+    self.cpu_cost = cpu_cost
+    self.mem_cost = mem_cost
 
 
 class LiaisonScheduler:
@@ -16,7 +29,7 @@ class LiaisonScheduler:
                wu_consolidation_obj_coeff=10):
     """
     Args:
-      servers -> [dict(cpu=float, mem=float, gpu_compute=List, gpu_mem=List)]
+      servers -> [dict(cpu=float, mem=float)]
     """
     self._overload_obj_coeff = overload_obj_coeff
     self._load_balancing_obj_coeff = load_balancing_obj_coeff
@@ -24,8 +37,7 @@ class LiaisonScheduler:
     self._servers = servers
     self._wunits = []
     self._assignment_vars = []
-    self._gpu_assignment_vars = []
-    self._varnames2var = dict()
+    self.mip = MIPTracker()
 
     # Minimum achievable objective value if
     # conditions are terribly optimistic
@@ -39,33 +51,24 @@ class LiaisonScheduler:
     # Constraints for assignment variables
     self._assignment_constraints = []
 
-    # Constraints when creating variables
-    self._variable_constraints = []
-
-    # Constraints used to help form certain kinds of objectives
-    self._misc_constraints = []
-
   def _add_process(self, proc, wu_id, proc_id):
     """Creates assignment variables for the process."""
     assignment_vars = []
     c = Constraint(sense='E', rhs=1)
     for i, server in enumerate(self._servers):
       var_name = 'wu-%d/proc-%d/server-%d/assignment_var' % (wu_id, proc_id, i)
-      var = Variable(var_name, 0, 1, self._variable_constraints)
-      self._varnames2var[var_name] = var
+      var = self.mip.new_variable(var_name, 0, 1)
       assignment_vars.append(var)
       c.add_term(var_name, 1)
-
     self._assignment_constraints.append(c)
     return assignment_vars
 
   def add_work_unit(self, wu):
     self._wunits.append([])
     self._assignment_vars.append([])
-    self._gpu_assignment_vars.append([])
     for proc_id, process in enumerate(wu):
-      proc = Process(proc_id, process.cpu_cost, process.mem_cost,
-                     process.gpu_compute_cost, process.gpu_mem_cost)
+      proc = Process(proc_id, process.cpu_cost, process.mem_cost)
+
       ass_vars = self._add_process(proc, len(self._wunits) - 1, proc_id)
 
       for ass_var, constraint in zip(ass_vars, self._mem_constraints):
@@ -73,89 +76,6 @@ class LiaisonScheduler:
 
       self._wunits[-1].append(proc)
       self._assignment_vars[-1].append(ass_vars)
-
-  def _compute_max(self, exprs, var_name, Ls, Us):
-    """
-      Let U' = max(Us)
-      expr[i] must lie between Ls[i] and Us[i]
-      y >= expr_i
-      y <= expr_i + (U' - L_i)* (1 - d_i)
-      sum d_i = 1
-    """
-    U1 = max(Us)
-    ds = []
-    for i in range(len(exprs)):
-      d = Variable('%s/helper/d%d' % (var_name, i), 0, 1,
-                   self._variable_constraints)
-      self._varnames2var['%s/helper/d%d' % (var_name, i)] = d
-      ds.append(d)
-
-    y = Variable(var_name)
-    self._varnames2var[var_name] = y
-
-    # y >= expr_i
-    # expr_i - y <= 0
-    for expr in exprs:
-      c = expr.to_constraint('LE', 0)
-      c.add_term(y.name, -1)
-      self._misc_constraints.append(c)
-
-    # y <= expr + (U' - L_i)* (1 - d2)
-    # expr - y + (U' - L_i)* (1 - d2) >= 0
-    # expr - y + (L_i - U')* d2 >= L_i - U'
-    for expr, d, l in zip(exprs, ds, Ls):
-      c = expr.to_constraint('GE', l - U1)
-      c.add_terms([y.name, d.name], [-1, (l - U1)])
-      self._misc_constraints.append(c)
-
-    # sum d_i = 1
-    c = Constraint('E', 1)
-    c.add_terms([d.name for d in ds], [1] * len(ds))
-    self._misc_constraints.append(c)
-    return y
-
-  def _compute_min(self, exprs, var_name, Ls, Us):
-    """
-      Let L' = min(Ls)
-      expr[i] must lie between Ls[i] and Us[i]
-      y <= expr_i
-      y >= expr_i - (U_i - L')* (1 - d_i)
-      sum d_i = 1
-    """
-    L1 = min(Ls)
-    ds = []
-    for i in range(len(exprs)):
-      d = Variable('%s/helper/d%d' % (var_name, i), 0, 1,
-                   self._variable_constraints)
-      self._varnames2var['%s/helper/d%d' % (var_name, i)] = d
-      ds.append(d)
-
-    y = Variable(var_name)
-    self._varnames2var[var_name] = y
-
-    # y <= expr_i
-    # expr_i - y >= 0
-    for expr in exprs:
-      c = expr.to_constraint('GE', 0)
-      c.add_term(y.name, -1)
-      self._misc_constraints.append(c)
-
-    # y >= expr - (U_i - L')* (1 - d_i)
-    # expr - y - (U_i - L')* (1 - d_i) <= 0
-    # expr - y + (U_i - L')* d_i <= U_i - L'
-    for expr, d, u in zip(exprs, ds, Us):
-      c = expr.to_constraint('LE', u - L1)
-      c.add_terms([y.name, d.name], [-1, (u - L1)])
-      self._misc_constraints.append(c)
-
-    # sum d_i = 1
-    c = Constraint('E', 1)
-    c.add_terms([d.name for d in ds], [1] * len(ds))
-    self._misc_constraints.append(c)
-    return y
-
-  def _compute_relu(self, expr, var_name, L, U):
-    return self._compute_max([expr, Expression(0)], var_name, [L, 0], [U, 0])
 
   def _get_overload_components(self):
     """Returns [L_i - C_i]+ for each server i"""
@@ -169,8 +89,8 @@ class LiaisonScheduler:
         for ass_var, proc in zip(self._assignment_vars[wid], wunit):
           expr.add_term(ass_var[server_id].name, proc.cpu_cost)
 
-      d = self._compute_relu(expr, 'server_%d/overload_helper_var' % server_id,
-                             -server.cpu, max_load - server.cpu)
+      d = compute_relu(expr, 'server_%d/overload_helper_var' % server_id,
+                       -server.cpu, max_load - server.cpu, self.mip)
       overload_ds.append(d)
     return overload_ds
 
@@ -188,15 +108,15 @@ class LiaisonScheduler:
     # For server i, the overload is defined as [L_i - C_i]+
     # We seek to minimize max_overload - min_overload as a
     # way to load balance the excess overloads.
-    d_max = self._compute_max(
-        [d.to_expression() for d in overload_ds], 'load_balancing_max_helper',
-        [0] * len(overload_ds),
-        [max_load - server.cpu for server in self._servers])
+    d_max = compute_max([d.to_expression() for d in overload_ds],
+                        'load_balancing_max_helper', [0] * len(overload_ds),
+                        [max_load - server.cpu
+                         for server in self._servers], self.mip)
 
-    d_min = self._compute_min(
-        [d.to_expression() for d in overload_ds], 'load_balancing_min_helper',
-        [0] * len(overload_ds),
-        [max_load - server.cpu for server in self._servers])
+    d_min = compute_min([d.to_expression() for d in overload_ds],
+                        'load_balancing_min_helper', [0] * len(overload_ds),
+                        [max_load - server.cpu
+                         for server in self._servers], self.mip)
 
     load_balancing_obj = Objective()
     load_balancing_obj.add_term(d_max.name, 1)
@@ -214,9 +134,9 @@ class LiaisonScheduler:
         for process_vars in self._assignment_vars[wid]:
           e.add_term(process_vars[server_id].name, 1)
 
-        v = self._compute_min([Expression(1), e],
-                              'wu_%d/server_%d_consolidation_helper' %
-                              (wid, server_id), [1, 0], [1, len(wunit)])
+        v = compute_min([Expression(1), e],
+                        'wu_%d/server_%d_consolidation_helper' %
+                        (wid, server_id), [1, 0], [1, len(wunit)], self.mip)
         work_unit_consolidation_obj.add_term(v.name, 1)
 
     final_objective = Objective.combine_objectives(
@@ -227,12 +147,9 @@ class LiaisonScheduler:
     self._min_objective += len(self._wunits) * self._wu_consolidation_obj_coeff
     return final_objective
 
-  def _get_all_constraints(self, ignore_variable_constraints=False):
-    constraints = self._mem_constraints + self._misc_constraints + self._assignment_constraints
-    if ignore_variable_constraints:
-      return constraints
-    else:
-      return constraints + self._variable_constraints
+  def _get_all_constraints(self):
+    constraints = self._mem_constraints + self._assignment_constraints + self.mip.constraints
+    return constraints
 
   def solve_or_tools(self, time_limit=None):
     """TODO: Implement time_limit."""
@@ -241,10 +158,9 @@ class LiaisonScheduler:
                              pywraplp.Solver.CBC_MIXED_INTEGER_PROGRAMMING)
     varnames2ortoolsvar = {
         k: v.convert_to_ortools_solver_format(solver)
-        for k, v in self._varnames2var.items()
+        for k, v in self.mip.varnames2var.items()
     }
-    for constraint in self._get_all_constraints(
-        ignore_variable_constraints=True):
+    for constraint in self._get_all_constraints():
       constraint.add_to_ortools_solver(solver, varnames2ortoolsvar)
     obj = obj.add_to_ortools_solver(solver, varnames2ortoolsvar)
 
@@ -271,10 +187,9 @@ class LiaisonScheduler:
     solver = cplex.Cplex()
     if time_limit:
       solver.parameters.timelimit.set(time_limit)
-    for v in self._varnames2var.values():
+    for v in self.mip.varnames2var.values():
       v.add_to_cplex_solver(solver)
-    for constraint in self._get_all_constraints(
-        ignore_variable_constraints=True):
+    for constraint in self._get_all_constraints():
       constraint.add_to_cplex_solver(solver)
     obj.add_to_cplex_solver(solver)
 
