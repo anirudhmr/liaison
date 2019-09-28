@@ -18,9 +18,6 @@ parser.add_config_file(name='env', required=True)
 # sess_config
 parser.add_config_file(name='sess', required=True)
 
-# network_config
-parser.add_config_file(name='network', required=True)
-
 parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
 parser.add_argument('--traj_length',
                     type=int,
@@ -57,7 +54,6 @@ class LauncherSetup(Launcher):
     self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))
     self.sess_config = ConfigDict(to_nested_dicts(args.sess_config))
-    self.network_config = ConfigDict(to_nested_dicts(args.network_config))
 
 
 def main(_):

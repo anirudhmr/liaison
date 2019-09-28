@@ -10,12 +10,15 @@ Process = namedtuple(
 
 class Node:
 
-  def __init__(self, name, avail_cpu, avail_mem, gpu_mem, gpu_compute):
+  def __init__(self, name, avail_cpu, avail_mem, avail_gpu_mem,
+               avail_gpu_compute):
     self.name = name
     self.avail_cpu = lambda: avail_cpu
     self.avail_mem = lambda: avail_mem
-    self.gpu_mem = lambda: gpu_mem
-    self.gpu_compute = lambda scale: [scale['K80'] * c for c in gpu_compute]
+    self.avail_gpu_mem = lambda: gpu_mem
+    self.avail_gpu_compute = lambda scale: [
+        scale['K80'] * c for c in gpu_compute
+    ]
 
 
 class Experiment:

@@ -9,8 +9,8 @@ class Logger(BaseLogger):
 
   def __init__(self,
                client_id,
-               host=os.environ['SYMPH_TENSORPLEX_HOST'],
-               port=os.environ['SYMPH_TENSORPLEX_PORT']):
+               host=os.environ.get('SYMPH_TENSORPLEX_HOST', None),
+               port=os.environ.get('SYMPH_TENSORPLEX_PORT', None)):
     super(Logger, self).__init__()
     self._client_id = client_id
     self._client = TensorplexClient(client_id, host=host, port=port)

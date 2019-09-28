@@ -32,7 +32,7 @@ def get_config():
   config.replay = ConfigDict()
   config.replay.class_path = 'liaison.replay.uniform_replay'
   config.replay.class_name = 'UniformReplay'
-  config.replay.n_shards = 1
+  config.replay.n_shards = 2
   config.replay.evict_interval = 0
   config.replay.memory_size = 100
   config.replay.sampling_start_size = 0

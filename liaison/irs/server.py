@@ -21,7 +21,7 @@ from liaison.utils import ConfigDict
 class Server(object):
 
   def __init__(self, results_folder, agent_config, env_config, sess_config,
-               network_config, exp_name, exp_id, work_id, n_shards, **kwargs):
+               exp_name, exp_id, work_id, n_shards, **kwargs):
     """Results folder should be for the current work unit."""
     self.config = ConfigDict(**kwargs)
     self.n_shards = n_shards
@@ -37,7 +37,6 @@ class Server(object):
     self._register_configs(agent_config,
                            env_config,
                            sess_config,
-                           network_config,
                            results_folder=results_folder,
                            experiment_name=exp_name,
                            exp_id=exp_id,
@@ -78,8 +77,7 @@ class Server(object):
     for worker in self.workers:
       worker.terminate()
 
-  def _register_configs(self, agent_config, env_config, sess_config,
-                        network_config, **kwargs):
+  def _register_configs(self, agent_config, env_config, sess_config, **kwargs):
     config_folder = self.config.configs_folder
     U.f_mkdir(config_folder)
     U.pretty_dump(agent_config, os.path.join(config_folder,
@@ -88,9 +86,6 @@ class Server(object):
     U.pretty_dump(env_config, os.path.join(config_folder, 'env_config.json'))
 
     U.pretty_dump(sess_config, os.path.join(config_folder, 'sess_config.json'))
-
-    U.pretty_dump(network_config,
-                  os.path.join(config_folder, 'network_config.json'))
 
     U.pretty_dump(kwargs, os.path.join(config_folder, 'misc_config.json'))
 

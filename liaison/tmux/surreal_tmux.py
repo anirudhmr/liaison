@@ -4,12 +4,13 @@ import shlex
 import socket
 import sys
 from copy import copy
+from multiprocessing.pool import ThreadPool
 
 import liaison.utils as U
 from argon import ArgumentParser, to_nested_dicts
 from caraml.zmq import ZmqClient
-from liaison.launch import CommandGenerator, setup_network
-from liaison.launch.xmanager_client import XManagerClient
+from liaison.launch import CommandGenerator
+from liaison.launch.xmanager_client import get_xmanager_client
 from liaison.utils import ConfigDict, ConfigDict_to_dict
 from symphony.commandline import SymphonyParser
 from symphony.engine import Cluster
@@ -44,18 +45,16 @@ class TurrealParser(SymphonyParser):
                         type=str,
                         help='Results folder.')
     parser.add_argument('--n_work_units', type=int, default=1)
-    parser.add_argument('--n_actors', type=int, default=1)
+    parser.add_argument('--spy_measurement_interval', type=float, default=1.)
     self._add_dry_run(parser)
 
     # Note we cannot add it as a  subparser since argon doesn't support this.
     # Hence we resort to two different sequential parsers
     # see main function below.
-    network_config_parser = ArgumentParser('Network config', add_help=False)
-    network_config_parser.add_config_file(
-        name='network',
-        default='liaison/configs/network/localhost.py',
-        help='number of actor pods to run in parallel.')
-    self._network_config_parser = network_config_parser
+    cluster_config_parser = ArgumentParser('Cluster config', add_help=False)
+    cluster_config_parser.add_config_file(name='cluster',
+                                          default='liaison/configs/cluster.py')
+    self._cluster_config_parser = cluster_config_parser
 
   # ==================== helpers ====================
   def _add_dry_run(self, parser):
@@ -77,17 +76,18 @@ class TurrealParser(SymphonyParser):
 
   def _setup_xmanager_client(self, args):
 
-    self._xm_client = XManagerClient(host=args.xmanager_server_host,
-                                     port=int(args.xmanager_server_port))
+    self._xm_client = get_xmanager_client(host=args.xmanager_server_host,
+                                          port=int(args.xmanager_server_port),
+                                          timeout=1)
 
-  def _register_exp(self, args, results_folder, network_config):
+  def _register_exp(self, exp_name, n_work_units, results_folder):
 
-    return self._xm_client.register(name=args.experiment_name,
-                                    host_name=socket.getfqdn(),
-                                    results_folder=results_folder,
-                                    n_work_units=args.n_work_units,
-                                    network=ConfigDict_to_dict(network_config),
-                                    dry_run=args.dry_run)  # easydict works.
+    return self._xm_client.register(
+        name=exp_name,
+        host_name=socket.getfqdn(),
+        results_folder=results_folder,
+        n_work_units=n_work_units,
+    )  # easydict works.
 
   def _record_commands(self, exp_id, preamble_cmds, procs, dry_run):
     commands = dict()
@@ -111,23 +111,24 @@ class TurrealParser(SymphonyParser):
                           deserializer='pyarrow')
     self._cli.request(['register_commands', [], commands])
 
-  def _get_nodes(self, network_config):
+  def _make_nodes(self, cluster_config, args):
     nodes = []
-    component2node = dict()
-
-    if 'host_names' in network_config:
-      host_names_to_ip = network_config.host_names
-    else:
-      # TODO: Use default host names file here.
-      host_names_to_ip = {}
-
-    for host_name, node_config in network_config.hosts.items():
-      node = Node(host_names_to_ip[host_name], **node_config)
-      for comp in node_config.components:
-        component2node[comp] = node
+    host_names_to_ip = cluster_config.host_names
+    for host_name, node_config in cluster_config.host_info.items():
+      node = Node(host_name, host_names_to_ip[host_name], **node_config)
       nodes.append(node)
 
-    return nodes, component2node
+    with ThreadPool(len(nodes)) as pool:
+      pool.map(
+          lambda node: node.collect_spy_stats(args.spy_measurement_interval),
+          nodes)
+    return nodes
+
+  def get_cluster(self):
+    return self.cluster
+
+  def get_nodes(self):
+    return self.nodes
 
   def _setup_nodes(self, nodes):
     for node in nodes:
@@ -144,139 +145,105 @@ class TurrealParser(SymphonyParser):
         Spin up a multi-node distributed Surreal experiment.
         Put any command line args that pass to the config script after "--"
     """
-    network_config = self._network_config_args.network_config
-    network_config = ConfigDict(to_nested_dicts(network_config))
-    nodes, component_to_node = self._get_nodes(network_config)
+    self.experiment_name = self._process_experiment_name(args.experiment_name)
     results_folder = args.results_folder
     if '{experiment_name}' in results_folder:
       results_folder = results_folder.format(
-          experiment_name=args.experiment_name)
-    cluster = self.create_cluster()
-    experiment_name = self._process_experiment_name(args.experiment_name)
-    exp = cluster.new_experiment(experiment_name, preamble_cmds=PREAMBLE_CMDS)
-
+          experiment_name=self.experiment_name)
+    self.cluster = cluster = self.create_cluster()
     self._setup_xmanager_client(args)
-    exp_id = self._register_exp(
-        args,
-        results_folder,
-        network_config,
-    )
-    algorithm_args = args.remainder
-    algorithm_args += [
-        "--n_actors",
-        str(args.n_actors),
-    ]
-    wid = 0
-    if '{exp_id}' in results_folder:
-      results_folder = results_folder.format(exp_id=exp_id)
+
+    cluster_config = ConfigDict(
+        to_nested_dicts(self._cluster_config_args.cluster_config))
+    nodes = self._make_nodes(cluster_config, args)
+
+    self.results_folder = results_folder
+    self.nodes = nodes
+    self.remainder_args = args.remainder
+    self.dry_run = args.dry_run
+
+  def launch(self, experiments, exp_configs):
+    """
+    Tasks:
+      1. Creates nodes
+        1.1 Provide them with spy server addresses to get load details.
+        1.2 Sets up nodes (file systems, libraries, resources etc.)
+
+      2. Adds all the commands needed for processes, shells and experiments.
+
+      3. Register with XManager client and IRS
+
+      4. Launch experiments
+
+    Details:
+      1. Add PREAMBLE_CMDS to the experiment
+    """
+
+    exp_id = self._register_exp(self.experiment_name, len(experiments),
+                                self.results_folder)
+    if '{exp_id}' in self.results_folder:
+      self.results_folder = self.results_folder.format(exp_id=exp_id)
+    results_folder = self.results_folder
 
     print('Experiment ID: %d' % exp_id)
     print('Results folder: %s' % (results_folder))
+    algorithm_args = self.remainder_args
     algorithm_args += ["--experiment_id", str(exp_id)]
-    algorithm_args += ["--experiment_name", experiment_name]
-    algorithm_args += ["--work_id", str(wid)]
+    algorithm_args += ["--experiment_name", self.experiment_name]
     algorithm_args += ["--results_folder", results_folder]
-    algorithm_args += [
-        "--network_config_file", self._network_config_args.network_config_file
-    ]
-    executable = 'liaison/launch/main.py'
-    cmd_gen = CommandGenerator(executable=executable,
-                               config_commands=algorithm_args)
 
-    learner = exp.new_process('learner',
-                              component_to_node['learner'],
-                              cmds=[cmd_gen.get_command('learner')])
+    commands = []
+    for exp, exp_config in zip(experiments, exp_configs):
+      cmd_gen = CommandGenerator(executable='liaison/launch/main.py',
+                                 config_commands=algorithm_args + exp_config)
 
-    replay = exp.new_process('replay',
-                             component_to_node['replay'],
-                             cmds=[cmd_gen.get_command('replay')])
+      exp.set_preamble_cmds(PREAMBLE_CMDS)
+      all_procs = [
+          proc for pg in exp.list_process_groups()
+          for proc in pg.list_processes()
+      ] + [proc for proc in exp.list_processes()]
 
-    ps = exp.new_process('ps',
-                         component_to_node['ps'],
-                         cmds=[cmd_gen.get_command('ps')])
+      for proc in all_procs:
+        proc.append_cmds([cmd_gen.get_command(proc.name)])
 
-    irs = exp.new_process('irs',
-                          component_to_node['irs'],
-                          cmds=[cmd_gen.get_command('irs')])
+      for proc in all_procs:
+        commands.append(cmd_gen.get_command(proc.name))
 
-    tensorboard = exp.new_process('tensorboard',
-                                  component_to_node['tensorboard'],
-                                  cmds=[cmd_gen.get_command('tensorboard')])
-
-    tensorplex = exp.new_process('tensorplex',
-                                 component_to_node['tensorplex'],
-                                 cmds=[cmd_gen.get_command('tensorplex')])
-
-    actor_pg = exp.new_process_group('actor-*')
-    actors = []
-    for i in range(args.n_actors):
-      actor_name = 'actor-{}'.format(i)
-      if 'actor-*' in component_to_node:
-        key = 'actor-*'
-      else:
-        key = actor_name
-      actor = actor_pg.new_process(actor_name,
-                                   component_to_node[key],
-                                   cmds=[cmd_gen.get_command(actor_name)])
-      actors.append(actor)
-
-    setup_network(
-        actors=actors,
-        learner=learner,
-        replay=replay,
-        ps=ps,
-        tensorboard=tensorboard,
-        tensorplex=tensorplex,
-        irs=irs,
-    )
-
-    commands = self._record_commands(exp_id,
-                                     exp.preamble_cmds,
-                                     procs=[
-                                         *actors,
-                                         learner,
-                                         replay,
-                                         ps,
-                                         tensorboard,
-                                         tensorplex,
-                                         irs,
-                                     ],
-                                     dry_run=args.dry_run)
-    cluster.launch(exp, dry_run=args.dry_run)
-    self._register_commands_with_irs(commands,
-                                     host=irs.env['SYMPH_IRS_FRONTEND_HOST'],
-                                     port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
+      self.cluster.launch(exp, dry_run=self.dry_run)
+    # self._register_commands_with_irs(commands,
+    #                                  host=irs.env['SYMPH_IRS_FRONTEND_HOST'],
+    #                                  port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
 
   def main(self):
     assert sys.argv.count('--') <= 1, \
         'command line can only have at most one "--"'
-    if '--' in sys.argv:
-      idx = sys.argv.index('--')
-      remainder = sys.argv[idx + 1:]
-      sys.argv = sys.argv[:idx]
+
+    argv = list(sys.argv[1:])
+    if '--' in argv:
+      idx = argv.index('--')
+      remainder = argv[idx + 1:]
+      argv = argv[:idx]
       has_remainder = True  # even if remainder itself is empty
     else:
       remainder = []
       has_remainder = False
+    master_args = argv
 
     # note subparser cannot be argon.ArgumentParser
     # so we prune out the network config arguments first before passing the rest
     # through the main parser.
-    self._network_config_args, unknown = self._network_config_parser.parse_known_args(
-    )
-    master_args = unknown[1:]
-    if '--' in master_args:
-      master_args = master_args[:master_args.index('--')]
+    # Also we prune out the external parser arguments as well.
+    args_l = []
+    for parser in [self._cluster_config_parser] + self._external_parsers:
+      args, unknown = parser.parse_known_args(master_args)
+      master_args = unknown
+      args_l.append(args)
+
+    self._cluster_config_args = args_l[0]
+    assert '--' not in master_args
     args = self.master_parser.parse_args(master_args)
     args.remainder = remainder
     args.has_remainder = has_remainder
 
     args.func(args)
-
-
-def main():
-  TurrealParser().main()
-
-
-if __name__ == '__main__':
-  main()
+    return args.func, args_l[1:]

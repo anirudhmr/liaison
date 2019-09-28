@@ -741,3 +741,9 @@ def pretty_dumps(j):
 def pretty_dump(j, fname):
   with open(fname, 'w') as f:
     f.write(pretty_dumps(j))
+
+
+def relu(x):
+  if x < 0:
+    return type(x)(0)
+  return x

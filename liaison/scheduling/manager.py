@@ -47,57 +47,68 @@ class ScheduleManager:
           node.name,
           U.relu(node.avail_cpu()),
           U.relu(node.avail_mem()),
-          list(map(U.relu, node.gpu_mem())),
-          list(map(U.relu, node.gpu_compute(GPU_MODEL_TO_SCALE))),
+          list(map(U.relu, node.avail_gpu_mem())),
+          list(map(U.relu, node.avail_gpu_compute(GPU_MODEL_TO_SCALE))),
       )
       self.servers.append(server)
 
     # create processes in work units
     self.wunits = []
-    for exp in wunits:
-      procs = []
-      for proc in [
-          proc for pg in exp.list_process_groups()
-          for proc in pg.list_processes()
-      ] + [proc for proc in exp.list_processes()]:
+    for procs in wunits:
+      self.wunits.append([])
+      for proc in procs:
         p = Process(name=proc.name,
                     cpu_cost=proc.cpu_cost,
                     mem_cost=proc.mem_cost,
                     gpu_compute_cost=proc.gpu_compute_cost,
                     gpu_mem_cost=proc.gpu_mem_cost)
-        procs.append(p)
-      self.wunits.append(procs)
+        assert p.cpu_cost is not None, p.name
+        assert p.mem_cost is not None, p.name
+        self.wunits[-1].append(p)
 
-    # first schedule gpu and get an assignment
-    # assignment: List[Dict[pid] -> server_id]
-    # gpu_assignment: List[Dict[pid] -> List[gpu_id]]
-    ass, gpu_ass = self._schedule_gpu(gpu_overload_obj_coeff,
-                                      gpu_load_balancing_obj_coeff,
-                                      gpu_wu_consolidation_obj_coeff)
+    if self._check_gpu_assignment_required():
+      # first schedule gpu and get an assignment
+      # assignment: List[Dict[pid] -> server_id]
+      # gpu_assignment: List[Dict[pid] -> List[gpu_id]]
+      gpu_server_ass, gpu_ass = self._schedule_gpu(
+          gpu_overload_obj_coeff, gpu_load_balancing_obj_coeff,
+          gpu_wu_consolidation_obj_coeff)
 
-    # add previous assignments as new scheduling constraints.
-    # ass: List[Dict[pid] -> server_id]
-    for wid, wu_ass in enumerate(ass):
-      for pid, sid in wu_ass.items():
-        if (wid, pid) in self.scheduling_constraints:
-          assert self.scheduling_constraints[(wid, pid)] == sid
-        else:
-          self.scheduling_constraints[(wid, pid)] = sid
+      # add previous assignments as new scheduling constraints.
+      # ass: List[Dict[pid] -> server_id]
+      for wid, wu_ass in enumerate(ass):
+        for pid, sid in wu_ass.items():
+          if (wid, pid) in self.scheduling_constraints:
+            assert self.scheduling_constraints[(wid, pid)] == sid
+          else:
+            self.scheduling_constraints[(wid, pid)] = sid
+      self._gpu_assignments = gpu_ass
+    else:
+      gpu_server_ass = [{} for _ in range(len(self.wunits))]
+      self._gpu_assignments = [{} for _ in range(len(self.wunits))]
 
-    cpu_ass = self._schedule_cpu(self.scheduling_constraints,
-                                 cpu_overload_obj_coeff,
-                                 cpu_load_balancing_obj_coeff,
-                                 cpu_wu_consolidation_obj_coeff)
+    self._server_assignments = self._schedule_cpu(
+        self.scheduling_constraints, cpu_overload_obj_coeff,
+        cpu_load_balancing_obj_coeff, cpu_wu_consolidation_obj_coeff)
 
     # assert that the cpu didn't violate
     # the server assignments dictated by
     # gpu assignment.
-    for d1, d2 in zip(ass, cpu_ass):
+    for d1, d2 in zip(gpu_server_ass, self._server_assignments):
       for k, v in d1.items():
         assert d2[k] == v
 
-    self._gpu_assignments = gpu_ass
-    self._server_assignments = cpu_ass
+  def _check_gpu_assignment_required(self):
+    requirement = False
+    for procs in self.wunits:
+      for proc in procs:
+        if proc.gpu_mem_cost:
+          requirement = True
+
+    availability = [any(server.gpu_mem) for server in self.servers]
+    if requirement and not availability:
+      raise Exception("GPU required by a process but is not available.")
+    return requirement
 
   def _schedule_gpu(self, gpu_overload_obj_coeff, gpu_load_balancing_obj_coeff,
                     gpu_wu_consolidation_obj_coeff):

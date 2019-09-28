@@ -306,7 +306,6 @@ class Launcher:
         agent_config=self.agent_config,
         env_config=self.env_config,
         sess_config=self.sess_config,
-        network_config=self.network_config,
         exp_name=self.experiment_name,
         exp_id=self.experiment_id,
         work_id=self.work_id,

@@ -17,7 +17,7 @@ _SHAPE_NOT_SPECIFIED = 'action spec `shape` must be fully specified, got {}.'
 class Agent(BaseAgent):
   """Randomly samples an action based on a discrete BoundedArraySpec."""
 
-  def __init__(self, name, action_spec, seed, **kwargs):
+  def __init__(self, name, action_spec, seed, learning_rate, **kwargs):
 
     self._validate_action_spec(action_spec)
     self.seed = seed

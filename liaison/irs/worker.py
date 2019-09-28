@@ -48,8 +48,6 @@ class Worker(Process):
       fn = getattr(self, req_fn)
       return fn(*args, **kwargs)
     except AttributeError:
-      import pdb
-      pdb.set_trace()
       logging.error('Unknown request func name received: %s', req_fn)
 
   def _read_checkpoint_info(self):

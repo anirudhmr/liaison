@@ -10,5 +10,6 @@ def get_config():
   # required fields.
   config.class_path = "liaison.agents.ur_discrete"  # should be rel to the parent directory.
   config.class_name = "Agent"
+  config.learning_rate = 1e-3
 
   return config
