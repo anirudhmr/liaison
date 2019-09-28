@@ -48,14 +48,18 @@ class Process:
    Process creates requests to server for GPUs.
   """
 
-  def __init__(self, id, gpu_compute_cost, gpu_mem_cost):
+  def __init__(self, id, wid, gpu_compute_cost, gpu_mem_cost, mem):
     self.id = id
+    self.wid = wid
     self.gpu_compute_cost = gpu_compute_cost
     self.gpu_mem_cost = gpu_mem_cost
+    self.mem = mem
     self.reqs = []
 
-  def send_requests(self, servers):
-    """Sends allocation requests to the servers."""
+  def send_requests(self, servers, mip, constraint=None):
+    """Sends allocation requests to the servers.
+       constraints -> int (server_id of the process)
+    """
     n_requests = len(self.gpu_compute_cost)  # number of gpus requesting
     responses = [[] for _ in range(n_requests)]
     reqs = [
@@ -63,12 +67,21 @@ class Process:
         for cost, mem in zip(self.gpu_compute_cost, self.gpu_mem_cost)
     ]
 
-    for server in servers:
-      resps = server.handle_bundled_requests(reqs, self.id)
-      for req, response in zip(reqs, resps):
-        req.add_response(response)
+    if reqs:
+      for server in servers:
+        resps = server.handle_bundled_requests(reqs, self.mem, self.wid,
+                                               self.id)
+        for req, response in zip(reqs, resps):
+          req.add_response(response)
 
-    self.reqs.extend(reqs)
+        # check if constraint requires to set the process to this server.
+        if constraint == server.id:
+          c = mip.new_constraint('E', 1, name=None)
+          c.add_expression(
+              Expression.sum_expressions([resp.expr
+                                          for resp in req.responses]))
+
+      self.reqs.extend(reqs)
 
   def add_fulfillment_constraints(self, mip):
     """Each request must be satisfied by exactly one server."""
@@ -97,11 +110,19 @@ class WorkUnit:
     self.procs = []
     self.id = id
     for i, spec in enumerate(proc_specs):
-      self.procs.append(Process(i, spec.gpu_compute_cost, spec.gpu_mem_cost))
+      self.procs.append(
+          Process(i, id, spec.gpu_compute_cost, spec.gpu_mem_cost,
+                  spec.mem_cost))
 
-  def send_requests(self, servers, mip):
+  def send_requests(self, servers, mip, wu_sched_constraints=None):
+    """
+      wu_sched_constraints -> Dict[pid] -> server_id
+                              pid should be scheduled on server_id
+    """
+    wu_sched_constraints = {} if wu_sched_constraints is None else wu_sched_constraints
     for proc in self.procs:
-      proc.send_requests(servers)
+      responses = proc.send_requests(servers, mip,
+                                     wu_sched_constraints.get(proc.id, None))
       proc.add_fulfillment_constraints(mip)
 
   def get_wu_consolidation_obj(self, mip):
@@ -129,6 +150,9 @@ class WorkUnit:
     return obj
 
   def get_assignment_vars(self, solver):
+    """Returns
+    List[List[Tuple[server_id, gpu_id]]]
+    """
     ass_vars = []
     for proc in self.procs:
       proc_ass_vars = []
@@ -193,20 +217,36 @@ class GPUResource:
 
 class Server:
 
-  def __init__(self, id, gpu_compute, gpu_mem, mip):
+  def __init__(self,
+               id,
+               gpu_compute,
+               gpu_mem,
+               mem,
+               mip,
+               colocation_constraints=None):
+    """
+      colocation_constraints -> List[List[Tuple[wid, pid]]]
+    """
     assert isinstance(gpu_compute, list)
     assert isinstance(gpu_mem, list)
     self.id = id
     self.gpu_compute = gpu_compute
     self.gpu_mem = gpu_mem
+    self.mem = mem
     self.mip = mip
+    self._mem_constraint = mip.new_constraint('LE', mem,
+                                              'server_%d_mem_constraint' % id)
+    self._colocation_constraints = [] if colocation_constraints is None else colocation_constraints
 
     self._gpu_resources = []
     for i, (c, m) in enumerate(zip(gpu_compute, gpu_mem)):
       self._gpu_resources.append(GPUResource(id, i, c, m, mip))
     self._request_id = 0
 
-  def handle_bundled_requests(self, reqs, pid):
+    # [wid, pid] -> expr (indicating if (wid, pid) gets assigned to this server)
+    self._expr_for_colocation_constraints = dict()
+
+  def handle_bundled_requests(self, reqs, proc_mem, wid, pid):
     combined_responses = []
     for i, req in enumerate(reqs):
       responses = [
@@ -241,6 +281,39 @@ class Server:
       assert len(resp.response_vars) == len(constraints)
       for i, var in enumerate(resp.response_vars):
         constraints[i].add_term(var.name, 1)
+
+    # Now add server mem constraint:
+    # Take the first  response
+    # If it's fulfilled then due to colocation constraint all the
+    # other requests must also be satisfied.
+    # If the first response is an accept then add the memory of the process
+    # to the constraint
+    # Also response is bounded between 0 and 1.
+    resp = combined_responses[0].expr.copy()
+    resp.scale_by(proc_mem)
+    self._mem_constraint.add_expression(resp)
+
+    # Now handle the colocation constraints
+    # For this we keep track of few expressions for every (wid, pid) pair
+    # _expr_for_colocation_constraints[(wid, pid)] = E
+    # E is an expressions indicating if (wid, pid) process is allocated
+    # on this server.
+
+    e1 = self._expr_for_colocation_constraints[(
+        wid, pid)] = combined_responses[0].expr.copy()
+
+    for constraint in self._colocation_constraints:
+      # check if valid for this process
+      if (wid, pid) in constraint:
+        for coloc_wid, coloc_pid in constraint:
+          if (wid, pid) != (coloc_wid, coloc_pid):
+            if (coloc_wid, coloc_pid) in self._expr_for_colocation_constraints:
+              e2 = self._expr_for_colocation_constraints[(coloc_wid,
+                                                          coloc_pid)]
+              # add constraint e1 - e2 = 0
+              c = self.mip.new_constraint('E', 0, name=None)
+              c.add_expression(Expression.diff_expressions(e1, e2))
+
     self._request_id += len(reqs)
     return combined_responses
 

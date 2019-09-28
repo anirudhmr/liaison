@@ -1,5 +1,4 @@
 import itertools
-from collections import namedtuple
 
 from ortools.linear_solver import pywraplp
 
@@ -14,27 +13,37 @@ class LiaisonGPUScheduler:
   def __init__(self,
                servers,
                wunits,
+               scheduling_constraints=None,
+               colocation_constraints=None,
                overload_obj_coeff=1,
                load_balancing_obj_coeff=1,
-               wu_consolidation_obj_coeff=10):
+               wu_consolidation_obj_coeff=0.25):
     """
     Args:
-      servers -> [dict(gpu_compute=List, gpu_mem=List)]
-      wunits -> [[dict(gpu_compute_cost=List, gpu_mem_cost=List)]]
+      servers -> [dict(gpu_compute=List, gpu_mem=List, mem=float)]
+      wunits -> [[dict(gpu_compute_cost=List, gpu_mem_cost=List, mem=float)]]
+      scheduling_constraints -> Dict[Tuple[wid, pid] -> server_id
+      colocation_constraints -> List[List[Tuple[wid, pid]]]
     """
     self._overload_obj_coeff = overload_obj_coeff
     self._load_balancing_obj_coeff = load_balancing_obj_coeff
     self._wu_consolidation_obj_coeff = wu_consolidation_obj_coeff
     self.mip = MIPTracker()
     self._servers = [
-        Server(i, server.gpu_compute, server.gpu_mem, self.mip)
-        for i, server in enumerate(servers)
+        Server(i, server.gpu_compute, server.gpu_mem, server.mem, self.mip,
+               colocation_constraints) for i, server in enumerate(servers)
     ]
     self._wunits = [
         WorkUnit(i, proc_specs) for i, proc_specs in enumerate(wunits)
     ]
-    for wunit in self._wunits:
-      wunit.send_requests(self._servers, self.mip)
+    for i, wunit in enumerate(self._wunits):
+      # filter out the constraints for this work unit.
+      # and convert from Tuple[Tuple[wid, pid], server_id] to Tuple[pid, server_id]
+      wu_sched_const = {
+          pid: sid
+          for (wid, pid), sid in scheduling_constraints.items() if wid == i
+      }
+      wunit.send_requests(self._servers, self.mip, wu_sched_const)
 
   def _get_objective(self):
 
@@ -75,6 +84,7 @@ class LiaisonGPUScheduler:
     import cplex
     obj = self._get_objective()
     solver = cplex.Cplex()
+    self.solver = solver
     if time_limit:
       solver.parameters.timelimit.set(time_limit)
     for v in self.mip.varnames2var.values():

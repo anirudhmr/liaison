@@ -20,20 +20,26 @@ class Process:
     self.mem_cost = mem_cost
 
 
-class LiaisonScheduler:
+class LiaisonCPUScheduler:
 
   def __init__(self,
                servers,
+               scheduling_constraints=[],
+               colocation_constraints={},
                overload_obj_coeff=1,
                load_balancing_obj_coeff=1,
                wu_consolidation_obj_coeff=10):
     """
     Args:
       servers -> [dict(cpu=float, mem=float)]
+      scheduling_constraints -> Dict[Tuple[wid, pid] -> server_id
+      colocation_constraints -> List[List[Tuple[wid, pid]]]
     """
     self._overload_obj_coeff = overload_obj_coeff
     self._load_balancing_obj_coeff = load_balancing_obj_coeff
     self._wu_consolidation_obj_coeff = wu_consolidation_obj_coeff
+    self._scheduling_constraints = scheduling_constraints
+    self._colocation_constraints = colocation_constraints
     self._servers = servers
     self._wunits = []
     self._assignment_vars = []
@@ -51,6 +57,9 @@ class LiaisonScheduler:
     # Constraints for assignment variables
     self._assignment_constraints = []
 
+    # (wid, pid) -> [assignment_vars] for the corresponding process.
+    self._vars_for_colocation_constraints = {}
+
   def _add_process(self, proc, wu_id, proc_id):
     """Creates assignment variables for the process."""
     assignment_vars = []
@@ -60,7 +69,28 @@ class LiaisonScheduler:
       var = self.mip.new_variable(var_name, 0, 1)
       assignment_vars.append(var)
       c.add_term(var_name, 1)
+
+    self._vars_for_colocation_constraints[(wu_id, proc_id)] = assignment_vars
     self._assignment_constraints.append(c)
+
+    if (wu_id, proc_id) in self._scheduling_constraints:
+      sid = self._scheduling_constraints[(wu_id, proc_id)]
+      c = Constraint(sense='E', rhs=1)
+      c.add_term(assignment_vars[sid].name, 1)
+      self._assignment_constraints.append(c)
+
+    for coloc_constraint in self._colocation_constraints:
+      if (wu_id, proc_id) in coloc_constraint:
+        for wid, pid in coloc_constraint:
+          if wid != wu_id and pid != proc_id:
+            for v1, v2 in zip(
+                self._vars_for_colocation_constraints[(wid, pid)],
+                self._vars_for_colocation_constraints[(wu_id, proc_id)]):
+              c = Constraint(sense='E', rhs=0)
+              c.add_term(v1.name, 1)
+              c.add_term(v2.name, -1)
+              self._assignment_constraints.append(c)
+
     return assignment_vars
 
   def add_work_unit(self, wu):
@@ -205,7 +235,8 @@ class LiaisonScheduler:
     for wu_vars in self._assignment_vars:
       assignment.append([])
       for process_vars in wu_vars:
-        assignment[-1].append(
-            solver.solution.get_values(
-                [server_var.name for server_var in process_vars]))
+        l = solver.solution.get_values(
+            [server_var.name for server_var in process_vars])
+        assert l.count(1) == 1
+        assignment[-1].append(l.index(1))
     return assignment

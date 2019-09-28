@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 from absl.testing import absltest, parameterized
-from liaison.scheduling import LiaisonScheduler
+from liaison.scheduling import LiaisonCPUScheduler
 
 SERVER = namedtuple('Server', ['cpu', 'mem', 'gpu_compute', 'gpu_mem'])
 PROCESS = namedtuple(
@@ -68,10 +68,10 @@ class SchedulingTest(parameterized.TestCase):
     else:
       f = self._setup
     servers, work_units = f()
-    solver = LiaisonScheduler(servers,
-                              overload_obj_coeff=1,
-                              load_balancing_obj_coeff=1,
-                              wu_consolidation_obj_coeff=10)
+    solver = LiaisonCPUScheduler(servers,
+                                 overload_obj_coeff=1,
+                                 load_balancing_obj_coeff=1,
+                                 wu_consolidation_obj_coeff=10)
     for wu in work_units:
       solver.add_work_unit(wu)
     assignment = solver.solve_cplex(time_limit=90)
@@ -80,9 +80,7 @@ class SchedulingTest(parameterized.TestCase):
       print('Work unit id: %d' % wu_id)
       print('--------------------------')
       for proc_id, proc_assignment in enumerate(wu_assignment):
-        assert proc_assignment.count(1) == 1
-        assignment = proc_assignment.index(1)
-        print('Process %d assignment: %d' % (proc_id, assignment))
+        print('Process %d assignment: %d' % (proc_id, proc_assignment))
 
 
 if __name__ == '__main__':
