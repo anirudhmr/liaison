@@ -16,7 +16,9 @@ def get_config():
                          use_ssh=True,
                          ssh_username='ubuntu',
                          ssh_key_file='/home/ubuntu/.ssh/temp',
-                         shell_setup_commands=['cd ${HOME}/nfs/liaison'],
+                         shell_setup_commands=[
+                             'source ${HOME}/.bashrc && cd ${HOME}/nfs/liaison'
+                         ],
                          spy_port=4007))
 
   assert sorted(config.host_names.keys()) == sorted(config.host_info.keys())

@@ -20,12 +20,6 @@ ENV_ACTIVATE_CMD = 'conda activate symphony'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
 PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
 
-RESOURCES = {
-    'file': ['.gitmodules', 'README.md'],
-    'dir':
-    ['.git/', 'liaison/', 'caraml/', 'Argon/', 'symphony/', 'Tensorplex/']
-}
-
 
 class TurrealParser(SymphonyParser):
 
@@ -81,13 +75,7 @@ class TurrealParser(SymphonyParser):
                                           timeout=1)
 
   def _register_exp(self, exp_name, n_work_units, results_folder):
-
-    return self._xm_client.register(
-        name=exp_name,
-        host_name=socket.getfqdn(),
-        results_folder=results_folder,
-        n_work_units=n_work_units,
-    )  # easydict works.
+    return self._xm_client.register(name=exp_name)
 
   def _record_commands(self, exp_id, preamble_cmds, procs, dry_run):
     commands = dict()
@@ -115,8 +103,7 @@ class TurrealParser(SymphonyParser):
     nodes = []
     host_names_to_ip = cluster_config.host_names
     for host_name, node_config in cluster_config.host_info.items():
-      node = Node(host_name, host_names_to_ip[host_name], **node_config)
-      nodes.append(node)
+      nodes.append(Node(host_name, host_names_to_ip[host_name], **node_config))
 
     with ThreadPool(len(nodes)) as pool:
       pool.map(
@@ -129,16 +116,6 @@ class TurrealParser(SymphonyParser):
 
   def get_nodes(self):
     return self.nodes
-
-  def _setup_nodes(self, nodes):
-    for node in nodes:
-      if node.use_ssh:
-        for fname in RESOURCES[
-            'file']:  # should be relative to liaison directory
-          node.put_file(U.f_expand(fname), os.path.join(node.base_dir, fname))
-        for dirname in RESOURCES['dir']:
-          node.put_dir(U.f_expand(dirname),
-                       os.path.join(node.base_dir, dirname))
 
   def action_create(self, args):
     """
@@ -155,12 +132,17 @@ class TurrealParser(SymphonyParser):
 
     cluster_config = ConfigDict(
         to_nested_dicts(self._cluster_config_args.cluster_config))
+
     nodes = self._make_nodes(cluster_config, args)
+    exp_id = self._register_exp(self.experiment_name, len(experiments),
+                                results_folder)
+    if '{exp_id}' in results_folder:
+      results_folder = results_folder.format(exp_id=exp_id)
 
     self.results_folder = results_folder
     self.nodes = nodes
     self.remainder_args = args.remainder
-    self.dry_run = args.dry_run
+    self.exp_id = exp_id
 
   def launch(self, experiments, exp_configs):
     """
@@ -179,18 +161,12 @@ class TurrealParser(SymphonyParser):
       1. Add PREAMBLE_CMDS to the experiment
     """
 
-    exp_id = self._register_exp(self.experiment_name, len(experiments),
-                                self.results_folder)
-    if '{exp_id}' in self.results_folder:
-      self.results_folder = self.results_folder.format(exp_id=exp_id)
-    results_folder = self.results_folder
-
     print('Experiment ID: %d' % exp_id)
-    print('Results folder: %s' % (results_folder))
+    print('Results folder: %s' % (self.results_folder))
     algorithm_args = self.remainder_args
     algorithm_args += ["--experiment_id", str(exp_id)]
     algorithm_args += ["--experiment_name", self.experiment_name]
-    algorithm_args += ["--results_folder", results_folder]
+    algorithm_args += ["--results_folder", self.results_folder]
 
     commands = []
     for exp, exp_config in zip(experiments, exp_configs):

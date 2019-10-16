@@ -19,6 +19,7 @@ class Node:
     self.avail_gpu_compute = lambda scale: [
         scale['K80'] * c for c in gpu_compute
     ]
+    self.avail_gpu_ids = list(range(len(gpu_mem)))
 
 
 class Experiment:

@@ -35,7 +35,8 @@ def train():
   exps = []
   for work_id, params in enumerate(
       hyper.discrete('agent_config.learning_rate', [1e-3])):
-    exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id))
+    exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
+                                 env_name='liaison')
     build_program(exp, args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)))
 
