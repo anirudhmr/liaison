@@ -223,9 +223,9 @@ class ParameterServer(Process):
           return PSResponse(type='no_change', info=self.param_info)._asdict()
 
       params_asked_for = {
-          var_name:
-          self.parameters[var_name.replace(request.agent_scope,
-                                           self.param_info['agent_scope'])]
+          var_name: self.parameters[var_name.replace(
+              request.agent_scope + '/', self.param_info['agent_scope'] + '/',
+              1)]
           for var_name in request.var_list
       }
       return PSResponse(type='parameters',
