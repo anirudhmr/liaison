@@ -22,7 +22,7 @@ class LiaisonGPUScheduler:
     Args:
       servers -> [dict(gpu_compute=List, gpu_mem=List, mem=float)]
       wunits -> [[dict(gpu_compute_cost=List, gpu_mem_cost=List, mem=float)]]
-      scheduling_constraints -> Dict[Tuple[wid, pid] -> server_id
+      scheduling_constraints -> Dict[Tuple[wid, pid] -> List[server_id]]
       colocation_constraints -> List[List[Tuple[wid, pid]]]
     """
     self._overload_obj_coeff = overload_obj_coeff
@@ -40,8 +40,8 @@ class LiaisonGPUScheduler:
       # filter out the constraints for this work unit.
       # and convert from Tuple[Tuple[wid, pid], server_id] to Tuple[pid, server_id]
       wu_sched_const = {
-          pid: sid
-          for (wid, pid), sid in scheduling_constraints.items() if wid == i
+          pid: sids
+          for (wid, pid), sids in scheduling_constraints.items() if wid == i
       }
       wunit.send_requests(self._servers, self.mip, wu_sched_const)
 

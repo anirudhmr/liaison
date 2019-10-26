@@ -32,7 +32,7 @@ class LiaisonCPUScheduler:
     """
     Args:
       servers -> [dict(cpu=float, mem=float)]
-      scheduling_constraints -> Dict[Tuple[wid, pid] -> server_id
+      scheduling_constraints -> Dict[Tuple[wid, pid] -> List[server_id]
       colocation_constraints -> List[List[Tuple[wid, pid]]]
     """
     self._overload_obj_coeff = overload_obj_coeff
@@ -74,9 +74,9 @@ class LiaisonCPUScheduler:
     self._assignment_constraints.append(c)
 
     if (wu_id, proc_id) in self._scheduling_constraints:
-      sid = self._scheduling_constraints[(wu_id, proc_id)]
       c = Constraint(sense='E', rhs=1)
-      c.add_term(assignment_vars[sid].name, 1)
+      for sid in self._scheduling_constraints[(wu_id, proc_id)]:
+        c.add_term(assignment_vars[sid].name, 1)
       self._assignment_constraints.append(c)
 
     for coloc_constraint in self._colocation_constraints:

@@ -10,8 +10,7 @@ Process = namedtuple(
 
 class Node:
 
-  def __init__(self, name, avail_cpu, avail_mem, avail_gpu_mem,
-               avail_gpu_compute):
+  def __init__(self, name, avail_cpu, avail_mem, gpu_mem, gpu_compute):
     self.name = name
     self.avail_cpu = lambda: avail_cpu
     self.avail_mem = lambda: avail_mem
@@ -85,8 +84,8 @@ class SchedulingTest(parameterized.TestCase):
       f = self._setup
     servers, work_units = f()
     manager = ScheduleManager(servers,
-                              work_units,
-                              scheduling_constraints={(0, 0): 0},
+                              [wu.list_processes() for wu in work_units],
+                              scheduling_constraints={(0, 0): [0]},
                               colocation_constraints=[[(0, 0), (0, 1)]],
                               time_limit=40)
     assignment, gpu_ass = manager.get_assignment()

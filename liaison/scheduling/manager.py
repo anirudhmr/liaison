@@ -33,7 +33,7 @@ class ScheduleManager:
     Args:
       nodes: List of nodes
       wunits: List of wunits time_limit: Total time limit
-      scheduling_constraints -> Dict[Tuple[wid, pid] -> server_id
+      scheduling_constraints -> Dict[Tuple[wid, pid] -> List[server_id]]
       colocation_constraints -> List[List[Tuple[wid, pid]]]
     """
     self.time_limit = time_limit
@@ -76,12 +76,12 @@ class ScheduleManager:
 
       # add previous assignments as new scheduling constraints.
       # ass: List[Dict[pid] -> server_id]
-      for wid, wu_ass in enumerate(ass):
+      for wid, wu_ass in enumerate(gpu_server_ass):
         for pid, sid in wu_ass.items():
           if (wid, pid) in self.scheduling_constraints:
-            assert self.scheduling_constraints[(wid, pid)] == sid
+            assert sid in self.scheduling_constraints[(wid, pid)]
           else:
-            self.scheduling_constraints[(wid, pid)] = sid
+            self.scheduling_constraints[(wid, pid)] = [sid]
       self._gpu_assignments = gpu_ass
     else:
       gpu_server_ass = [{} for _ in range(len(self.wunits))]
@@ -134,15 +134,19 @@ class ScheduleManager:
         zip(*filter(lambda k: k[1].gpu_mem, enumerate(self.servers))))
 
     gpu_scheduling_constraints = {}
-    for (wid, pid), sid in self.scheduling_constraints.items():
-      if sid in selected_server_ids:
-        sid1 = selected_server_ids.index(sid)
-        if wid in selected_work_ids:
-          wid1 = selected_work_ids.index(wid)
-          selected_proc_ids, selected_procs = selected_proc_info[wid1]
-          if pid in selected_proc_ids:
-            pid1 = selected_proc_ids.index(pid)
-            gpu_scheduling_constraints[(wid1, pid1)] = sid1
+    for (wid, pid), sids in self.scheduling_constraints.items():
+      for sid in sids:
+        if sid in selected_server_ids:
+          sid1 = selected_server_ids.index(sid)
+          if wid in selected_work_ids:
+            wid1 = selected_work_ids.index(wid)
+            selected_proc_ids, selected_procs = selected_proc_info[wid1]
+            if pid in selected_proc_ids:
+              pid1 = selected_proc_ids.index(pid)
+              if (wid1, pid1) in gpu_scheduling_constraints:
+                gpu_scheduling_constraints[(wid1, pid1)].append(sid1)
+              else:
+                gpu_scheduling_constraints[(wid1, pid1)] = [sid1]
 
     gpu_colocation_constraints = []
     for colocation_l in self.colocation_constraints:

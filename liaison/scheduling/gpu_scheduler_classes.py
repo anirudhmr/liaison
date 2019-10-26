@@ -57,8 +57,9 @@ class Process:
     self.reqs = []
 
   def send_requests(self, servers, mip, constraint=None):
-    """Sends allocation requests to the servers.
-       constraints -> int (server_id of the process)
+    """
+       Sends allocation requests to the servers.
+       constraints -> List[int] (server_ids where the process could go)
     """
     n_requests = len(self.gpu_compute_cost)  # number of gpus requesting
     responses = [[] for _ in range(n_requests)]
@@ -66,6 +67,12 @@ class Process:
         Request(cost, mem)
         for cost, mem in zip(self.gpu_compute_cost, self.gpu_mem_cost)
     ]
+
+    if constraint:
+      c = mip.new_constraint('E',
+                             1,
+                             name='pl_constraint_wid_%d_pid_%d' %
+                             (self.wid, self.id))
 
     if reqs:
       for server in servers:
@@ -75,11 +82,11 @@ class Process:
           req.add_response(response)
 
         # check if constraint requires to set the process to this server.
-        if constraint == server.id:
-          c = mip.new_constraint('E', 1, name=None)
-          c.add_expression(
-              Expression.sum_expressions([resp.expr
-                                          for resp in req.responses]))
+        if constraint:
+          if server.id in constraint:
+            c.add_expression(
+                Expression.sum_expressions(
+                    [resp.expr for resp in req.responses]))
 
       self.reqs.extend(reqs)
 
@@ -116,8 +123,8 @@ class WorkUnit:
 
   def send_requests(self, servers, mip, wu_sched_constraints=None):
     """
-      wu_sched_constraints -> Dict[pid] -> server_id
-                              pid should be scheduled on server_id
+      wu_sched_constraints -> Dict[pid] -> List[server_ids]
+                              pid should be scheduled on one of server_ids
     """
     wu_sched_constraints = {} if wu_sched_constraints is None else wu_sched_constraints
     for proc in self.procs:
