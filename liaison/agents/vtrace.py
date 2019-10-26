@@ -5,7 +5,7 @@ from liaison.agents import BaseAgent, StepOutput, utils, vtrace_ops
 from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict
-from tf.contrib.framework import nest
+from tensorflow.contrib.framework import nest
 
 _ACTION_SPEC_UNBOUNDED = 'action spec `{}` is not correctly bounded.'
 _DTYPE_NOT_INTEGRAL = '`dtype` must be integral, got {}.'
@@ -20,11 +20,11 @@ class Agent(BaseAgent):
     self.config = ConfigDict(**kwargs)
     self._name = name
     self._action_spec = action_spec
-    self._load_model(model or {})
+    self._load_model(**(model or {}))
     self._obs_ph = None
 
   def initial_state(self, bs):
-    return self._model.initial_state(bs)
+    return self._model.get_initial_state(bs)
 
   def step(self, step_type, reward, obs, prev_state):
     """Step through and return an action.
@@ -84,7 +84,7 @@ class Agent(BaseAgent):
 
       actions = step_outputs.action  # [T, B]
       behavior_logits = step_outputs.logits  # [T, B]
-
+      target_logits_flattened = target_logits
       # [T, B]
       target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
 
@@ -108,22 +108,22 @@ class Agent(BaseAgent):
             behaviour_policy_logits=behavior_logits,
             target_policy_logits=target_logits,
             actions=actions,
-            discounts=discounts[1:] * self.config.discount_factor,
+            discounts=discounts[1:] * config.discount_factor,
             rewards=rewards[1:],
             values=values,
             bootstrap_value=bootstrap_value,
-            clip_rho_threshold=tf.cast(self.config.clip_rho_threshold,
-                                       tf.float32),
-            clip_pg_rho_threshold=tf.cast(self.config.clip_pg_rho_threshold,
+            clip_rho_threshold=tf.cast(config.clip_rho_threshold, tf.float32),
+            clip_pg_rho_threshold=tf.cast(config.clip_pg_rho_threshold,
                                           tf.float32))
 
       # Ignore the timesteps that caused a reset to happen
       # [T, B]
       valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-      n_valid_steps = tf.reduce_sum(valid_mask)
+      n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
+                              tf.float32)
 
       actions_logp = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          actions.reshape(-1), target_logits)
+          labels=actions, logits=target_logits)
 
       # The policy gradients loss
       pi_loss = -tf.reduce_sum(
@@ -140,7 +140,7 @@ class Agent(BaseAgent):
 
       entropy_coeff = self._get_entropy_regularization_constant()
       # The summed weighted loss
-      total_loss = (pi_loss + vf_loss * vf_loss_coeff -
+      total_loss = (pi_loss + vf_loss * config.loss.vf_loss_coeff -
                     entropy * entropy_coeff)
       # scale it for per step units.
       total_loss /= n_valid_steps
@@ -166,21 +166,21 @@ class Agent(BaseAgent):
       self._logged_values = {
           # entropy
           'entropy/target_policy_entropy':
-          f(compute_entropy(target_logits)),
+          entropy,
           'entropy/behavior_policy_entropy':
           f(compute_entropy(behavior_logits)),
           'entropy/is_ratio':
           f(
               tf.exp(actions_logp -
                      tf.nn.sparse_softmax_cross_entropy_with_logits(
-                         actions.reshape(-1), behavior_logits))),
+                         labels=actions, logits=behavior_logits))),
           # loss
           'loss/entropy_loss':
           -entropy * entropy_coeff / n_valid_steps,
           'loss/pg_loss':
           pi_loss / n_valid_steps,
           'loss/vf_loss':
-          vf_loss * vf_loss_coeff / n_valid_steps,
+          vf_loss * config.loss.vf_loss_coeff / n_valid_steps,
           'loss/total_loss':
           total_loss,
           # optimization related
@@ -204,7 +204,7 @@ class Agent(BaseAgent):
   def _init_optimizer(self, lr_op):
     return tf.train.AdamOptimizer(lr_op)
 
-  def update(self, sess, feed_dict, loggers):
+  def update(self, sess, feed_dict):
     _, vals = sess.run([self._train_op, self._logged_values],
                        feed_dict=feed_dict)
     return vals

@@ -28,8 +28,9 @@ class LearnerDataPrefetcher(DataFetcher):
       worker_preprocess=None,
   ):
     assert batch_size % prefetch_batch_size == 0
-    self.fetch_queue = queue.Queue(maxsize=max_prefetch_queue)
-    self._combine_prefetch_queue = queue.Queue(maxsize=max_prefetch_queue)
+    self.fetch_queue = queue.Queue(
+        maxsize=max(1, max_prefetch_queue - batch_size // prefetch_batch_size))
+    self._combine_prefetch_queue = queue.Queue(maxsize=1)
     self.timer = U.TimeRecorder()
 
     self.sampler_host = os.environ['SYMPH_SAMPLER_FRONTEND_HOST']

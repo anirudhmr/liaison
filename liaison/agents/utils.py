@@ -1,5 +1,4 @@
 import tensorflow as tf
-from shapeguard import ShapeGuard
 
 
 def sample_from_logits(logits, seed):
@@ -49,8 +48,6 @@ def merge_first_two_dims(tensor):
     shape.pop(1)
   else:
     # dynamic shape
-    sg = ShapeGuard()
-    sg.guard(shape, '?')
     shape = tf.concat([[shape[0] * shape[1]], shape[2:]], axis=0)
   return tf.reshape(tensor, shape)
 
@@ -66,6 +63,10 @@ def get_decay_ops(init_val,
   if global_step is None:
     global_step = tf.train.get_or_create_global_step()
   val_gstep = global_step - start_decay_step
+
+  init_val = float(init_val)
+  min_val = float(min_val)
+  dec_val = float(dec_val)
 
   def f1():
     return tf.constant(init_val)

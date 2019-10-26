@@ -1,10 +1,9 @@
-"""
-MLP based model.
-"""
+"""MLP based model."""
 
 import sonnet as snt
+from sonnet.python.ops import initializers
 from liaison.agents.models.utils import *
-from shapeguard import ShapeGuard
+# from shapeguard import ShapeGuard
 
 
 class Model:
@@ -18,8 +17,9 @@ class Model:
     self.value = None
 
   def _validate_features_shape(self, features):
-    sg = ShapeGuard()
-    sg.guard(features, "?, *")
+    # sg = ShapeGuard()
+    # sg.guard(features, "?, *")
+    return
 
   def _dummy_state(self, bs):
     return tf.fill(tf.expand_dims(bs, 0), 0)
@@ -27,12 +27,13 @@ class Model:
   def get_initial_state(self, bs):
     return self._dummy_state(bs)
 
-  def get_logits_and_next_state(self, step_type, _, obs, _):
+  def get_logits_and_next_state(self, step_type, _, obs, __):
     with tf.variable_scope('mlp_policy'):
       self.policy = snt.nets.MLP(
           self.hidden_layer_sizes + [self.n_actions],
-          w_init=glorot_uniform(self.seed),
-          b_init=snt.initializers.Constant(0.1),  # small bias initializer.
+          initializers=dict(w=glorot_uniform(self.seed),
+                            b=initializers.init_ops.Constant(
+                                0.1)),  # small bias initializer.
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
@@ -43,19 +44,19 @@ class Model:
       features = obs['features']
       self._validate_features_shape(features)
       logits = self.policy(features)
-
       bs = tf.shape(step_type)[0]
-      return logits, _dummy_state(bs)
+      return logits, self._dummy_state(bs)
 
-  def get_value(self, _, _, obs, _):
+  def get_value(self, _, __, obs, ___):
     with tf.variable_scope('mlp_value'):
       self.value = snt.nets.MLP(
           self.hidden_layer_sizes + [1],
-          w_init=glorot_uniform(self.seed),
-          b_init=snt.initializers.Constant(0.1),  # small bias initializer.
+          initializers=dict(w=glorot_uniform(self.seed),
+                            b=initializers.init_ops.Constant(
+                                0.1)),  # small bias initializer.
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
       self._validate_features_shape(obs['features'])
       value_op = self.value(obs['features'])
-    return value_op
+      return value_op

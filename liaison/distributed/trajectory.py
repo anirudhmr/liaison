@@ -118,7 +118,7 @@ class Trajectory(object):
             l))
 
   @staticmethod
-  def batch(self, trajs, traj_spec):
+  def batch(trajs, traj_spec):
     batched_trajs = Trajectory._stack(trajs, traj_spec)
 
     def f(spec, l):

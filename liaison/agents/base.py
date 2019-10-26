@@ -10,6 +10,7 @@ import liaison.utils as U
 import numpy as np  # set seed
 import six
 import tensorflow as tf  # set seed
+from liaison.agents.utils import *
 
 # action, logits, next_state all have to be flat structures (list/nparrays/scalars.)
 StepOutput = collections.namedtuple('StepOutput',
@@ -32,7 +33,7 @@ class Agent(object):
 
   def _load_model(self, class_path, seed=None, **kwargs):
     # Loads a network based on the provided config.
-    model_class = U.import_obj(class_path, 'Model')
+    model_class = U.import_obj('Model', class_path)
     if seed is None:
       seed = self.seed
     self._model = model_class(seed=seed, **kwargs)
@@ -106,6 +107,6 @@ class Agent(object):
 
   def set_seed(self, seed):
     self.seed = seed
-    tf.random.set_random_seed(seed)
+    tf.set_random_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
