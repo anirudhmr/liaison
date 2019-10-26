@@ -34,6 +34,7 @@ class ExpBuffer(object):
   def flush(self):
     """
         Serialized all currenct content of the buffer into binary
+        Also reset the buffer.
 
         Returns:
             binary data of (exp_list, ob_storage)
@@ -62,10 +63,10 @@ class ExpBuffer(object):
 
 class ExpSender(object):
   """
-    `send()` logic can be overwritten to support
-    more complicated agent experiences,
-    such as multiagent, self-play, etc.
-    """
+  `send()` logic can be overwritten to support
+  more complicated agent experiences,
+  such as multiagent, self-play, etc.
+  """
 
   def __init__(self, *, host, port, flush_iteration):
     """
@@ -77,13 +78,16 @@ class ExpSender(object):
     self._exp_buffer = ExpBuffer()
     self._flush_tracker = PeriodicTracker(flush_iteration)
 
-  def send(self, hash_dict, nonhash_dict={}):
+  def send(self, hash_dict, nonhash_dict=None):
     """
-        Args:
-            hash_dict: Large/Heavy data that should be deduplicated
-                       by the caching mekanism
-            nonhash_dict: Small data that we can afford to keep copies of
-        """
+      Args:
+          hash_dict: Large/Heavy data that should be deduplicated
+                     by the caching mekanism
+          nonhash_dict: Small data that we can afford to keep copies of
+    """
+    if nonhash_dict is None:
+      nonhash_dict = {}
+
     self._exp_buffer.add(
         hash_dict=hash_dict,
         nonhash_dict=nonhash_dict,

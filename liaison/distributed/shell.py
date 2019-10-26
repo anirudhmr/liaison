@@ -5,13 +5,12 @@ Env variables used:
   SYMPH_PS_FRONTEND_PORT
 """
 
-from __future__ import absolute_import, division, print_function
-
 import os
 import tensorflow as tf
 from absl import logging
 from liaison.specs import ArraySpec
 from liaison.utils import ConfigDict
+from liaison.env import StepType
 from tensorflow.contrib.framework import nest
 from liaison.distributed import ParameterClient
 

@@ -46,11 +46,6 @@ class Learner(object):
                loggers,
                system_loggers,
                agent_scope='learner',
-               prefetch_batch_size=1,
-               max_prefetch_queue=1,
-               max_fetch_queue=1,
-               max_preprocess_queue=1,
-               prefetch_processes=1,
                use_gpu=True,
                publish_every=1,
                checkpoint_every=100,
@@ -72,11 +67,6 @@ class Learner(object):
       prefetch_process: # of processes to run in parallel for prefetching.
     """
     self.config = ConfigDict(**session_config)
-    self._prefetch_batch_size = prefetch_batch_size
-    self._max_prefetch_queue = max_prefetch_queue
-    self._max_preprocess_queue = max_preprocess_queue
-    self._max_fetch_queue = max_fetch_queue
-    self._prefetch_processes = prefetch_processes
     self._loggers = loggers
     self._system_loggers = system_loggers
     self._batch_size = batch_size
@@ -114,6 +104,7 @@ class Learner(object):
       self._agent.build_update_ops(**self._traj_phs)
 
       self.sess.run(tf.global_variables_initializer())
+      self.sess.run(tf.local_variables_initializer())
       self._saver = tf.train.Saver()
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope=agent_scope)
@@ -151,15 +142,26 @@ class Learner(object):
                                  deserializer=U.pickle_deserialize,
                                  timeout=4)
 
+  def _batch_trajs(self, l):
+    return Trajectory.batch(l, self._traj_spec)
+
   def _setup_exp_fetcher(self):
+    config = self.config
+    bs = self._batch_size
+    # set prefetch_batch_size equal to batch_size / N:
+    # split prefetching into N chunks where batch_size % N == 0
+    # set N to be as high as possible with an upper limit of 8
+    # If batch_size is a prime number, then this will end up
+    # prefetching the batch in single chunk
+    pf_bs = bs / max([i for i in range(1, 9) if bs % i == 0])
+
     self._exp_fetcher = LearnerDataPrefetcher(
-        batch_size=self._prefetch_batch_size,
-        max_prefetch_queue=self._max_prefetch_queue,
-        max_fetch_queue=self._max_fetch_queue,
-        max_preprocess_queue=self._max_preprocess_queue,
-        prefetch_processes=self._prefetch_processes,
-        worker_preprocess=None,
-        main_preprocess=None)
+        batch_size=bs,
+        prefetch_batch_size=pf_bs,
+        combine_trajs=self._batch_trajs,
+        max_prefetch_queue=config.max_prefetch_queue * pf_bs,
+        prefetch_processes=config.prefetch_processes,
+        prefetch_threads_per_process=config.prefetch_threads_per_process)
     self._exp_fetcher.start()
 
   def _setup_ps_client_handle(self):
@@ -193,13 +195,6 @@ class Learner(object):
       if data is None:
         return
       self._ps_publisher.publish(*data)
-
-  def _get_next_exp(self):
-    """Generates iterator to fetch next experience batch."""
-    while True:
-      batches = self._exp_fetcher.get()
-      for batch in batches:
-        yield batch
 
   def _get_file_uploader(self):
     return ZmqFileUploader(host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
@@ -245,12 +240,14 @@ class Learner(object):
     return self.sess.run(self._global_step_op)
 
   def main(self):
-    exp_iter = self._get_next_exp()
     for _ in range(self.config.n_train_steps):
-      additional_system_logs = dict()
-      with U.Timer() as batch_timer:
-        batch = next(exp_iter)
+      system_logs = dict()
 
+      # fetch the next training batch
+      with U.Timer() as batch_timer:
+        batch = self._exp_fetcher.get()
+
+      # run update step on the sampled batch
       feed_dict = {
           ph: val
           for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))
@@ -258,23 +255,26 @@ class Learner(object):
       with U.Timer() as step_timer:
         log_vals = self._agent.update(self.sess, feed_dict)
 
-      if self.global_step == 1:  # after first sess.run finishes.
-        self._send_metagraph()
-
-      if self._publish_tracker.track_increment():
-        with U.Timer() as publish_timer:
-          self._publish_variables()
-
-        additional_system_logs['publish_time_sec'] = publish_timer.to_seconds()
-
-      if self.global_step % self._checkpoint_every == 0:
-        with U.Timer() as ckpt_timer:
-          self._create_ckpt()
-        additional_system_logs['ckpt_time_sec'] = ckpt_timer.to_seconds()
-
       for logger in self._loggers:
         logger.write(log_vals)
 
+      # after first sess.run finishes send the metagraph.
+      if self.global_step == 1:
+        self._send_metagraph()
+
+      # publish the variables if required.
+      if self._publish_tracker.track_increment():
+        with U.Timer() as publish_timer:
+          self._publish_variables()
+        system_logs['publish_time_sec'] = publish_timer.to_seconds()
+
+      # Checkpoint if required
+      if self.global_step % self._checkpoint_every == 0:
+        with U.Timer() as ckpt_timer:
+          self._create_ckpt()
+        system_logs['ckpt_time_sec'] = ckpt_timer.to_seconds()
+
+      # log system profile
       for logger in self._system_loggers:
         logger.write(
             dict(global_step=self.global_step,
@@ -282,6 +282,6 @@ class Learner(object):
                  float(step_timer.to_seconds()),
                  per_step_time_sec=step_timer.to_seconds(),
                  batch_fetch_time_sec=batch_timer.to_seconds(),
-                 **additional_system_logs))
+                 **system_logs))
 
     self._publish_queue.put(None)  # exit the thread once training ends.

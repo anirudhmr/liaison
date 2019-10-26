@@ -1,7 +1,5 @@
 """Test file for ur discrete."""
 
-from __future__ import absolute_import, division, print_function
-
 import os
 import time
 
@@ -21,6 +19,7 @@ B = 8
 _LOCALHOST = 'localhost'
 PS_FRONTEND_PORT = '6000'
 COLLECTOR_FRONTEND_PORT = '6001'
+SYMPH_SPEC_PORT = '6002'
 TRAJ_LENGTH = 10
 N_ENVS = 2
 SEED = 42
@@ -95,7 +94,8 @@ class ActorTest(absltest.TestCase):
         dict(SYMPH_PS_FRONTEND_HOST=_LOCALHOST,
              SYMPH_PS_FRONTEND_PORT=PS_FRONTEND_PORT,
              SYMPH_COLLECTOR_FRONTEND_HOST=_LOCALHOST,
-             SYMPH_COLLECTOR_FRONTEND_PORT=COLLECTOR_FRONTEND_PORT))
+             SYMPH_COLLECTOR_FRONTEND_PORT=COLLECTOR_FRONTEND_PORT,
+             SYMPH_SPEC_PORT=SYMPH_SPEC_PORT))
 
   def _setup_exp_collector(self):
     exp_server = ExperienceCollectorServer(host=_LOCALHOST,

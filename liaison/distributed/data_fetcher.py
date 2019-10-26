@@ -13,32 +13,34 @@ class LearnerDataPrefetcher(DataFetcher):
 
         Fetches data from replay in multiple processes and put them into
         a queue
+
+        First spawns worker_preprocess
     """
 
   def __init__(
       self,
       batch_size,
+      prefetch_batch_size,
+      combine_trajs,
       max_prefetch_queue,
-      max_fetch_queue,
-      max_preprocess_queue,
       prefetch_processes,
+      prefetch_threads_per_process,
       worker_preprocess=None,
-      main_preprocess=None,
   ):
-    self.max_fetch_queue = max_prefetch_queue
-    self.max_preprocess_queue = max_preprocess_queue
-    self.fetch_queue = queue.Queue(maxsize=self.max_fetch_queue)
-    self.preprocess_queue = queue.Queue(maxsize=self.max_preprocess_queue)
+    assert batch_size % prefetch_batch_size == 0
+    self.fetch_queue = queue.Queue(maxsize=max_prefetch_queue)
+    self._combine_prefetch_queue = queue.Queue(maxsize=max_prefetch_queue)
     self.timer = U.TimeRecorder()
 
     self.sampler_host = os.environ['SYMPH_SAMPLER_FRONTEND_HOST']
     self.sampler_port = os.environ['SYMPH_SAMPLER_FRONTEND_PORT']
+    self._combine_trajs = combine_trajs
     self.batch_size = batch_size
+    self.prefetch_batch_size = prefetch_batch_size
     self.prefetch_processes = prefetch_processes
     self.prefetch_host = '127.0.0.1'
     self.worker_comm_port = os.environ['SYMPH_PREFETCH_QUEUE_PORT']
     self.worker_preprocess = worker_preprocess
-    self.main_preprocess = main_preprocess
     super().__init__(handler=self._put,
                      remote_host=self.sampler_host,
                      remote_port=self.sampler_port,
@@ -47,33 +49,29 @@ class LearnerDataPrefetcher(DataFetcher):
                      remote_serializer=U.serialize,
                      remote_deserialzer=U.deserialize,
                      n_workers=self.prefetch_processes,
-                     worker_handler=self.worker_preprocess)
+                     worker_handler=self.worker_preprocess,
+                     threads_per_worker=prefetch_threads_per_process)
 
   def run(self):
-    self._preprocess_thread = Thread(target=self._preprocess_loop, daemon=True)
-    self._preprocess_thread.start()
+    self._combine_prefetch_thread = Thread(
+        target=self._combine_prefetched_batches)
+    self._combine_prefetch_thread.start()
     super().run()
 
-  def _preprocess_loop(self):
-    while True:
-      sharedmem_obj = self.fetch_queue.get(block=True)
-      batch = sharedmem_obj.data
-      if self.main_preprocess is not None:
-        batch = self.main_preprocess(batch)
-      self.preprocess_queue.put(batch)
-
   def _put(self, _, data):
-    # logging.info('Datafetcher got new element!')
     self.fetch_queue.put(data, block=True)
 
+  def _combine_prefetched_batches(self):
+    while True:
+      l = []
+      while len(l) < self.batch_size:
+        l.extend(self.fetch_queue.get().data)
+      self._combine_prefetch_queue.put(self._combine_trajs(l))
+
   def get(self):
-    """
-            Returns a SharedMemoryObject
-            whose .data attribute contains data
-        """
     with self.timer.time():
-      return self.preprocess_queue.get(block=True)
+      return self._combine_prefetch_queue.get()
 
   def request_generator(self):
     while True:
-      yield self.batch_size
+      yield self.prefetch_batch_size

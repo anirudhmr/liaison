@@ -18,16 +18,16 @@ from collections import namedtuple
 # var_list: List of variables to fetch
 # agent_scope: Substitute agent scope with learner scope for fetching
 PSRequest = namedtuple('PSRequest',
-                       ['type', 'hash', 'var_list', 'agent_scope'],
-                       defaults=[None, None, None, None])
+                       ['type', 'hash', 'var_list', 'agent_scope'])
+PSRequest.__new__.__defaults__ = (None, ) * len(PSRequest._fields)
 
 # type can be 'info' or 'parameters' or 'not_ready' or 'no_change'
 # not_ready indicates that the parameter server has no data to serve.
 # no_change means that the parameters have not changed since last hash.
 # info => dict of learner side info
 # parameters => valid only for the 'parameters' type
-PSResponse = namedtuple('PSResponse', ['type', 'info', 'parameters'],
-                        defaults=[None, None, None])
+PSResponse = namedtuple('PSResponse', ['type', 'info', 'parameters'])
+PSResponse.__new__.__defaults__ = (None, ) * len(PSResponse._fields)
 
 
 class ParameterPublisher(object):

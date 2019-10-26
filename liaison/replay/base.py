@@ -9,6 +9,12 @@ from liaison.distributed import ExperienceCollectorServer
 from liaison.session import get_loggerplex_client, get_tensorplex_client
 
 
+class ReplayUnderFlowException(Exception):
+
+  def __init__(self, message=''):
+    super().__init__(message)
+
+
 class Replay:
   """
         Important: When extending this class, make sure to follow the init
@@ -73,7 +79,7 @@ class Replay:
         This function is called in _sample_handler for learner side Zmq request
 
         Args:
-            batch_size:
+            batch_size
 
         Returns:
             a list of exp_tuples
@@ -100,6 +106,38 @@ class Replay:
     raise NotImplementedError
 
   # ======================== internal methods ========================
+  def _sample_request_handler(self, req):
+    """
+    Handle requests to the learner
+    https://stackoverflow.com/questions/29082268/python-time-sleep-vs-event-wait
+    Since we don't have external notify, we'd better just use sleep
+    """
+    batch_size = U.deserialize(req)
+    U.assert_type(batch_size, int)
+    while not self.start_sample_condition():
+      time.sleep(0.01)
+    self.cumulative_sampled_count += batch_size
+    self.cumulative_request_count += 1
+
+    with self.sample_time.time():
+      while True:
+        try:
+          sample = self.sample(batch_size)
+          break
+        except ReplayUnderFlowException:
+          time.sleep(1e-3)
+
+    with self.serialize_time.time():
+      return U.serialize(sample)
+
+  def _insert_wrapper(self, exp):
+    """
+            Allows us to do some book keeping in the base class
+        """
+    self.cumulative_collected_count += 1
+    with self.insert_time.time():
+      self.insert(exp)
+
   def _setup_logging(self):
     # self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
     #                                  self.config)
@@ -131,31 +169,6 @@ class Replay:
     self.exp_in_speed = U.MovingAverageRecorder(decay=0.99)
     self.exp_out_speed = U.MovingAverageRecorder(decay=0.99)
     self.handle_sample_request_speed = U.MovingAverageRecorder(decay=0.99)
-
-  def _insert_wrapper(self, exp):
-    """
-            Allows us to do some book keeping in the base class
-        """
-    self.cumulative_collected_count += 1
-    with self.insert_time.time():
-      self.insert(exp)
-
-  def _sample_request_handler(self, req):
-    """
-        Handle requests to the learner
-        https://stackoverflow.com/questions/29082268/python-time-sleep-vs-event-wait
-        Since we don't have external notify, we'd better just use sleep
-        """
-    batch_size = U.deserialize(req)
-    U.assert_type(batch_size, int)
-    while not self.start_sample_condition():
-      time.sleep(0.01)
-    self.cumulative_sampled_count += batch_size
-    self.cumulative_request_count += 1
-    with self.sample_time.time():
-      sample = self.sample(batch_size)
-    with self.serialize_time.time():
-      return U.serialize(sample)
 
   def start_evict_thread(self):
     if self._evict_thread is not None:

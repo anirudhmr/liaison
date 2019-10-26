@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import functools
 import copy
 import numpy as np
 from liaison.agents import StepOutput
@@ -32,7 +33,7 @@ class Trajectory(object):
       obs_spec,
       step_output_spec,
   ):
-    self._traj = None
+    self._trajs = None
     # Don't use shape in the spec since it's unknown
     self._traj_spec = dict(
         step_type=ArraySpec(dtype=np.int8,
@@ -58,29 +59,76 @@ class Trajectory(object):
                 discount=discount,
                 observation=observation,
                 step_output=step_output._asdict())
-    self._traj.append(traj)
+    self._trajs.append(traj)
 
   def reset(self):
-    self._traj = []
+    self._trajs = []
 
   @property
   def spec(self):
     return self._traj_spec
 
-  def stack(self):
+  @staticmethod
+  def _stack(trajs, traj_spec):
     stacked_trajs = []
 
     def f(spec, *l):
       l = list(filter(lambda k: k is not None, l))
       return np.stack(l, axis=0).astype(spec.dtype)
 
-    stacked_trajs = nest.map_structure_up_to(self._traj_spec, f,
-                                             self._traj_spec, *self._traj)
-    return stacked_trajs
+    return nest.map_structure_up_to(traj_spec, f, traj_spec, *trajs)
+
+  def stack(self):
+    return Trajectory._stack(self._trajs, self._traj_spec)
+
+  def debatch_and_stack(self):
+    """Remove the leading batch dimension and then stack.
+    Returns list of stacked timesteps."""
+    traj_spec = self._traj_spec
+
+    def f(arr):
+      return None if arr is None else np.split(arr, len(arr))
+
+    l = []
+    for traj in self._trajs:
+      # split along the batch dimension
+      d = nest.map_structure_up_to(traj_spec, f, traj)
+
+      # determine the batch size
+      lens = [
+          len(v) for _, v in filter(lambda k: k is not None,
+                                    nest.flatten_up_to(traj_spec, d))
+      ]
+      bs = lens[0]
+      assert all(x == bs for x in lens)
+
+      # Flatten and replicate by packing the sequence bs times.
+      d = nest.flatten_up_to(traj_spec, d)
+      if not l:
+        l = [[] for _ in range(bs)]
+
+      for i in range(bs):
+        l[i].append(
+            nest.pack_sequence_as(
+                traj_spec, list(map(lambda k: None
+                                    if k is None else k[i], d))))
+
+    return list(
+        map(functools.partial(Trajectory._stack, traj_spec=self._traj_spec),
+            l))
+
+  @staticmethod
+  def batch(self, trajs, traj_spec):
+    batched_trajs = Trajectory._stack(trajs, traj_spec)
+
+    def f(spec, l):
+      return None if l is None else np.swapaxes(l, 0, 1)
+
+    return nest.map_structure_up_to(traj_spec, f, batched_trajs)
 
   def __len__(self):
-    if self._traj:
-      return len(self._traj)
+    if self._trajs:
+      return len(self._trajs)
     else:
       return 0
 

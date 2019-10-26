@@ -102,9 +102,6 @@ class ReplayTest(tf.test.TestCase):
 
   def _get_learner_config(self):
     learner_config = ConfigDict()
-    learner_config.replay = ConfigDict()
-    learner_config.replay.memory_size = MAX_REPLAY_SIZE
-    learner_config.replay.sampling_start_size = 0
     return learner_config
 
   def _get_session_config(self):
@@ -113,8 +110,10 @@ class ReplayTest(tf.test.TestCase):
     session_config.seed = SEED
 
     session_config.replay = ConfigDict()
+    session_config.replay.memory_size = MAX_REPLAY_SIZE
     session_config.replay.evict_interval = None
     session_config.replay.tensorboard_display = True
+    session_config.replay.sampling_start_size = 0
 
     session_config.loggerplex = ConfigDict()
     session_config.loggerplex.level = 'info'
@@ -132,8 +131,8 @@ class ReplayTest(tf.test.TestCase):
 
     session_config.learner = ConfigDict()
     session_config.learner.max_prefetch_queue = 100
-    session_config.learner.max_preprocess_queue = 100
-    session_config.learner.prefetch_processes = 2
+    session_config.learner.prefetch_processes = 1
+    session_config.learner.prefetch_threads_per_process = 1
 
     return session_config
 
@@ -145,10 +144,12 @@ class ReplayTest(tf.test.TestCase):
     )
 
   def _get_data_fetcher(self):
-    return LearnerDataPrefetcher(session_config=self._get_session_config(),
-                                 batch_size=BATCH_SIZE,
+    session_config = self._get_session_config()
+    return LearnerDataPrefetcher(batch_size=BATCH_SIZE,
+                                 combine_trajs=lambda l: l,
+                                 prefetch_batch_size=BATCH_SIZE // 2,
                                  worker_preprocess=None,
-                                 main_preprocess=lambda k: k)
+                                 **session_config.learner)
 
   def _start_tensorplex_server(self):
     th = Thread(target=run_tensorplex, args=(self._get_session_config(), ))
@@ -181,7 +182,7 @@ class ReplayTest(tf.test.TestCase):
       for j in range(BATCH_SIZE):
         exp_sender.send(data, {})
 
-      time.sleep(.01)
+      time.sleep(.001)
       self.assertEqual(len(replay), min((1 + i) * BATCH_SIZE, MAX_REPLAY_SIZE))
 
       recv_data = df.get()
@@ -192,4 +193,5 @@ class ReplayTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  # tf.test.main()
+  ReplayTest().testReplay()

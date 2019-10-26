@@ -46,6 +46,7 @@ class Actor:
 
     del sess_config
     assert isinstance(actor_id, int)
+    self.batch_size = batch_size
     self._traj_length = traj_length
     if use_parallel_envs:
       self._env = ParallelBatchedEnv(batch_size,
@@ -90,8 +91,8 @@ class Actor:
       ts = self._env.step(step_output.action)
       self._traj.add(step_output=step_output, **dict(ts._asdict()))
       if len(self._traj) == self._traj_length:
-        exp = self._traj.stack()
-        self._send_experience(exp)
+        exps = self._traj.debatch_and_stack()
+        self._send_experiences(exps)
         self._traj.reset()
         self._traj.start(next_state=self._shell.next_state,
                          **dict(ts._asdict()))
@@ -101,10 +102,11 @@ class Actor:
     self._exp_sender = ExpSender(
         host=os.environ['SYMPH_COLLECTOR_FRONTEND_HOST'],
         port=os.environ['SYMPH_COLLECTOR_FRONTEND_PORT'],
-        flush_iteration=1)
+        flush_iteration=self.batch_size)
 
-  def _send_experience(self, exp):
-    self._exp_sender.send(hash_dict=exp)
+  def _send_experiences(self, exps):
+    for exp in exps:
+      self._exp_sender.send(hash_dict=exp)
 
   def _start_spec_server(self):
     logging.info("Starting spec server.")
