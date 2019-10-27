@@ -153,7 +153,7 @@ class Learner(object):
     # set N to be as high as possible with an upper limit of 8
     # If batch_size is a prime number, then this will end up
     # prefetching the batch in single chunk
-    pf_bs = bs / max([i for i in range(1, 9) if bs % i == 0])
+    pf_bs = bs // max([i for i in range(1, 9) if bs % i == 0])
 
     self._exp_fetcher = LearnerDataPrefetcher(
         batch_size=bs,

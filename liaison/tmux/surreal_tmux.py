@@ -15,10 +15,16 @@ from liaison.utils import ConfigDict, ConfigDict_to_dict
 from symphony.commandline import SymphonyParser
 from symphony.engine import Cluster
 from symphony.tmux import Node
+from ccc.src import NodeLoader
 
-ENV_ACTIVATE_CMD = 'conda activate symphony'
+ENV_ACTIVATE_CMD = 'conda activate liaison'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
 PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
+
+RES_DIRS = [
+    '/'.join(__file__.split('/')[:-2]),
+    '/'.join(__file__.split('/')[:-3]) + '/.git'
+]
 
 
 class TurrealParser(SymphonyParser):
@@ -39,7 +45,7 @@ class TurrealParser(SymphonyParser):
                         type=str,
                         help='Results folder.')
     parser.add_argument('--n_work_units', type=int, default=1)
-    parser.add_argument('--spy_measurement_interval', type=float, default=1.)
+    parser.add_argument('--filter_nodes_regex', type=str, default='.*')
     self._add_dry_run(parser)
 
     # Note we cannot add it as a  subparser since argon doesn't support this.
@@ -47,7 +53,7 @@ class TurrealParser(SymphonyParser):
     # see main function below.
     cluster_config_parser = ArgumentParser('Cluster config', add_help=False)
     cluster_config_parser.add_config_file(name='cluster',
-                                          default='liaison/configs/cluster.py')
+                                          default='ccc/config.py')
     self._cluster_config_parser = cluster_config_parser
 
   # ==================== helpers ====================
@@ -72,9 +78,9 @@ class TurrealParser(SymphonyParser):
 
     self._xm_client = get_xmanager_client(host=args.xmanager_server_host,
                                           port=int(args.xmanager_server_port),
-                                          timeout=1)
+                                          timeout=4)
 
-  def _register_exp(self, exp_name, n_work_units, results_folder):
+  def _register_exp(self, exp_name):
     return self._xm_client.register(name=exp_name)
 
   def _record_commands(self, exp_id, preamble_cmds, procs, dry_run):
@@ -100,15 +106,9 @@ class TurrealParser(SymphonyParser):
     self._cli.request(['register_commands', [], commands])
 
   def _make_nodes(self, cluster_config, args):
-    nodes = []
-    host_names_to_ip = cluster_config.host_names
-    for host_name, node_config in cluster_config.host_info.items():
-      nodes.append(Node(host_name, host_names_to_ip[host_name], **node_config))
-
+    nodes = NodeLoader(cluster_config, args.filter_nodes_regex).nodes
     with ThreadPool(len(nodes)) as pool:
-      pool.map(
-          lambda node: node.collect_spy_stats(args.spy_measurement_interval),
-          nodes)
+      pool.map(lambda node: node.setup(res_dirs=RES_DIRS), nodes)
     return nodes
 
   def get_cluster(self):
@@ -134,8 +134,7 @@ class TurrealParser(SymphonyParser):
         to_nested_dicts(self._cluster_config_args.cluster_config))
 
     nodes = self._make_nodes(cluster_config, args)
-    exp_id = self._register_exp(self.experiment_name, len(experiments),
-                                results_folder)
+    exp_id = self._register_exp(self.experiment_name)
     if '{exp_id}' in results_folder:
       results_folder = results_folder.format(exp_id=exp_id)
 
@@ -161,6 +160,7 @@ class TurrealParser(SymphonyParser):
       1. Add PREAMBLE_CMDS to the experiment
     """
 
+    exp_id = self.exp_id
     print('Experiment ID: %d' % exp_id)
     print('Results folder: %s' % (self.results_folder))
     algorithm_args = self.remainder_args
@@ -185,16 +185,17 @@ class TurrealParser(SymphonyParser):
       for proc in all_procs:
         commands.append(cmd_gen.get_command(proc.name))
 
-      self.cluster.launch(exp, dry_run=self.dry_run)
+      self.cluster.launch(exp)
     # self._register_commands_with_irs(commands,
     #                                  host=irs.env['SYMPH_IRS_FRONTEND_HOST'],
     #                                  port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
 
-  def main(self):
-    assert sys.argv.count('--') <= 1, \
+  def main(self, argv):
+    print(argv)
+    assert argv.count('--') <= 1, \
         'command line can only have at most one "--"'
 
-    argv = list(sys.argv[1:])
+    argv = list(argv)
     if '--' in argv:
       idx = argv.index('--')
       remainder = argv[idx + 1:]

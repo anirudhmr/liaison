@@ -2,15 +2,17 @@ import argparse
 
 from liaison.launch import hyper
 from liaison.tmux.surreal_tmux import TurrealParser
+from liaison.tmux.liaison_placer import LiaisonPlacer
 from liaison.tmux.create_programs import build_program
 from liaison.utils import ConfigDict
-from liaison.scheduling import ScheduleManager
 import argon
+from absl import app
 
 parser = argon.ArgumentParser('Resource Requirement config', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
 parser.add_config_file(name='resource_req',
                        default='liaison/configs/resource_req.py')
+parser.add_argument('--spy_measurement_interval', type=float, default=2.)
 parser.add_argument('--gpu_overload_obj_coeff', type=int, default=1)
 parser.add_argument('--gpu_load_balancing_obj_coeff', type=int, default=1)
 parser.add_argument('--gpu_wu_consolidation_obj_coeff', type=int, default=.25)
@@ -18,11 +20,31 @@ parser.add_argument('--cpu_overload_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_load_balancing_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=int, default=10)
 
+# placement constraints
+parser.add_argument('--pl_constraints',
+                    type=str,
+                    nargs='+',
+                    default=[],
+                    help='''
+  If you would like to place all actor nodes on gpu-* servers, then use the string:
+  'actor-*:gpu-*'
+  ''')
+parser.add_argument('--coloc_constraints',
+                    type=str,
+                    nargs='+',
+                    default=[],
+                    help='''
+  If you have the following three coloc constraints:
+    (a, b, c), (p, q, r), (x, y, z)
+    then use the string:
+      a;b;c p;q;r x;y;z
+  ''')
 
-def train():
+
+def train(argv):
   tp = TurrealParser()
   tp.add_external_parser(parser)
-  func, external_parser_args = tp.main()
+  func, external_parser_args = tp.main(argv[1:])
   if func.__name__.split('action_')[-1] != 'create':
     return
   args = external_parser_args[0]
@@ -34,7 +56,7 @@ def train():
   exp_flags = []
   exps = []
   for work_id, params in enumerate(
-      hyper.discrete('agent_config.learning_rate', [1e-3])):
+      hyper.discrete('agent_config.lr_init', [1e-3])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     build_program(exp, args.n_actors,
@@ -52,9 +74,14 @@ def train():
   print('-----------exp stats-------------')
   print('Number of work units: %d' % len(exps))
   print('Number of processes total: %d' % sum(map(len, exp_procs)))
-  manager = ScheduleManager(
+
+  placer = LiaisonPlacer(
+      exps,
       nodes,
-      exp_procs,
+      args.spy_measurement_interval,
+      pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
+      coloc_constraints=list(
+          map(lambda k: k.split(';'), args.coloc_constraints)),
       gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
       gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
       gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,
@@ -62,20 +89,9 @@ def train():
       cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
       cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff)
 
-  ass, gpu_ass = manager.get_assignment()
-
-  for wu_assignment, wu_gpu_assignment, procs in zip(ass, gpu_ass, exp_procs):
-    for proc_id, (proc, server) in enumerate(zip(procs, wu_assignment)):
-      proc.set_placement(nodes[server])
-      if proc_id in wu_gpu_assignment:
-        proc.set_gpus(wu_gpu_assignment[proc_id])
-
   tp.launch(exps, exp_flags)
 
 
-def main():
-  train()
-
-
 if __name__ == '__main__':
-  main()
+  app.run(train)
+  # train(sys.argv[1])

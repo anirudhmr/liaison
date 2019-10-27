@@ -96,8 +96,8 @@ class Trajectory(object):
 
       # determine the batch size
       lens = [
-          len(v) for _, v in filter(lambda k: k is not None,
-                                    nest.flatten_up_to(traj_spec, d))
+          len(v) for v in filter(lambda k: k is not None,
+                                 nest.flatten_up_to(traj_spec, d))
       ]
       bs = lens[0]
       assert all(x == bs for x in lens)
@@ -121,7 +121,7 @@ class Trajectory(object):
   def batch(trajs, traj_spec):
     batched_trajs = Trajectory._stack(trajs, traj_spec)
 
-    def f(spec, l):
+    def f(l):
       return None if l is None else np.swapaxes(l, 0, 1)
 
     return nest.map_structure_up_to(traj_spec, f, batched_trajs)
