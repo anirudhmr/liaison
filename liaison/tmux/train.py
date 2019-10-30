@@ -1,3 +1,4 @@
+# python liaison/tmux/train.py --pdb_post_mortem -- create -r /tmp/ -e test --filter='.*swarm_1.*' -- --agent_config_file=liaison/configs/agent/config.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py
 import argparse
 
 from liaison.launch import hyper
@@ -59,8 +60,11 @@ def train(argv):
       hyper.discrete('agent_config.lr_init', [1e-3])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
-    build_program(exp, args.n_actors,
-                  ConfigDict(argon.to_nested_dicts(args.resource_req_config)))
+    # start tensorboard only for the first experiment.
+    build_program(exp,
+                  args.n_actors,
+                  ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
+                  with_tensorboard=(work_id == 0))
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += ["--n_actors", str(args.n_actors)]

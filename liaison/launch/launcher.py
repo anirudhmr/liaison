@@ -96,10 +96,6 @@ class Launcher:
       self.run_tensorboard()
     elif component_name == 'systemboard':
       self.run_systemboard()
-    elif component_name == 'tensorplex':
-      self.run_tensorplex()
-    elif component_name == 'loggerplex':
-      self.run_loggerplex()
     elif component_name == 'irs':
       self.run_irs()
     else:
@@ -146,13 +142,13 @@ class Launcher:
 
   def _setup_learner_loggers(self):
     loggers = []
-    loggers.append(ConsoleLogger())
+    loggers.append(ConsoleLogger(print_every=5))
     loggers.append(TensorplexLogger(client_id='learner/learner'))
     return loggers
 
   def _setup_learner_system_loggers(self):
     loggers = []
-    loggers.append(ConsoleLogger(name='system'))
+    # loggers.append(ConsoleLogger(name='system'))
     loggers.append(
         TensorplexLogger(client_id='learner/learner',
                          host=os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST'],
@@ -229,7 +225,6 @@ class Launcher:
     replay.join()
 
   def _launch_tensorboard(self, folder, port):
-
     cmd = ['tensorboard', '--logdir', folder, '--port', str(port)]
     subprocess.call(cmd)
 
@@ -245,7 +240,7 @@ class Launcher:
     folder = os.path.join(self.results_folder, 'tensorplex_system_profiles')
     self._launch_tensorboard(folder, os.environ['SYMPH_SYSTEMBOARD_PORT'])
 
-  def run_tensorplex(self):
+  def _start_tensorplex(self):
     """
             Launches a tensorplex process.
             It receives data from multiple sources and
@@ -281,26 +276,10 @@ class Launcher:
       thread.start()
       threads.append(thread)
 
-    for thread in threads:
-      thread.join()
-
-  def run_loggerplex(self):
-    """
-            Launches a loggerplex server.
-            It helps distributed logging.
-        """
-    folder = os.path.join(self.results_folder, 'loggerplex', str(self.work_id))
-    loggerplex_config = self.sess_config.loggerplex
-
-    loggerplex = Loggerplex(os.path.join(folder, 'logs'),
-                            level=loggerplex_config.level,
-                            overwrite=loggerplex_config.overwrite,
-                            show_level=loggerplex_config.show_level,
-                            time_format=loggerplex_config.time_format)
-    port = os.environ['SYMPH_LOGGERPLEX_PORT']
-    loggerplex.start_server(port)
+    return threads
 
   def run_irs(self):
+    tensorplex_threads = self._start_tensorplex()
     self._irs_server = IRSServer(
         results_folder=self.results_folder,
         agent_config=self.agent_config,
@@ -319,3 +298,5 @@ class Launcher:
         **self.sess_config.irs)
     self._irs_server.launch()
     self._irs_server.join()
+    for thread in tensorplex_threads:
+      thread.join()

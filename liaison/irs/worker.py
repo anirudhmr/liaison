@@ -97,11 +97,6 @@ class Worker(Process):
     for _, d in to_delete:
       U.f_remove(os.path.join(self.checkpoint_folder, d))
 
-  # ================== PUBLIC REMOTE API ==================
-  def register_commands(self, **cmds):
-    U.f_mkdir(self.config.cmd_folder)
-    U.pretty_dump(cmds, os.path.join(self.config.cmd_folder, 'cmds.txt'))
-
   def _stream_to_file(self, offset, data, fname, done):
     """fname should be with full path."""
     fname = fname.rstrip('/')
@@ -113,6 +108,11 @@ class Worker(Process):
 
     if done:
       shutil.move(fname + '.part', fname)
+
+  # ================== PUBLIC REMOTE API ==================
+  def register_commands(self, **cmds):
+    U.f_mkdir(self.config.cmd_folder)
+    U.pretty_dump(cmds, os.path.join(self.config.cmd_folder, 'cmds.txt'))
 
   def register_metagraph(self, offset, data, _, fname, done):
     """TODO: If multi threaded client, add filelock support here."""
