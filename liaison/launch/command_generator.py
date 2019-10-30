@@ -26,6 +26,7 @@ class CommandGenerator:
       command += ['python', '-u']
     command += [self.executable]
     command += [role]
+    command += ['--pdb_post_mortem']
     command += ['--']
     if self.config_commands is not None:
       command += self.config_commands

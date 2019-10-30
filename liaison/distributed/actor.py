@@ -90,7 +90,7 @@ class Actor:
                                      observation=ts.observation)
       ts = self._env.step(step_output.action)
       self._traj.add(step_output=step_output, **dict(ts._asdict()))
-      if len(self._traj) == self._traj_length:
+      if len(self._traj) == self._traj_length + 1:
         exps = self._traj.debatch_and_stack()
         self._send_experiences(exps)
         self._traj.reset()

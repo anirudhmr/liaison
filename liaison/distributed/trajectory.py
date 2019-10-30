@@ -87,7 +87,12 @@ class Trajectory(object):
     traj_spec = self._traj_spec
 
     def f(arr):
-      return None if arr is None else np.split(arr, len(arr))
+      if arr is None:
+        return arr
+      l = np.split(arr, len(arr))
+      # remove the leading dimension
+      l = list(map(functools.partial(np.squeeze, axis=0), l))
+      return l
 
     l = []
     for traj in self._trajs:
@@ -110,8 +115,7 @@ class Trajectory(object):
       for i in range(bs):
         l[i].append(
             nest.pack_sequence_as(
-                traj_spec, list(map(lambda k: None
-                                    if k is None else k[i], d))))
+                traj_spec, list(map(lambda k: k if k is None else k[i], d))))
 
     return list(
         map(functools.partial(Trajectory._stack, traj_spec=self._traj_spec),
@@ -122,9 +126,11 @@ class Trajectory(object):
     batched_trajs = Trajectory._stack(trajs, traj_spec)
 
     def f(l):
+      # make time major
       return None if l is None else np.swapaxes(l, 0, 1)
 
-    return nest.map_structure_up_to(traj_spec, f, batched_trajs)
+    batched_trajs = nest.map_structure_up_to(traj_spec, f, batched_trajs)
+    return batched_trajs
 
   def __len__(self):
     if self._trajs:

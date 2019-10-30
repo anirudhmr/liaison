@@ -122,7 +122,7 @@ class Agent(BaseAgent):
       n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
                               tf.float32)
 
-      actions_logp = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      actions_logp = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           labels=actions, logits=target_logits)
 
       # The policy gradients loss
@@ -166,7 +166,7 @@ class Agent(BaseAgent):
       self._logged_values = {
           # entropy
           'entropy/target_policy_entropy':
-          entropy,
+          f(compute_entropy(target_logits)),
           'entropy/behavior_policy_entropy':
           f(compute_entropy(behavior_logits)),
           'entropy/is_ratio':

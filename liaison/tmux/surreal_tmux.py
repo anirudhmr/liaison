@@ -194,7 +194,6 @@ class TurrealParser(SymphonyParser):
     #                                  port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
 
   def main(self, argv):
-    print(argv)
     assert argv.count('--') <= 1, \
         'command line can only have at most one "--"'
 

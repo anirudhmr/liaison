@@ -101,7 +101,14 @@ class Learner(object):
                                 **agent_config)
 
       self._mk_phs(self._traj_spec)
-      self._agent.build_update_ops(**self._traj_phs)
+      traj_phs = self._traj_phs
+      self._agent.build_update_ops(
+          step_types=traj_phs['step_type'],
+          prev_states=traj_phs['step_output']['next_state'],
+          step_outputs=ConfigDict(traj_phs['step_output']),
+          observations=traj_phs['observation'],
+          rewards=traj_phs['reward'],
+          discounts=traj_phs['discount'])
 
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())

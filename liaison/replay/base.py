@@ -138,9 +138,9 @@ class Replay:
     with self.insert_time.time():
       self.insert(exp)
 
-  def get_tensorplex_client(self, client_id):
-    host = os.environ['SYMPH_SYSTEM_TENSORPLEX_HOST']
-    port = os.environ['SYMPH_SYSTEM_TENSORPLEX_PORT']
+  def _get_tensorplex_client(self, client_id):
+    host = os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST']
+    port = os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']
     return TensorplexClient(client_id, host=host, port=port)
 
   def _setup_logging(self):

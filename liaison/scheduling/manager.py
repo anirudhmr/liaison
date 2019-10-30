@@ -44,12 +44,9 @@ class ScheduleManager:
     self.servers = []
     for node in nodes:
       server = Server(
-          node.name,
-          U.relu(node.avail_cpu()),
-          U.relu(node.avail_mem()),
-          list(map(U.relu, node.avail_gpu_mem())),
+          node.name, U.relu(node.avail_cpu()), U.relu(node.avail_mem()),
           list(map(U.relu, node.avail_gpu_compute(GPU_MODEL_TO_SCALE))),
-      )
+          list(map(U.relu, node.avail_gpu_mem())))
       self.servers.append(server)
 
     # create processes in work units

@@ -9,6 +9,7 @@ def get_config():
   config.learner.checkpoint_every = 1000
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
+  config.learner.batch_size = 64
   # max number of samples (not batches) that could be waiting in the prefetch queue
   config.learner.max_prefetch_queue = 100
   # prefetch workers are spawned in a seperate process.

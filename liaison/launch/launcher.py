@@ -166,7 +166,6 @@ class Launcher:
                                self.agent_config.class_path)
     learner = Learner(agent_class=agent_class,
                       agent_config=self.agent_config,
-                      batch_size=self.batch_size,
                       traj_length=self.traj_length,
                       seed=self.seed,
                       loggers=self._setup_learner_loggers(),

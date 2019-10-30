@@ -190,7 +190,7 @@ class Env(object):
 
 def restart(observation):
   """Returns a `TimeStep` with `step_type` set to `StepType.FIRST`."""
-  return TimeStep(StepType.FIRST, None, None, observation)
+  return TimeStep(StepType.FIRST, 0.0, 0.0, observation)
 
 
 def transition(reward, observation, discount=1.0):

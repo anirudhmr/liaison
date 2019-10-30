@@ -2,7 +2,9 @@ import tensorflow as tf
 
 
 def sample_from_logits(logits, seed):
-  return tf.random.categorical(logits, 1, dtype=tf.int32, seed=seed)
+  return tf.squeeze(tf.random.categorical(logits, 1, dtype=tf.int32,
+                                          seed=seed),
+                    axis=-1)
 
 
 def compute_entropy(logits):
