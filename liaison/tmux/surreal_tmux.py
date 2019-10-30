@@ -107,6 +107,9 @@ class TurrealParser(SymphonyParser):
 
   def _make_nodes(self, cluster_config, args):
     nodes = NodeLoader(cluster_config, args.filter_nodes_regex).nodes
+    print('Filtered nodes (%d): ' % len(nodes))
+    for node in nodes:
+      print(node.name)
     with ThreadPool(len(nodes)) as pool:
       pool.map(lambda node: node.setup(res_dirs=RES_DIRS), nodes)
     return nodes

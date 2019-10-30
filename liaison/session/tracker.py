@@ -5,7 +5,6 @@ from collections import deque
 from threading import Lock
 
 import liaison.utils as U
-from tensorplex import LoggerplexClient, TensorplexClient
 
 
 class PeriodicTracker(object):
@@ -170,29 +169,3 @@ class PeriodicTensorplex(object):
 
   def get_history(self):
     return {tag: list(history) for tag, history in self._history.items()}
-
-
-def get_loggerplex_client(name, session_config):
-  """
-    Args:
-        name: file name for the remote log file
-        session_config: see session_config.loggerplex
-    """
-  C = session_config.loggerplex
-  host = os.environ['SYMPH_LOGGERPLEX_HOST']
-  port = os.environ['SYMPH_LOGGERPLEX_PORT']
-  return LoggerplexClient(
-      name,
-      host=host,
-      port=port,
-      enable_local_logger=C.enable_local_logger,
-      local_logger_stream='stdout',
-      local_logger_level=C.local_logger_level,
-      local_logger_time_format=C.local_logger_time_format,
-  )
-
-
-def get_tensorplex_client(client_id, _):
-  host = os.environ['SYMPH_TENSORPLEX_HOST']
-  port = os.environ['SYMPH_TENSORPLEX_PORT']
-  return TensorplexClient(client_id, host=host, port=port)

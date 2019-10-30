@@ -6,7 +6,7 @@ from liaison.utils import ConfigDict
 from absl import logging
 from caraml.zmq import ZmqServer
 from liaison.distributed import ExperienceCollectorServer
-from liaison.session import get_loggerplex_client, get_tensorplex_client
+from tensorplex import LoggerplexClient, TensorplexClient
 
 
 class ReplayUnderFlowException(Exception):
@@ -138,11 +138,16 @@ class Replay:
     with self.insert_time.time():
       self.insert(exp)
 
+  def get_tensorplex_client(self, client_id):
+    host = os.environ['SYMPH_SYSTEM_TENSORPLEX_HOST']
+    port = os.environ['SYMPH_SYSTEM_TENSORPLEX_PORT']
+    return TensorplexClient(client_id, host=host, port=port)
+
   def _setup_logging(self):
     # self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
     #                                  self.config)
-    self.tensorplex = get_tensorplex_client(
-        '{}/{}'.format('replay', self.index), self.config)
+    self.tensorplex = self._get_tensorplex_client('{}/{}'.format(
+        'replay', self.index))
     self._tensorplex_thread = None
     self._has_tensorplex = self.config.tensorboard_display
 

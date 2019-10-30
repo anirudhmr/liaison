@@ -92,7 +92,7 @@ class Shell:
       for var in self._variables:
         ph = tf.placeholder(dtype=var.dtype,
                             shape=var.shape,
-                            name='assign_%s_ph' % var.name)
+                            name='assign_%s_ph' % var.name.replace(':', '_'))
         self._var_name_to_phs[var.name] = ph
         self._var_names_to_assign_ops[var.name] = tf.assign(var,
                                                             ph,
