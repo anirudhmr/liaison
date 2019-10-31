@@ -17,8 +17,10 @@ def build_program(exp, n_actors, res_req_config, with_tensorboard=True):
   replay = exp.new_process('replay')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
+  irs.set_hard_placement('os_csail')
   if with_tensorboard:
     tensorboard = exp.new_process('tensorboard')
+    tensorboard.set_hard_placement('os_csail')
   else:
     tensorboard = None
   actor_pg = exp.new_process_group('actor-*')

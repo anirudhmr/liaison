@@ -171,7 +171,7 @@ class Agent(BaseAgent):
           f(compute_entropy(behavior_logits)),
           'entropy/is_ratio':
           f(
-              tf.exp(actions_logp -
+              tf.exp(actions_logp +
                      tf.nn.sparse_softmax_cross_entropy_with_logits(
                          labels=actions, logits=behavior_logits))),
           # loss

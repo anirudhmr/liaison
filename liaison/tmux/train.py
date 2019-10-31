@@ -9,8 +9,9 @@ from liaison.utils import ConfigDict
 import argon
 from absl import app
 
-parser = argon.ArgumentParser('Resource Requirement config', add_help=False)
+parser = argon.ArgumentParser('Liaison trainer', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
+parser.add_config_file(name='cluster', default='ccc/config.py')
 parser.add_config_file(name='resource_req',
                        default='liaison/configs/resource_req.py')
 parser.add_argument('--spy_measurement_interval', type=float, default=2.)
@@ -20,7 +21,14 @@ parser.add_argument('--gpu_wu_consolidation_obj_coeff', type=int, default=.25)
 parser.add_argument('--cpu_overload_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_load_balancing_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=int, default=10)
-
+parser.add_argument('--filter_nodes_regex', type=str, default='.*')
+parser.add_argument(
+    '--whitelist_nodes',
+    nargs='+',
+    default=['os_csail'],
+    help=
+    'These nodes are always selected irrespective of the filter_nodes_regex specified.'
+)
 # placement constraints
 parser.add_argument('--pl_constraints',
                     type=str,
@@ -51,7 +59,6 @@ def train(argv):
   args = external_parser_args[0]
 
   cluster = tp.get_cluster()
-  nodes = tp.get_nodes()
 
   # Specify experiment specific flags here.
   exp_flags = []
@@ -81,7 +88,9 @@ def train(argv):
 
   placer = LiaisonPlacer(
       exps,
-      nodes,
+      ConfigDict(argon.to_nested_dicts(args.cluster_config)),
+      args.filter_nodes_regex,
+      args.whitelist_nodes,
       args.spy_measurement_interval,
       pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
       coloc_constraints=list(
@@ -98,4 +107,3 @@ def train(argv):
 
 if __name__ == '__main__':
   app.run(train)
-  # train(sys.argv[1])

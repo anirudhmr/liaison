@@ -7,7 +7,6 @@ from copy import copy
 from multiprocessing.pool import ThreadPool
 
 import liaison.utils as U
-from argon import ArgumentParser, to_nested_dicts
 from caraml.zmq import ZmqClient
 from liaison.launch import CommandGenerator
 from liaison.launch.xmanager_client import get_xmanager_client
@@ -15,16 +14,10 @@ from liaison.utils import ConfigDict, ConfigDict_to_dict
 from symphony.commandline import SymphonyParser
 from symphony.engine import Cluster
 from symphony.tmux import Node
-from ccc.src import NodeLoader
 
 ENV_ACTIVATE_CMD = 'conda activate liaison'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
 PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
-
-RES_DIRS = [
-    '/'.join(__file__.split('/')[:-2]),
-    '/'.join(__file__.split('/')[:-3]) + '/.git'
-]
 
 
 class TurrealParser(SymphonyParser):
@@ -45,16 +38,7 @@ class TurrealParser(SymphonyParser):
                         type=str,
                         help='Results folder.')
     parser.add_argument('--n_work_units', type=int, default=1)
-    parser.add_argument('--filter_nodes_regex', type=str, default='.*')
     self._add_dry_run(parser)
-
-    # Note we cannot add it as a  subparser since argon doesn't support this.
-    # Hence we resort to two different sequential parsers
-    # see main function below.
-    cluster_config_parser = ArgumentParser('Cluster config', add_help=False)
-    cluster_config_parser.add_config_file(name='cluster',
-                                          default='ccc/config.py')
-    self._cluster_config_parser = cluster_config_parser
 
   # ==================== helpers ====================
   def _add_dry_run(self, parser):
@@ -105,20 +89,8 @@ class TurrealParser(SymphonyParser):
                           deserializer='pyarrow')
     self._cli.request(['register_commands', [], commands])
 
-  def _make_nodes(self, cluster_config, args):
-    nodes = NodeLoader(cluster_config, args.filter_nodes_regex).nodes
-    print('Filtered nodes (%d): ' % len(nodes))
-    for node in nodes:
-      print(node.name)
-    with ThreadPool(len(nodes)) as pool:
-      pool.map(lambda node: node.setup(res_dirs=RES_DIRS), nodes)
-    return nodes
-
   def get_cluster(self):
     return self.cluster
-
-  def get_nodes(self):
-    return self.nodes
 
   def action_create(self, args):
     """
@@ -133,31 +105,22 @@ class TurrealParser(SymphonyParser):
     self.cluster = cluster = self.create_cluster()
     self._setup_xmanager_client(args)
 
-    cluster_config = ConfigDict(
-        to_nested_dicts(self._cluster_config_args.cluster_config))
-
-    nodes = self._make_nodes(cluster_config, args)
     exp_id = self._register_exp(self.experiment_name)
     if '{exp_id}' in results_folder:
       results_folder = results_folder.format(exp_id=exp_id)
 
     self.results_folder = results_folder
-    self.nodes = nodes
     self.remainder_args = args.remainder
     self.exp_id = exp_id
 
   def launch(self, experiments, exp_configs):
     """
     Tasks:
-      1. Creates nodes
-        1.1 Provide them with spy server addresses to get load details.
-        1.2 Sets up nodes (file systems, libraries, resources etc.)
+      1. Adds all the commands needed for processes, shells and experiments.
 
-      2. Adds all the commands needed for processes, shells and experiments.
+      2. Register with XManager client and IRS
 
-      3. Register with XManager client and IRS
-
-      4. Launch experiments
+      3. Launch experiments
 
     Details:
       1. Add PREAMBLE_CMDS to the experiment
@@ -208,21 +171,16 @@ class TurrealParser(SymphonyParser):
       has_remainder = False
     master_args = argv
 
-    # note subparser cannot be argon.ArgumentParser
-    # so we prune out the network config arguments first before passing the rest
-    # through the main parser.
-    # Also we prune out the external parser arguments as well.
     args_l = []
-    for parser in [self._cluster_config_parser] + self._external_parsers:
+    for parser in self._external_parsers:
       args, unknown = parser.parse_known_args(master_args)
       master_args = unknown
       args_l.append(args)
 
-    self._cluster_config_args = args_l[0]
     assert '--' not in master_args
     args = self.master_parser.parse_args(master_args)
     args.remainder = remainder
     args.has_remainder = has_remainder
 
     args.func(args)
-    return args.func, args_l[1:]
+    return args.func, args_l
