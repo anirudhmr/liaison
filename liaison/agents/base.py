@@ -31,12 +31,13 @@ class Agent(object):
     # override __init__ without remembering to call super.
     return super(Agent, cls).__new__(cls)
 
-  def _load_model(self, class_path, seed=None, **kwargs):
+  def _load_model(self, name, class_path, seed=None, **kwargs):
     # Loads a network based on the provided config.
     model_class = U.import_obj('Model', class_path)
     if seed is None:
       seed = self.seed
-    self._model = model_class(seed=seed, **kwargs)
+    with tf.variable_scope(name):
+      self._model = model_class(seed=seed, **kwargs)
     return self._model
 
   def _lr_schedule(self):

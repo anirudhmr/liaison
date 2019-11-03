@@ -20,7 +20,7 @@ class Agent(BaseAgent):
     self.config = ConfigDict(**kwargs)
     self._name = name
     self._action_spec = action_spec
-    self._load_model(**(model or {}))
+    self._load_model(name, **(model or {}))
     self._obs_ph = None
 
   def initial_state(self, bs):

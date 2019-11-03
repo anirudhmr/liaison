@@ -13,7 +13,7 @@ from __future__ import absolute_import, division, print_function
 import os
 import logging
 
-from liaison.env import SerialBatchedEnv, ParallelBatchedEnv
+from liaison.env.batch import SerialBatchedEnv, ParallelBatchedEnv
 
 from .exp_sender import ExpSender
 from .spec_server import SpecServer

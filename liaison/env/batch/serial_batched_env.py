@@ -2,7 +2,7 @@
 
 from __future__ import absolute_import, division, print_function
 
-from liaison.env import BaseBatchedEnv
+from liaison.env.batch import BaseBatchedEnv
 
 
 class BatchedEnv(BaseBatchedEnv):
@@ -20,7 +20,7 @@ class BatchedEnv(BaseBatchedEnv):
     action_specs = [env.action_spec() for env in self._envs]
     self._action_spec = self._stack_specs(action_specs)
 
-    self._make_traj_spec(self._obs_spec)
+    self._make_step_spec(self._obs_spec)
     self.set_seeds(seed)
 
   def reset(self):

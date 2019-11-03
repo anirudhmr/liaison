@@ -6,7 +6,7 @@ import multiprocessing as mp
 import threading
 from multiprocessing import Queue
 
-from liaison.env import BaseBatchedEnv
+from liaison.env.batch import BaseBatchedEnv
 
 
 class EnvWorker:
@@ -59,7 +59,7 @@ class BatchedEnv(BaseBatchedEnv):
     self._setup_obs_spec()
     self._setup_action_spec()
 
-    self._make_traj_spec(self._obs_spec)
+    self._make_step_spec(self._obs_spec)
     self.set_seed(seed)
 
   def _send_to_workers(self, method, *args, **kwargs):

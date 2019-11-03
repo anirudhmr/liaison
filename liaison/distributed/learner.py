@@ -138,7 +138,7 @@ class Learner(object):
         self._traj_spec, self._action_spec = self.spec_client.request(
             (self._batch_size, self._traj_length))
       except ZmqTimeoutError:
-        logging.info('ZmQ timed out for the spec server.')
+        logging.info('ZmQ timed out for the spec server. Retrying...')
         continue
       break
 

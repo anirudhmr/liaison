@@ -47,8 +47,8 @@ class BatchedEnv(Env):
   def _stack_specs(self, specs):
     return nest.map_structure(stack_specs, *specs)
 
-  def _make_traj_spec(self, obs_spec):
-    self._traj_spec = dict(step_type=BoundedArraySpec(dtype=np.int8,
+  def _make_step_spec(self, obs_spec):
+    self._step_spec = dict(step_type=BoundedArraySpec(dtype=np.int8,
                                                       shape=(),
                                                       minimum=0,
                                                       maximum=2,
@@ -62,7 +62,7 @@ class BatchedEnv(Env):
                                shape=(),
                                name='batched_env_discount_spec'),
                            observation=obs_spec)
-    return self._traj_spec
+    return self._step_spec
 
   def observation_spec(self):
     return self._obs_spec
@@ -71,7 +71,7 @@ class BatchedEnv(Env):
     return self._action_spec
 
   def _stack_ts(self, timesteps):
-    """Should be called after _make_traj_spec."""
+    """Should be called after _make_step_spec."""
 
     dict_tss = []
     for ts in timesteps:
@@ -80,6 +80,6 @@ class BatchedEnv(Env):
     def f(spec, *l):
       return np.stack(l, axis=0).astype(spec.dtype)
 
-    stacked_ts = nest.map_structure_up_to(self._traj_spec, f, self._traj_spec,
+    stacked_ts = nest.map_structure_up_to(self._step_spec, f, self._step_spec,
                                           *dict_tss)
     return TimeStep(**stacked_ts)

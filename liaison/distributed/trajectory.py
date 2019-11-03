@@ -82,8 +82,8 @@ class Trajectory(object):
     return Trajectory._stack(self._trajs, self._traj_spec)
 
   def debatch_and_stack(self):
-    """Remove the leading batch dimension and then stack.
-    Returns list of stacked timesteps."""
+    """Remove the leading batch dimension and then stack on timestamp.
+        Returns list of stacked timesteps for each batch."""
     traj_spec = self._traj_spec
 
     def f(arr):

@@ -5,6 +5,8 @@ from benedict import BeneDict
 import liaison.utils as U
 from threading import Thread
 
+from .exp_serializer import get_serializer, get_deserializer
+
 
 class LearnerDataPrefetcher(DataFetcher):
   """
@@ -47,8 +49,8 @@ class LearnerDataPrefetcher(DataFetcher):
                      remote_port=self.sampler_port,
                      requests=self.request_generator(),
                      worker_comm_port=self.worker_comm_port,
-                     remote_serializer=U.serialize,
-                     remote_deserialzer=U.deserialize,
+                     remote_serializer=get_serializer(),
+                     remote_deserialzer=get_deserializer(),
                      n_workers=self.prefetch_processes,
                      worker_handler=self.worker_preprocess,
                      threads_per_worker=prefetch_threads_per_process)

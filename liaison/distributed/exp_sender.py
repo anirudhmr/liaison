@@ -3,8 +3,11 @@ Agent side.
 Send experience chunks (buffered) to Replay node.
 """
 import liaison.utils as U
-from liaison.session import PeriodicTracker
+import pyarrow as pa
 from caraml.zmq import ZmqSender
+from liaison.session import PeriodicTracker
+
+from .exp_serializer import get_serializer
 
 
 class ExpBuffer(object):
@@ -15,6 +18,7 @@ class ExpBuffer(object):
   def __init__(self):
     self.exp_list = []  # list of exp dicts
     self.ob_storage = {}
+    self._serialize_fn = get_serializer()
 
   def add(self, hash_dict, nonhash_dict):
     """
@@ -39,7 +43,7 @@ class ExpBuffer(object):
         Returns:
             binary data of (exp_list, ob_storage)
         """
-    binary = U.serialize((self.exp_list, self.ob_storage))
+    binary = self._serialize_fn((self.exp_list, self.ob_storage))
     self.exp_list = []
     self.ob_storage = {}
     return binary
@@ -55,10 +59,10 @@ class ExpBuffer(object):
       return None
     else:  # values is a single object
       obj = values
-      hsh = U.pyobj_hash(obj)
+      hsh = U.binary_hash(self._serialize_fn(obj))
       if hsh not in self.ob_storage:
         self.ob_storage[hsh] = obj
-      return hsh
+      return hsh  # returns string here
 
 
 class ExpSender(object):
@@ -95,6 +99,3 @@ class ExpSender(object):
     if self._flush_tracker.track_increment():
       exp_binary = self._exp_buffer.flush()
       self._client.send(exp_binary)
-      return U.binary_hash(exp_binary)
-    else:
-      return None

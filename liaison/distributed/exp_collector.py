@@ -1,7 +1,10 @@
 import weakref
 from threading import Thread
+
 import liaison.utils as U
 from caraml.zmq import ZmqReceiver
+
+from .exp_serializer import get_deserializer
 
 
 class ExperienceCollectorServer(Thread):
@@ -19,16 +22,17 @@ class ExperienceCollectorServer(Thread):
     # To be initialized in run()
     self._weakref_map = None
     self.receiver = None
+    self._deserialize_fn = get_deserializer()
 
   def run(self):
     """
-            Starts the server loop
-        """
+        Starts the server loop
+    """
     self._weakref_map = weakref.WeakValueDictionary()
     self.receiver = ZmqReceiver(host=self.host,
                                 port=self.port,
                                 bind=not self.load_balanced,
-                                deserializer=U.deserialize)
+                                deserializer=self._deserialize_fn)
     while True:
       exp, storage = self.receiver.recv()
       experience_list = self._retrieve_storage(exp, storage)
