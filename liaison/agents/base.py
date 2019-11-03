@@ -103,6 +103,60 @@ class Agent(object):
     raise NotImplementedError(
         "Agent build_update_ops function is not implemented.")
 
+  def step_preprocess(self, *args):
+    """The batch that is fed to step is preprocessed using this function.
+      This will be called for every mini-batch. No tensorflow ops are
+      allowed to be constructed here. The arguments are numpy or python objects.
+    Example use-case:
+      Graphnet de-padding and graph combining.
+
+    Args:
+      same as step but are numpy/python values instead of TF placeholders.
+    """
+    # override this for more interesting pre-processing steps.
+    return args
+
+  def update_preprocess(self, *args):
+    """
+    The batch that is fed to build_update_ops is preprocessed using this function
+    first.
+    Example use-case:
+      For graph-nets, use this to de-pad and merge the graphs
+      to reduce the values that need to be copied to the GPUs.
+      Also, it can be easy to implement some preprocess logic in
+      numpy as opposed to tensorflow.
+
+    Args:
+      See self.build_update_ops function
+    """
+    # override this for more interesting pre-processing steps.
+    return args
+
+  def update_preprocess(self, *args):
+    """
+    The batch that is fed to build_update_ops is preprocessed using this function
+    first.
+    Example use-case:
+      For graph-nets, use this to de-pad and merge the graphs
+      to reduce the values that need to be copied to the GPUs.
+      Also, it can be easy to implement some preprocess logic in
+      numpy as opposed to tensorflow.
+
+    Args:
+      See self.build_update_ops function
+    """
+    return args
+
+  def update(self, sess, feed_dict):
+    raise NotImplementedError("Agent update function is not implemented.")
+
+  def set_seed(self, seed):
+    self.seed = seed
+    tf.set_random_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    return args
+
   def update(self, sess, feed_dict):
     raise NotImplementedError("Agent update function is not implemented.")
 

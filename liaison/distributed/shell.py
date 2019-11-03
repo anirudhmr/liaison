@@ -45,8 +45,7 @@ class Shell:
       agent_scope='shell',
       sync_period=None,
       use_gpu=False,
-      **kwargs,
-  ):
+      **kwargs):
     self.config = ConfigDict(kwargs)
     self._obs_spec = obs_spec
     self._sync_checker = SyncEveryNSteps(sync_period)
@@ -155,6 +154,9 @@ class Shell:
     if self._sync_checker.should_sync(self._step_number):
       self._sync_variables()
 
+    # bass the batch through pre-processing
+    step_type, reward, obs, next_state = self._agent.step_preprocess(
+        step_type, reward, observation, next_state)
     nest.assert_same_structure(self._obs_ph, observation)
     obs_feed_dict = {
         obs_ph: obs_val

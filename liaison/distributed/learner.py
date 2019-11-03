@@ -149,8 +149,19 @@ class Learner(object):
                                  deserializer=U.pickle_deserialize,
                                  timeout=4)
 
-  def _batch_trajs(self, l):
-    return Trajectory.batch(l, self._traj_spec)
+  def _batch_and_preprocess_trajs(self, l):
+    traj = Trajectory.batch(l, self._traj_spec)
+    # feed and overwrite the trajectory
+    traj['step_type'], traj['step_output']['next_state'], traj[
+        'step_output'], traj['observation'], traj['reward'], traj[
+            'discount'] = self._agent.update_preprocess(
+                step_types=traj['step_type'],
+                prev_states=traj['step_output']['next_state'],
+                step_outputs=ConfigDict(traj['step_output']),
+                observations=traj['observation'],
+                rewards=traj['reward'],
+                discounts=traj['discount'])
+    return traj
 
   def _setup_exp_fetcher(self):
     config = self.config
@@ -165,7 +176,7 @@ class Learner(object):
     self._exp_fetcher = LearnerDataPrefetcher(
         batch_size=bs,
         prefetch_batch_size=pf_bs,
-        combine_trajs=self._batch_trajs,
+        combine_trajs=self._batch_and_preprocess_trajs,
         max_prefetch_queue=config.max_prefetch_queue * pf_bs,
         prefetch_processes=config.prefetch_processes,
         prefetch_threads_per_process=config.prefetch_threads_per_process)

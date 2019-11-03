@@ -45,7 +45,6 @@ GLOBAL_BLOCK_OPT = {
 class Model:
 
   def __init__(self,
-               n_actions,
                seed,
                activation='relu',
                n_prop_layers=8,
@@ -56,7 +55,6 @@ class Model:
                edge_hidden_layer_sizes=[64, 64],
                policy_torso_hidden_layer_sizes=[32, 32],
                value_torso_hidden_layer_sizes=[32, 32]):
-    self.n_actions = n_actions
     self.activation = activation
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -94,7 +92,7 @@ class Model:
 
     with tf.variable_scope('policy_network'):
       self.policy_torso = snt.nets.MLP(
-          policy_torso_hidden_layer_sizes + [n_actions],
+          policy_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(
                                 0.1)),  # small bias initializer.
@@ -142,8 +140,11 @@ class Model:
     if 'graph_features' not in obs:
       raise Exception('graph_features not found in observation.')
 
+    # convert dict to graphstuple
+    graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
+
     # Run multiple rounds of graph convolutions
-    graph_features = self._convolve(obs['graph_features'])
+    graph_features = self._convolve(graph_features)
 
     # broadcast globals and attach them to node features
     graph_features = graph_features.replace(
@@ -151,11 +152,20 @@ class Model:
 
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
-    bs = tf.shape(step_type)[0]
-    return logits, self._dummy_state(bs)
+    # remove the final dimension
+    logits = tf.squeeze(logits, axis=-1)
+    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
+    updated = tf.tensor_scatter_add(tf.fill((B, N), -1e9), dense_indices,
+                                    tf.fill(tf.shape(logits), 1e9))
+    logits = tf.tensor_scatter_add(updated, dense_indices, logits)
+    return logits, self._dummy_state(tf.shape(step_type)[0])
 
   def get_value(self, _, __, obs, ___):
     with tf.variable_scope('value_network'):
-      graph_features = self._convolve(obs['graph_features'])
+      if 'graph_features' not in obs:
+        raise Exception('graph_features not found in observation.')
+      # convert dict to graphstuple
+      graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
+      graph_features = self._convolve(graph_features)
       value = gn.modules.NodesToGlobalsAggregator(graph_features)
       return self.value_torso(value)

@@ -46,6 +46,8 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       logits, next_state = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
+      if 'mask' in obs:
+        mask = tf.reshape(mask, tf.shape(logits))
       action = sample_from_logits(logits, self.seed)
       return StepOutput(action, logits, next_state)
 
@@ -84,7 +86,6 @@ class Agent(BaseAgent):
 
       actions = step_outputs.action  # [T, B]
       behavior_logits = step_outputs.logits  # [T, B]
-      target_logits_flattened = target_logits
       # [T, B]
       target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
 
