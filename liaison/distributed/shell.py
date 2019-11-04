@@ -5,14 +5,16 @@ Env variables used:
   SYMPH_PS_FRONTEND_PORT
 """
 
+import copy
 import os
+
 import tensorflow as tf
 from absl import logging
+from liaison.distributed import ParameterClient
+from liaison.env import StepType
 from liaison.specs import ArraySpec
 from liaison.utils import ConfigDict
-from liaison.env import StepType
 from tensorflow.contrib.framework import nest
-from liaison.distributed import ParameterClient
 
 
 class SyncEveryNSteps:
@@ -77,7 +79,8 @@ class Shell:
 
       self._mk_phs(dummy_initial_state)
       self._step_output = self._agent.step(self._step_type_ph, self._reward_ph,
-                                           self._obs_ph, self._next_state_ph)
+                                           copy.copy(self._obs_ph),
+                                           self._next_state_ph)
 
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope=agent_scope)
@@ -156,7 +159,7 @@ class Shell:
 
     # bass the batch through pre-processing
     step_type, reward, obs, next_state = self._agent.step_preprocess(
-        step_type, reward, observation, next_state)
+        step_type, reward, observation, self.next_state)
     nest.assert_same_structure(self._obs_ph, observation)
     obs_feed_dict = {
         obs_ph: obs_val
@@ -169,7 +172,7 @@ class Shell:
                                     self._step_type_ph: step_type,
                                     self._reward_ph: reward,
                                     self._batch_size_ph: self._batch_size,
-                                    self._next_state_ph: self.next_state,
+                                    self._next_state_ph: next_state,
                                     **obs_feed_dict,
                                 })
     if self._step_number % 100 == 0:

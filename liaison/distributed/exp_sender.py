@@ -7,7 +7,7 @@ import pyarrow as pa
 from caraml.zmq import ZmqSender
 from liaison.session import PeriodicTracker
 
-from .exp_serializer import get_serializer
+from .exp_serializer import get_serializer, get_deserializer
 
 
 class ExpBuffer(object):
@@ -43,7 +43,7 @@ class ExpBuffer(object):
         Returns:
             binary data of (exp_list, ob_storage)
         """
-    binary = self._serialize_fn((self.exp_list, self.ob_storage))
+    binary = (self.exp_list, self.ob_storage)
     self.exp_list = []
     self.ob_storage = {}
     return binary
@@ -78,7 +78,10 @@ class ExpSender(object):
             flush_iteration: how many send() calls before we flush the buffer
         """
     U.assert_type(flush_iteration, int)
-    self._client = ZmqSender(host=host, port=port)
+    self._client = ZmqSender(host=host,
+                             port=port,
+                             serializer=get_serializer(),
+                             deserializer=get_deserializer())
     self._exp_buffer = ExpBuffer()
     self._flush_tracker = PeriodicTracker(flush_iteration)
 

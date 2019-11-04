@@ -93,6 +93,9 @@ class Agent(BaseAgent):
       logits, next_state = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
 
+      # convert to dict back for feed dict.
+      obs['graph_features'] = obs['graph_features']._asdict()
+
       action = sample_from_logits(logits, self.seed)
       return StepOutput(action, logits, next_state)
 
@@ -208,6 +211,8 @@ class Agent(BaseAgent):
           **opt_vals,
           **self.loss.logged_values
       }
+      # convert to dict back for feed dict.
+      observations['graph_features'] = observations['graph_features']._asdict()
 
   def update(self, sess, feed_dict):
     _, vals = sess.run([self._train_op, self._logged_values],

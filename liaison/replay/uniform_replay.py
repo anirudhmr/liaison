@@ -26,6 +26,7 @@ class UniformReplay(Replay):
   def sample(self, batch_size):
     with self.lock:
       if len(self._memory) < batch_size:
+        print('replay under flow exception encountered!')
         raise ReplayUnderFlowException()
 
       indices = [

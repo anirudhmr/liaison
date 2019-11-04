@@ -67,7 +67,7 @@ class Env(BaseEnv):
     # Create graph features from the networkx graph
     # make sure to set all the static fields in the created features.
     # also initialize the dynamic fields to the right values.
-    nodes = np.zeros((len(nx_graph), Env.N_NODE_FIELDS), dtype=np.int32)
+    nodes = np.zeros((len(nx_graph), Env.N_NODE_FIELDS), dtype=np.float32)
     # static fields
     nodes[src_node, Env.NODE_IS_SRC_FIELD] = 1
     nodes[src_node, Env.NODE_CUR_NODE_FIELD] = 1
@@ -89,10 +89,8 @@ class Env(BaseEnv):
                                   senders=np.array(senders, dtype=np.int32),
                                   receivers=np.array(receivers,
                                                      dtype=np.int32),
-                                  n_node=np.array([len(nodes)],
-                                                  dtype=np.int32),
-                                  n_edge=np.array([len(edges)],
-                                                  dtype=np.int32))
+                                  n_node=np.array(len(nodes), dtype=np.int32),
+                                  n_edge=np.array(len(edges), dtype=np.int32))
     return graph
 
   def reset(self):
@@ -111,7 +109,7 @@ class Env(BaseEnv):
   def _get_mask(self, node):
     # return the mask with neighbors bits set to 1
     mask = np.zeros((len(self._nx_graph)), dtype=np.int32)
-    mask[self._nx_graph.neighbors(node)] = 1
+    mask[list(self._nx_graph.neighbors(node))] = 1
     assert np.sum(mask) > 0
     return mask
 

@@ -125,7 +125,7 @@ class Agent(object):
     raise NotImplementedError(
         "Agent build_update_ops function is not implemented.")
 
-  def step_preprocess(self, *args):
+  def step_preprocess(self, step_type, reward, obs, prev_state):
     """The batch that is fed to step is preprocessed using this function.
       This will be called for every mini-batch. No tensorflow ops are
       allowed to be constructed here. The arguments are numpy or python objects.
@@ -138,10 +138,11 @@ class Agent(object):
     # override this for more interesting pre-processing steps.
     # call model.step_preprocess if that method exists
     if callable(getattr(self._model, 'step_preprocess', None)):
-      return self._model.step_preprocess(*args)
-    return args
+      return self._model.step_preprocess(step_type, reward, obs, prev_state)
+    return step_type, reward, obs, prev_state
 
-  def update_preprocess(self, *args):
+  def update_preprocess(self, step_outputs, prev_states, step_types, rewards,
+                        observations, discounts):
     """
     The batch that is fed to build_update_ops is preprocessed using this function
     first.
@@ -156,9 +157,11 @@ class Agent(object):
     """
 
     # call model.update_preprocess if that method exists
-    if callable(getattr(self._model, 'step_preprocess', None)):
-      return self._model.update_preprocess(*args)
-    return args
+    if callable(getattr(self._model, 'update_preprocess', None)):
+      return self._model.update_preprocess(step_outputs, prev_states,
+                                           step_types, rewards, observations,
+                                           discounts)
+    return step_outputs, prev_states, step_types, rewards, observations, discounts
 
   def update(self, sess, feed_dict):
     raise NotImplementedError("Agent update function is not implemented.")

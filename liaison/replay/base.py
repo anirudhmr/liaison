@@ -2,11 +2,13 @@ import os
 import time
 
 import liaison.utils as U
-from liaison.utils import ConfigDict
 from absl import logging
 from caraml.zmq import ZmqServer
 from liaison.distributed import ExperienceCollectorServer
+from liaison.utils import ConfigDict
 from tensorplex import LoggerplexClient, TensorplexClient
+
+from liaison.distributed.exp_serializer import get_deserializer, get_serializer
 
 
 class ReplayUnderFlowException(Exception):
@@ -36,7 +38,9 @@ class Replay:
     )
     self._sampler_server = ZmqServer(host='localhost',
                                      port=sampler_port,
-                                     bind=False)
+                                     bind=False,
+                                     serializer=get_serializer(),
+                                     deserializer=get_deserializer())
     self._sampler_server_thread = None
 
     self._evict_interval = evict_interval
@@ -112,7 +116,8 @@ class Replay:
     https://stackoverflow.com/questions/29082268/python-time-sleep-vs-event-wait
     Since we don't have external notify, we'd better just use sleep
     """
-    batch_size = U.deserialize(req)
+    # batch_size = U.deserialize(req)
+    batch_size = req
     U.assert_type(batch_size, int)
     while not self.start_sample_condition():
       time.sleep(0.01)
@@ -128,7 +133,8 @@ class Replay:
           time.sleep(1e-3)
 
     with self.serialize_time.time():
-      return U.serialize(sample)
+      return sample
+    # return U.serialize(sample)
 
   def _insert_wrapper(self, exp):
     """

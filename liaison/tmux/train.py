@@ -1,4 +1,4 @@
-# python liaison/tmux/train.py --pdb_post_mortem -- create -r /tmp/ -e test --filter='.*swarm_1.*' -- --agent_config_file=liaison/configs/agent/config.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py
+# python liaison/tmux/train.py --pdb_post_mortem -- create -r /tmp/ -e test --filter='.*os_mm.*' -- --agent_config_file=liaison/configs/agent/config.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py
 import argparse
 
 from liaison.launch import hyper

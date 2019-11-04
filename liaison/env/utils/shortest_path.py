@@ -28,7 +28,7 @@ def to_one_hot(indices, max_value, axis=-1):
 
 def get_node_dict(graph, attr):
   """Return a `dict` of node:attribute pairs from a graph."""
-  return {k: v[attr] for k, v in graph.node.items()}
+  return {k: v[attr] for k, v in graph.nodes.items()}
 
 
 def generate_networkx_graph(seed, num_nodes_min_max, theta=1000.0):
@@ -98,7 +98,7 @@ def generate_graph(rand,
   mst_graph = nx.minimum_spanning_tree(mst_graph, weight=DISTANCE_WEIGHT_NAME)
   # Put geo_graph's node attributes into the mst_graph.
   for i in mst_graph.nodes():
-    mst_graph.node[i].update(geo_graph.node[i])
+    mst_graph.nodes[i].update(geo_graph.nodes[i])
 
   # Compose the graphs.
   combined_graph = nx.compose_all((mst_graph, geo_graph.copy()))

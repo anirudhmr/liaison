@@ -98,16 +98,13 @@ class TurrealParser(SymphonyParser):
         Put any command line args that pass to the config script after "--"
     """
     self.experiment_name = self._process_experiment_name(args.experiment_name)
-    results_folder = args.results_folder
-    if '{experiment_name}' in results_folder:
-      results_folder = results_folder.format(
-          experiment_name=self.experiment_name)
+
     self.cluster = cluster = self.create_cluster()
     self._setup_xmanager_client(args)
-
     exp_id = self._register_exp(self.experiment_name)
-    if '{exp_id}' in results_folder:
-      results_folder = results_folder.format(exp_id=exp_id)
+
+    results_folder = args.results_folder.format(
+        experiment_name=self.experiment_name, exp_id=exp_id)
 
     self.results_folder = results_folder
     self.remainder_args = args.remainder

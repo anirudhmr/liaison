@@ -166,7 +166,7 @@ class Model:
     updated = tf.tensor_scatter_add(tf.fill(tf.shape(mask), MINF), indices,
                                     tf.fill(tf.shape(logits), -MINF))
     logits = tf.tensor_scatter_add(updated, indices, logits)
-    logits = logits * tf.cast(mask, tf.float32)
+    logits = logits + (1 - tf.cast(mask, tf.float32)) * MINF
     return logits, self._dummy_state(tf.shape(step_type)[0])
 
   def get_value(self, _, __, obs, ___):

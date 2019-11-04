@@ -11,6 +11,7 @@ Requires env variables:
 
 from __future__ import absolute_import, division, print_function
 
+import copy
 import logging
 import os
 import uuid
@@ -106,7 +107,7 @@ class Learner(object):
           step_types=traj_phs['step_type'],
           prev_states=traj_phs['step_output']['next_state'],
           step_outputs=ConfigDict(traj_phs['step_output']),
-          observations=traj_phs['observation'],
+          observations=copy.copy(traj_phs['observation']),
           rewards=traj_phs['reward'],
           discounts=traj_phs['discount'])
 
@@ -152,14 +153,14 @@ class Learner(object):
   def _batch_and_preprocess_trajs(self, l):
     traj = Trajectory.batch(l, self._traj_spec)
     # feed and overwrite the trajectory
-    traj['step_type'], traj['step_output']['next_state'], traj[
-        'step_output'], traj['observation'], traj['reward'], traj[
+    traj['step_output'], traj['step_output']['next_state'], traj[
+        'step_type'], traj['reward'], traj['observation'], traj[
             'discount'] = self._agent.update_preprocess(
-                step_types=traj['step_type'],
-                prev_states=traj['step_output']['next_state'],
                 step_outputs=ConfigDict(traj['step_output']),
-                observations=traj['observation'],
+                prev_states=traj['step_output']['next_state'],
+                step_types=traj['step_type'],
                 rewards=traj['reward'],
+                observations=traj['observation'],
                 discounts=traj['discount'])
     return traj
 

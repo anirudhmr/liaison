@@ -24,8 +24,7 @@ class Env(BaseEnv):
     return restart(self._observation())
 
   def _observation(self):
-    obs = dict(features=np.float32(self._features))
-    return obs
+    return dict(features=np.float32(self._features))
 
   def step(self, action):
     if self._reset_next_step:

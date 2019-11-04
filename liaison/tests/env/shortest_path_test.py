@@ -21,7 +21,7 @@ class ShortestPathEnvTest(absltest.TestCase):
     ts = env.reset()
     for i in range(1000):
       obs = ts.observation
-      mask = obs['mask']
+      mask = obs['node_mask']
       assert np.sum(mask) > 0
       act = np.random.choice(range(len(mask)), p=mask / np.sum(mask))
       ts = env.step(act)
