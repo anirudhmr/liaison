@@ -42,10 +42,16 @@ def infer_shape(x):
   return ret
 
 
-def merge_first_two_dims(tensor):
+def merge_first_two_dims(tensor, validate=True):
   shape = infer_shape(tensor)
   if isinstance(shape, list):
-    assert len(shape) >= 2
+    if len(shape) < 2:
+      if validate:
+        raise Exception('less than two dimensions found')
+      else:
+        print('Warning: Less than two dimensions found while merging')
+        return tensor
+
     shape[0] *= shape[1]
     shape.pop(1)
   else:

@@ -8,7 +8,7 @@ def get_config():
   config = ConfigDict()
 
   # required fields.
-  config.class_path = "liaison.agents.vtrace"  # should be rel to the parent directory.
+  config.class_path = "liaison.agents.vtrace"
   config.class_name = "Agent"
 
   config.model = ConfigDict()

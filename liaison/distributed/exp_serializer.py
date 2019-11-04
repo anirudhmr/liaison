@@ -58,8 +58,8 @@ def get_deserializer(compress=True):
 
   def f(buf):
     if compress:
-      # first serialize the data
-      l, codec, buf = pa.deserialize(buf, context=context)
+      # first deserialize the compressed data
+      l, codec, buf = pa.deserialize(buf)
 
       # extract the data
       buf = pa.decompress(buf, l, codec=codec)

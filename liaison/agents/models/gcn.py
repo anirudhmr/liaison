@@ -1,9 +1,12 @@
 """Graphnet based model."""
 
-import sonnet as snt
-from sonnet.python.ops import initializers
-from liaison.agents.models.utils import *
 import graph_nets as gn
+import numpy as np
+import sonnet as snt
+from liaison.agents.models.utils import *
+from sonnet.python.ops import initializers
+
+MINF = np.float32(-1e9)
 
 
 def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
@@ -61,13 +64,13 @@ class Model:
     self.policy = None
     self.value = None
     with tf.variable_scope('edge_model'):
-      self._edge_model = make_mlp(edge_hidden_layer_sizes,
+      self._edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
                                   activation,
                                   True,
                                   seed,
                                   layer_norm=True)
     with tf.variable_scope('node_model'):
-      self._node_model = make_mlp(node_hidden_layer_sizes,
+      self._node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
                                   activation,
                                   True,
                                   seed,
@@ -75,9 +78,10 @@ class Model:
 
     with tf.variable_scope('encode'):
       self._encode_net = gn.modules.GraphIndependent(
-          edge_fn=lambda: snt.Linear(edge_embed_dim, name='edge_output'),
-          node_fn=lambda: snt.Linear(node_embed_dim, name='node_output'),
-          global_fn=lambda: snt.Linear(global_embed_dim, name='global_output'))
+          edge_model_fn=lambda: snt.Linear(edge_embed_dim, name='edge_output'),
+          node_model_fn=lambda: snt.Linear(node_embed_dim, name='node_output'),
+          global_model_fn=lambda: snt.Linear(global_embed_dim,
+                                             name='global_output'))
 
     with tf.variable_scope('graphnet_model'):
       # global(node(edge))
@@ -116,11 +120,17 @@ class Model:
   def get_initial_state(self, bs):
     return self._dummy_state(bs)
 
+  def _validate_observations(self, obs):
+    if 'graph_features' not in obs:
+      raise Exception('graph_features not found in observation.')
+    elif 'node_mask' not in obs:
+      raise Exception('node_mask not found in observation.')
+
   def _convolve(self, graph_features):
     """
       graph_features -> gn.graphs.GraphsTuple
     """
-    assert isinstance(graph_features, gn.graphs.GraphsTuple)
+    graph_features = self._encode_net(graph_features)
 
     for i in range(self.n_prop_layers):
       with tf.variable_scope('prop_layer_%d' % i):
@@ -137,35 +147,48 @@ class Model:
 
   def get_logits_and_next_state(self, step_type, _, obs, __):
 
-    if 'graph_features' not in obs:
-      raise Exception('graph_features not found in observation.')
-
-    # convert dict to graphstuple
-    graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
-
+    self._validate_observations(obs)
+    graph_features = obs['graph_features']
+    assert isinstance(graph_features, gn.graphs.GraphsTuple)
     # Run multiple rounds of graph convolutions
     graph_features = self._convolve(graph_features)
 
     # broadcast globals and attach them to node features
     graph_features = graph_features.replace(
-        nodes=gn.broadcast_globals_to_nodes(graph_features))
+        nodes=gn.blocks.broadcast_globals_to_nodes(graph_features))
 
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
     # remove the final dimension
     logits = tf.squeeze(logits, axis=-1)
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-    updated = tf.tensor_scatter_add(tf.fill((B, N), -1e9), dense_indices,
-                                    tf.fill(tf.shape(logits), 1e9))
-    logits = tf.tensor_scatter_add(updated, dense_indices, logits)
+    mask = obs['node_mask']
+    updated = tf.tensor_scatter_add(tf.fill(tf.shape(mask), MINF), indices,
+                                    tf.fill(tf.shape(logits), -MINF))
+    logits = tf.tensor_scatter_add(updated, indices, logits)
+    logits = logits * tf.cast(mask, tf.float32)
     return logits, self._dummy_state(tf.shape(step_type)[0])
 
   def get_value(self, _, __, obs, ___):
+    self._validate_observations(obs)
     with tf.variable_scope('value_network'):
-      if 'graph_features' not in obs:
-        raise Exception('graph_features not found in observation.')
-      # convert dict to graphstuple
-      graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
-      graph_features = self._convolve(graph_features)
-      value = gn.modules.NodesToGlobalsAggregator(graph_features)
+      graph_features = self._convolve(obs['graph_features'])
+      value = gn.blocks.NodesToGlobalsAggregator(
+          tf.unsorted_segment_mean)(graph_features)
       return self.value_torso(value)
+
+  # def step_preprocess(self, step_type, reward, obs, prev_state):
+  #   assert 'graph_features' in obs
+  #   data_dicts = gn.utils_np.unstack_data_dict(obs['graph_features'])
+  #   obs['graph_features'] = gn.utils_np.data_dicts_to_graphs_tuple(
+  #       data_dicts)._asdict()
+  #   return step_type, reward, obs, prev_state
+
+  # def update_preprocess(self, step_outputs, prev_states, step_types, rewards,
+  #                       observations, discounts):
+
+  #   assert 'graph_features' in observations
+  #   data_dicts = gn.utils_np.unstack_data_dict(observations['graph_features'])
+  #   observations['graph_features'] = gn.utils_np.data_dicts_to_graphs_tuple(
+  #       data_dicts)._asdict()
+  #   return step_outputs, prev_states, step_types, rewards, observations, discounts

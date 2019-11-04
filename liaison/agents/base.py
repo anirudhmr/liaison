@@ -52,6 +52,28 @@ class Agent(object):
                          config.ent_start_dec_step, config.ent_dec_steps,
                          config.ent_dec_val, config.ent_dec_approach)
 
+  def _init_optimizer(self, lr_op):
+    return tf.train.AdamOptimizer(lr_op)
+
+  def _optimize(self, loss):
+    config = self.config
+    self.global_step = tf.train.get_or_create_global_step()
+    lr = self._lr_schedule()
+    optimizer = self._init_optimizer(lr)
+
+    # get clipped gradients
+    grads, variables = zip(*optimizer.compute_gradients(loss))
+    cli_grads, global_norm = tf.clip_by_global_norm(grads, config.grad_clip)
+    clipped_grads_and_vars = list(zip(cli_grads, variables))
+    self._train_op = optimizer.apply_gradients(clipped_grads_and_vars,
+                                               global_step=self.global_step)
+    return {  # optimization related
+        'opt/pre_clipped_grad_norm': global_norm,
+        'opt/clipped_grad_norm': tf.linalg.global_norm(cli_grads),
+        'opt/lr': lr,
+        'opt/weight_norm': tf.linalg.global_norm(variables)
+    }
+
   def initial_state(self, bs):
     """initial state of the agent.
 
@@ -114,6 +136,9 @@ class Agent(object):
       same as step but are numpy/python values instead of TF placeholders.
     """
     # override this for more interesting pre-processing steps.
+    # call model.step_preprocess if that method exists
+    if callable(getattr(self._model, 'step_preprocess', None)):
+      return self._model.step_preprocess(*args)
     return args
 
   def update_preprocess(self, *args):
@@ -129,22 +154,10 @@ class Agent(object):
     Args:
       See self.build_update_ops function
     """
-    # override this for more interesting pre-processing steps.
-    return args
 
-  def update_preprocess(self, *args):
-    """
-    The batch that is fed to build_update_ops is preprocessed using this function
-    first.
-    Example use-case:
-      For graph-nets, use this to de-pad and merge the graphs
-      to reduce the values that need to be copied to the GPUs.
-      Also, it can be easy to implement some preprocess logic in
-      numpy as opposed to tensorflow.
-
-    Args:
-      See self.build_update_ops function
-    """
+    # call model.update_preprocess if that method exists
+    if callable(getattr(self._model, 'step_preprocess', None)):
+      return self._model.update_preprocess(*args)
     return args
 
   def update(self, sess, feed_dict):

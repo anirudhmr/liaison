@@ -86,10 +86,13 @@ class Env(BaseEnv):
                                   edges=edges,
                                   globals=np.zeros(Env.N_GLOBAL_FIELDS,
                                                    dtype=np.float32),
-                                  senders=senders,
-                                  receivers=receivers,
-                                  n_node=[len(nodes)],
-                                  n_edge=[len(edges)])
+                                  senders=np.array(senders, dtype=np.int32),
+                                  receivers=np.array(receivers,
+                                                     dtype=np.int32),
+                                  n_node=np.array([len(nodes)],
+                                                  dtype=np.int32),
+                                  n_edge=np.array([len(edges)],
+                                                  dtype=np.int32))
     return graph
 
   def reset(self):
@@ -114,7 +117,8 @@ class Env(BaseEnv):
 
   def _observation(self):
     mask = np.int32(self._graph_features.nodes[:, Env.NODE_MASK_FIELD])
-    obs = dict(graph_features=dict(self._graph_features._asdict()), mask=mask)
+    obs = dict(graph_features=dict(self._graph_features._asdict()),
+               node_mask=mask)
     return obs
 
   def step(self, action):
