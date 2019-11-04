@@ -73,6 +73,8 @@ class Agent(BaseAgent):
     """
     config = self.config
     with tf.variable_scope(self._name):
+      # flatten graph features for policy network
+      # get logits
       # logits -> [T* B, ...]
       target_logits, _ = self._model.get_logits_and_next_state(
           *nest.map_structure(merge_first_two_dims, [
@@ -82,31 +84,35 @@ class Agent(BaseAgent):
               prev_states[:-1],
           ]))
 
-      actions = step_outputs.action  # [T, B]
-      behavior_logits = step_outputs.logits  # [T, B]
-      # [T, B]
-      target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
-
+      # get value.
       # [(T+1)* B]
-      values = self._model.get_value(*nest.map_structure(
-          functools.partial(merge_first_two_dims, validate=False), [
+      values = self._model.get_value(
+          *nest.map_structure(merge_first_two_dims, [
               step_types,
               rewards,
               observations,
               prev_states,
           ]))
+
       t_dim = infer_shape(step_types)[0] - 1
       bs_dim = infer_shape(step_types)[1]
       values = tf.reshape(values, [t_dim + 1, bs_dim])
 
+      actions = step_outputs.action  # [T, B]
+      behavior_logits = step_outputs.logits  # [T, B]
+      # [T, B]
+      target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
+
       self.loss = VTraceLoss(step_types, actions, rewards, discounts,
                              behavior_logits, target_logits, values,
+                             config.discount_factor,
                              self._get_entropy_regularization_constant(),
                              **config.loss)
 
       valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
       n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
                               tf.float32)
+      opt_vals = self._optimize(self.loss.loss)
 
       def f(x):
         """Computes the valid mean stat."""
@@ -126,20 +132,11 @@ class Agent(BaseAgent):
                   labels=actions, logits=target_logits) +
                      tf.nn.sparse_softmax_cross_entropy_with_logits(
                          labels=actions, logits=behavior_logits))),
-          # optimization related
-          'opt/pre_clipped_grad_norm':
-          global_norm,
-          'opt/clipped_grad_norm':
-          tf.linalg.global_norm(cli_grads),
-          'opt/lr':
-          lr,
-          'opt/weight_norm':
-          tf.linalg.global_norm(variables),
+
           # rewards
-          'reward/advantage':
-          f(vtrace_returns.pg_advantages),
           'reward/avg_reward':
           f(rewards[1:]),
+          **opt_vals,
           **self.loss.logged_values
       }
 

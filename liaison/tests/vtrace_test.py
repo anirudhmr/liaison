@@ -18,7 +18,6 @@ flags.DEFINE_string('model', 'mlp', 'Options: mlp, gcn')
 
 B = 8
 T = 9
-N_ACTIONS = 2
 
 GRAPH_FEATURES = {
     # globals dimension [n_graphs, global_dim]
@@ -48,7 +47,7 @@ class VtraceAgentTest(absltest.TestCase):
     if FLAGS.model == 'mlp':
       config.class_path = "liaison.agents.models.mlp"
       config.hidden_layer_sizes = [32, 32]
-      config.n_actions = N_ACTIONS
+      config.n_actions = N_NODES
     elif FLAGS.model == 'gcn':
       config.class_path = "liaison.agents.models.gcn"
     else:
@@ -87,7 +86,8 @@ class VtraceAgentTest(absltest.TestCase):
     config.loss = ConfigDict()
     config.loss.vf_loss_coeff = 1.0
 
-    return GCNAgent(action_spec=action_spec, name='test', seed=42, **config)
+    with tf.variable_scope('gcn', reuse=tf.AUTO_REUSE):
+      return GCNAgent(action_spec=action_spec, name='test', seed=42, **config)
 
   def session(self):
     return tf.Session()
@@ -108,7 +108,6 @@ class VtraceAgentTest(absltest.TestCase):
     return nest.map_structure(f, *[graph_features] * (T + 1))
 
   def testStep(self):
-    return
     agent = self._get_agent_instance()
     bs_ph = tf.placeholder_with_default(B, ())
 
@@ -177,7 +176,7 @@ class VtraceAgentTest(absltest.TestCase):
 
     sess.run(tf.global_variables_initializer())
     sess.run(tf.local_variables_initializer())
-    for _ in range(100):
+    for _ in range(10):
       agent.update(sess, {})
       print('.', end='')
     print('')
