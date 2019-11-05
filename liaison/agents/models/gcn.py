@@ -8,22 +8,6 @@ from sonnet.python.ops import initializers
 
 INF = np.float32(1e9)
 
-
-def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
-  mlp = snt.nets.MLP(
-      layer_sizes,
-      initializers=dict(
-          w=glorot_uniform(seed),
-          b=initializers.init_ops.Constant(0.1)),  # small bias initializer.
-      activate_final=activate_final,
-      activation=get_activation_from_str(activation),
-  )
-  if layer_norm:
-    return snt.Sequential([mlp, snt.LayerNorm()])
-  else:
-    return mlp
-
-
 EDGE_BLOCK_OPT = {
     "use_edges": True,
     "use_receiver_nodes": True,
@@ -43,6 +27,21 @@ GLOBAL_BLOCK_OPT = {
     "use_nodes": False,
     "use_globals": True,
 }
+
+
+def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
+  mlp = snt.nets.MLP(
+      layer_sizes,
+      initializers=dict(
+          w=glorot_uniform(seed),
+          b=initializers.init_ops.Constant(0.1)),  # small bias initializer.
+      activate_final=activate_final,
+      activation=get_activation_from_str(activation),
+  )
+  if layer_norm:
+    return snt.Sequential([mlp, snt.LayerNorm()])
+  else:
+    return mlp
 
 
 class Model:
@@ -67,13 +66,13 @@ class Model:
     with tf.variable_scope('edge_model'):
       self._edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
                                   activation,
-                                  True,
+                                  False,
                                   seed,
                                   layer_norm=True)
     with tf.variable_scope('node_model'):
       self._node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
                                   activation,
-                                  True,
+                                  False,
                                   seed,
                                   layer_norm=True)
 
@@ -149,24 +148,30 @@ class Model:
   def get_logits_and_next_state(self, step_type, _, obs, __):
 
     self._validate_observations(obs)
+    log_vals = {}
     graph_features = obs['graph_features']
     assert isinstance(graph_features, gn.graphs.GraphsTuple)
     # Run multiple rounds of graph convolutions
     graph_features = self._convolve(graph_features)
-
     # broadcast globals and attach them to node features
-    graph_features = graph_features.replace(
-        nodes=gn.blocks.broadcast_globals_to_nodes(graph_features))
+    graph_features = graph_features.replace(nodes=tf.concat([
+        graph_features.nodes,
+        gn.blocks.broadcast_globals_to_nodes(graph_features)
+    ],
+                                                            axis=-1))
 
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
     # remove the final singleton dimension
     logits = tf.squeeze(logits, axis=-1)
+    # record norm *before* adding -INF to invalid spots
+    log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
+
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     mask = obs['node_mask']
     logits = tf.scatter_nd(indices, logits, tf.shape(mask))
     logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
-    return logits, self._dummy_state(tf.shape(step_type)[0])
+    return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
 
   def get_value(self, _, __, obs, ___):
     self._validate_observations(obs)

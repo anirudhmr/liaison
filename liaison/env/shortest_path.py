@@ -41,15 +41,17 @@ class Env(BaseEnv):
 
   N_GLOBAL_FIELDS = 2
 
-  def __init__(self, id, seed, discount=1.0, **env_config):
+  def __init__(self, id, seed, discount=1.0, graph_seed=None, **env_config):
     self.config = ConfigDict(env_config)
     self.id = id
     self.seed = seed
     self.discount = discount
     self.set_seed(seed)
 
+    if graph_seed is None:
+      graph_seed = seed
     # generate graph with 32 nodes.
-    nx_graph, self._path = generate_networkx_graph(seed, [32, 33])
+    nx_graph, self._path = generate_networkx_graph(graph_seed, [32, 33])
     nx_graph = nx_graph.to_directed()
     # max number of steps in an episode.
     self._max_steps = 3 * len(nx_graph)
@@ -63,6 +65,7 @@ class Env(BaseEnv):
         nx_graph, self._src_node, self._target_node)
     self._graph_features = copy.deepcopy(self._reset_graph_features)
 
+    self._curr_node = self._src_node
     self._reset_next_step = True
 
   def _networkx_to_graph_features(self, nx_graph, src_node, target_node):
@@ -120,7 +123,34 @@ class Env(BaseEnv):
     obs = dict(features=self._graph_features.nodes.flatten(), mask=mask)
     return obs
 
-  def _observation_graphnet(self):
+  def _observation_graphnet_semi_supervised(self):
+    # set ans as part of the node feature to the exact next node
+    # too much of a give-away
+    ans = np.zeros(len(self._graph_features.nodes), dtype=np.float32)
+    ans[self._path] = 1
+
+    graph_features = copy.deepcopy(self._graph_features)
+    node_labels = np.arange(len(graph_features.nodes), dtype=np.float32)
+
+    is_in_path = np.zeros((len(graph_features.edges), ), np.float32)
+    for u, v in pairwise(self._path):
+      for i, (s, r) in enumerate(
+          zip(graph_features.senders, graph_features.receivers)):
+        if (s == u and v == r):
+          is_in_path[i] = 1
+
+    ans = np.expand_dims(ans, -1)
+    node_labels = np.expand_dims(node_labels, -1)
+    is_in_path = np.expand_dims(is_in_path, -1)
+    graph_features = graph_features.replace(
+        nodes=np.hstack([graph_features.nodes, node_labels, ans]),
+        edges=np.hstack([graph_features.edges, is_in_path]))
+
+    mask = np.int32(self._graph_features.nodes[:, Env.NODE_MASK_FIELD])
+    obs = dict(graph_features=dict(graph_features._asdict()), node_mask=mask)
+    return obs
+
+  def _observation_graphnet_inductive(self):
     mask = np.int32(self._graph_features.nodes[:, Env.NODE_MASK_FIELD])
     obs = dict(graph_features=dict(self._graph_features._asdict()),
                node_mask=mask)
@@ -129,7 +159,10 @@ class Env(BaseEnv):
   def _observation(self):
     if self.config.make_obs_for_mlp:
       return self._observation_mlp()
-    return self._observation_graphnet()
+    elif self.config.make_obs_for_graphnet_semi_supervised:
+      return self._observation_graphnet_semi_supervised()
+    else:
+      return self._observation_graphnet_inductive()
 
   def step(self, action):
     if self._reset_next_step:

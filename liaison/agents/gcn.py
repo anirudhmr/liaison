@@ -88,7 +88,7 @@ class Agent(BaseAgent):
       graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
       obs['graph_features'] = self._flatten_graphs(graph_features)
 
-      logits, next_state = self._model.get_logits_and_next_state(
+      logits, next_state, _ = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
 
       action = sample_from_logits(logits, self.seed)
@@ -139,7 +139,7 @@ class Agent(BaseAgent):
       with tf.variable_scope('target_logits'):
         # get logits
         # logits -> [T* B, ...]
-        target_logits, _ = self._model.get_logits_and_next_state(
+        target_logits, _, logits_logged_vals = self._model.get_logits_and_next_state(
             *nest.map_structure(merge_first_two_dims,
                                 [step_types[:-1], rewards[:-1]]),
             observations_minus_1,
@@ -204,11 +204,11 @@ class Agent(BaseAgent):
                     labels=actions, logits=target_logits) +
                        tf.nn.sparse_softmax_cross_entropy_with_logits(
                            labels=actions, logits=behavior_logits))),
-
             # rewards
             'reward/avg_reward':
             f(rewards[1:]),
             **opt_vals,
+            **logits_logged_vals,
             **self.loss.logged_values
         }
 

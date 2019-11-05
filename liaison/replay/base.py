@@ -142,7 +142,6 @@ class Replay:
         except ReplayUnderFlowException:
           time.sleep(1e-3)
 
-    print('Sending sample .... ')
     with self.serialize_time.time():
       return sample
     # return U.serialize(sample)

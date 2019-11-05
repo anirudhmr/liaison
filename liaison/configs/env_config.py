@@ -13,4 +13,10 @@ def get_config():
   # makes observations suitable for the MLP model.
   config.make_obs_for_mlp = False
 
+  # makes observations for graphnet agent with node labels in node features and
+  # shortest path embedded as edge features.
+  config.make_obs_for_graphnet_semi_supervised = False
+
+  config.graph_seed = 42
+
   return config

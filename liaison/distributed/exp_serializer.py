@@ -8,9 +8,9 @@ import pyarrow as pa
 import graph_nets as gn
 
 # Add custom types here as required.
-CUSTOM_TYPES = {'GraphsTuple': gn.graphs.GraphsTuple}
-SERIALIZERS = {'GraphsTuple': gn.utils_np.graphs_tuple_to_data_dicts}
-DESERIALIZERS = {'GraphsTuple': gn.utils_np.data_dicts_to_graphs_tuple}
+CUSTOM_TYPES = {}
+SERIALIZERS = {}
+DESERIALIZERS = {}
 
 # same keys should be declared in all the above dicts
 for d1, d2 in [(CUSTOM_TYPES, SERIALIZERS), (CUSTOM_TYPES, DESERIALIZERS)]:
