@@ -32,9 +32,9 @@ def get_config():
   config.irs.gpu_compute = []
   config.irs.gpu_mem = []
 
-  config.tensorboard = ConfigDict(**config.irs)
-  config.tensorboard.cpu = 2
-  config.tensorboard.mem = 0
+  config.visualizers = ConfigDict(**config.irs)
+  config.visualizers.cpu = 1
+  config.visualizers.mem = 0
 
   config.tensorplex = ConfigDict(**config.irs)
   config.tensorplex.cpu = 1

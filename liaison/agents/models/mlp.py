@@ -1,22 +1,28 @@
 """MLP based model."""
 
+import numpy as np
 import sonnet as snt
-from sonnet.python.ops import initializers
 from liaison.agents.models.utils import *
-# from shapeguard import ShapeGuard
+from liaison.specs import BoundedArraySpec
+from sonnet.python.ops import initializers
+
+MINF = np.float32(-1e9)
 
 
 class Model:
 
-  def __init__(self, hidden_layer_sizes, n_actions, seed, activation='relu'):
+  def __init__(self, hidden_layer_sizes, seed, action_spec, activation='relu'):
+    assert action_spec is not None
+    assert isinstance(action_spec, BoundedArraySpec)
+
+    self.n_actions = action_spec.maximum - action_spec.minimum + 1
     self.hidden_layer_sizes = hidden_layer_sizes
-    self.n_actions = n_actions
     self.activation = activation
     self.seed = seed
 
     with tf.variable_scope('policy_network'):
       self.policy = snt.nets.MLP(
-          hidden_layer_sizes + [n_actions],
+          hidden_layer_sizes + [self.n_actions],
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(
                                 0.1)),  # small bias initializer.
@@ -47,6 +53,12 @@ class Model:
 
     logits = self.policy(obs['features'])
     bs = tf.shape(step_type)[0]
+    if 'mask' in obs:
+      mask = obs['mask']
+      logits = tf.reshape(logits, tf.shape(mask))
+      # mask some of the logits
+      logits = tf.where(tf.equal(mask, 1), logits,
+                        tf.fill(tf.shape(mask), MINF))
     return logits, self._dummy_state(bs)
 
   def get_value(self, _, __, obs, ___):

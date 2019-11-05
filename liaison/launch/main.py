@@ -28,7 +28,6 @@ parser.add_argument('--experiment_id', type=int, required=True)
 parser.add_argument('--experiment_name', type=str, required=True)
 parser.add_argument('--work_id', type=int, required=True)
 parser.add_argument('--results_folder', type=str, required=True)
-parser.add_argument('--n_actors', type=int, required=True)
 
 
 class LauncherSetup(Launcher):
@@ -49,7 +48,6 @@ class LauncherSetup(Launcher):
     self.traj_length = args.traj_length
     self.seed = args.seed
     self.results_folder = args.results_folder
-    self.n_actors = args.n_actors
 
     self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))

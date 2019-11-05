@@ -57,7 +57,8 @@ class Model:
                node_hidden_layer_sizes=[64, 64],
                edge_hidden_layer_sizes=[64, 64],
                policy_torso_hidden_layer_sizes=[32, 32],
-               value_torso_hidden_layer_sizes=[32, 32]):
+               value_torso_hidden_layer_sizes=[32, 32],
+               action_spec=None):
     self.activation = activation
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -159,14 +160,14 @@ class Model:
 
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
-    # remove the final dimension
+    # remove the final singleton dimension
     logits = tf.squeeze(logits, axis=-1)
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     mask = obs['node_mask']
     updated = tf.tensor_scatter_add(tf.fill(tf.shape(mask), MINF), indices,
                                     tf.fill(tf.shape(logits), -MINF))
     logits = tf.tensor_scatter_add(updated, indices, logits)
-    logits = logits + (1 - tf.cast(mask, tf.float32)) * MINF
+    logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), MINF))
     return logits, self._dummy_state(tf.shape(step_type)[0])
 
   def get_value(self, _, __, obs, ___):

@@ -12,17 +12,17 @@ def get_fuzzy_match(config, name):
   raise Exception('No fuzzy match found for key %s' % name)
 
 
-def build_program(exp, n_actors, res_req_config, with_tensorboard=True):
+def build_program(exp, n_actors, res_req_config, with_visualizers=True):
   learner = exp.new_process('learner')
-  replay = exp.new_process('replay')
+  replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
   irs.set_hard_placement('os_csail')
-  if with_tensorboard:
-    tensorboard = exp.new_process('tensorboard')
-    tensorboard.set_hard_placement('os_csail')
+  if with_visualizers:
+    visualizers = exp.new_process('visualizers')
+    visualizers.set_hard_placement('os_csail')
   else:
-    tensorboard = None
+    visualizers = None
   actor_pg = exp.new_process_group('actor-*')
   actors = []
   for i in range(n_actors):
@@ -33,29 +33,22 @@ def build_program(exp, n_actors, res_req_config, with_tensorboard=True):
       learner=learner,
       replay=replay,
       ps=ps,
-      tensorboard=tensorboard,
+      visualizers=visualizers,
       irs=irs,
   )
-  for proc in [learner, replay, ps, irs, tensorboard] + actors:
+  for proc in [learner, replay, ps, irs, visualizers] + actors:
     if proc:
       proc.set_costs(**get_fuzzy_match(res_req_config, proc.name))
 
 
-def setup_network(*,
-                  actors,
-                  ps,
-                  replay,
-                  learner,
-                  tensorboard=None,
-                  systemboard=None,
-                  irs=None):
+def setup_network(*, actors, ps, replay, learner, visualizers=None, irs=None):
   """
         Sets up the communication between surreal
         components using symphony
 
         Args:
             actors, (list): list of symphony processes
-            ps, replay, learner, tensorboard:
+            ps, replay, learner, visualizers:
                 symphony processes
     """
   for proc in actors:
@@ -88,7 +81,7 @@ def setup_network(*,
     proc.connects('tensorplex-system')
     proc.connects('irs-frontend')
 
-  if tensorboard:
-    tensorboard.binds('tensorboard')
-  if systemboard:
-    systemboard.binds('systemboard')
+  if visualizers:
+    visualizers.binds('visualizers-tb')
+    visualizers.binds('visualizers-system-tb')
+    visualizers.binds('visualizers-profiler-ui')

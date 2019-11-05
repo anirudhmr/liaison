@@ -24,23 +24,33 @@ class Replay:
         initialize the replay server.
     """
 
-  def __init__(self, seed, evict_interval, index=0, **kwargs):
+  def __init__(self,
+               seed,
+               evict_interval,
+               load_balanced=True,
+               index=0,
+               **kwargs):
     self.config = ConfigDict(kwargs)
     self.index = index
 
-    collector_port = os.environ['SYMPH_COLLECTOR_BACKEND_PORT']
-    sampler_port = os.environ['SYMPH_SAMPLER_BACKEND_PORT']
+    if load_balanced:
+      collector_port = os.environ['SYMPH_COLLECTOR_BACKEND_PORT']
+      sampler_port = os.environ['SYMPH_SAMPLER_BACKEND_PORT']
+    else:
+      collector_port = os.environ['SYMPH_COLLECTOR_FRONTEND_PORT']
+      sampler_port = os.environ['SYMPH_SAMPLER_FRONTEND_PORT']
     self._collector_server = ExperienceCollectorServer(
-        host='localhost',
+        host='localhost' if load_balanced else '*',
         port=collector_port,
         exp_handler=self._insert_wrapper,
-        load_balanced=True,
+        load_balanced=load_balanced,
     )
-    self._sampler_server = ZmqServer(host='localhost',
-                                     port=sampler_port,
-                                     bind=False,
-                                     serializer=get_serializer(),
-                                     deserializer=get_deserializer())
+    self._sampler_server = ZmqServer(
+        host='localhost' if load_balanced else '*',
+        port=sampler_port,
+        bind=not load_balanced,
+        serializer=get_serializer(),
+        deserializer=get_deserializer())
     self._sampler_server_thread = None
 
     self._evict_interval = evict_interval
@@ -132,6 +142,7 @@ class Replay:
         except ReplayUnderFlowException:
           time.sleep(1e-3)
 
+    print('Sending sample .... ')
     with self.serialize_time.time():
       return sample
     # return U.serialize(sample)

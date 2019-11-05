@@ -14,7 +14,7 @@ N_ACTIONS = 2
 class ShortestPathEnvTest(absltest.TestCase):
 
   def _get_env(self):
-    return Env(0, seed=42)
+    return Env(0, seed=42, make_obs_for_mlp=False)
 
   def testStep(self):
     env = self._get_env()

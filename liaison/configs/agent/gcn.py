@@ -1,11 +1,9 @@
 from liaison.utils import ConfigDict
-"""
-Must have attribute class_path attribute.
-"""
+from liaison.configs.agent.config import get_config as get_base_config
 
 
 def get_config():
-  config = ConfigDict()
+  config = get_base_config()
 
   # required fields.
   config.class_path = "liaison.agents.gcn"
@@ -16,22 +14,6 @@ def get_config():
   config.model.n_prop_layers = 8
   config.model.node_embed_dim = 32
 
-  config.lr_init = 1e-3
-  config.lr_min = 1e-4
-  config.lr_start_dec_step = 1000
-  config.lr_dec_steps = 5000
-  config.lr_dec_val = .1
-  config.lr_dec_approach = 'linear'
-
-  config.ent_dec_init = 1
-  config.ent_dec_min = 0
-  config.ent_dec_steps = 1000
-  config.ent_start_dec_step = 1000
-  config.ent_dec_val = .1
-  config.ent_dec_approach = 'linear'
-
-  config.grad_clip = 1.0
-  config.discount_factor = 0.99
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0
 

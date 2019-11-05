@@ -71,10 +71,9 @@ def train(argv):
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
-                  with_tensorboard=(work_id == 0))
+                  with_visualizers=(work_id == 0))
 
     exp_flag = ['--work_id', str(work_id)]
-    exp_flag += ["--n_actors", str(args.n_actors)]
     exp_flag += hyper.to_commandline(params)
     exps.append(exp)
     exp_flags.append(exp_flag)

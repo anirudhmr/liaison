@@ -15,6 +15,9 @@ def get_config():
   # prefetch workers are spawned in a seperate process.
   config.learner.prefetch_processes = 1
   config.learner.prefetch_threads_per_process = 8
+  # first sess.run is not profiled.
+  # generates a profile after every this many steps.
+  config.learner.profile_step = 5
 
   config.actor = ConfigDict()
   config.actor.n_unrolls = None  # loop forever.
@@ -34,6 +37,7 @@ def get_config():
   config.replay = ConfigDict()
   config.replay.class_path = 'liaison.replay.uniform_replay'
   config.replay.class_name = 'UniformReplay'
+  config.replay.load_balanced = True
   config.replay.n_shards = 2
   config.replay.evict_interval = 0
   config.replay.memory_size = 100

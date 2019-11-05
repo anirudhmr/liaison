@@ -7,6 +7,7 @@ from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.shortest_path import *
 from liaison.specs import ArraySpec, BoundedArraySpec
+from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
 
 
@@ -41,6 +42,7 @@ class Env(BaseEnv):
   N_GLOBAL_FIELDS = 2
 
   def __init__(self, id, seed, discount=1.0, **env_config):
+    self.config = ConfigDict(env_config)
     self.id = id
     self.seed = seed
     self.discount = discount
@@ -113,11 +115,21 @@ class Env(BaseEnv):
     assert np.sum(mask) > 0
     return mask
 
-  def _observation(self):
+  def _observation_mlp(self):
+    mask = np.int32(self._graph_features.nodes[:, Env.NODE_MASK_FIELD])
+    obs = dict(features=self._graph_features.nodes.flatten(), mask=mask)
+    return obs
+
+  def _observation_graphnet(self):
     mask = np.int32(self._graph_features.nodes[:, Env.NODE_MASK_FIELD])
     obs = dict(graph_features=dict(self._graph_features._asdict()),
                node_mask=mask)
     return obs
+
+  def _observation(self):
+    if self.config.make_obs_for_mlp:
+      return self._observation_mlp()
+    return self._observation_graphnet()
 
   def step(self, action):
     if self._reset_next_step:
@@ -134,13 +146,13 @@ class Env(BaseEnv):
 
     ep_terminate = False
     # default reward of edge weight per step.
-    rew = -1.0 - nx_graph[self._curr_node][action][DISTANCE_WEIGHT_NAME]
+    rew = -1.0 * nx_graph[self._curr_node][action][
+        DISTANCE_WEIGHT_NAME] / self._shortest_path_length
     # calculate reward for action
     if action == self._target_node:
       ep_terminate = True
-      # length of the shortest path is the reward if success
       # net reward for an optimal episode = 0
-      rew = len(self._path) - 1 + self._shortest_path_length
+      rew = 1
     elif self._n_steps == self._max_steps:
       ep_terminate = True
 

@@ -10,11 +10,11 @@ class Timer(object):
   def __enter__(self):
     self.elapsed = 0
     self.elapsed_secs = 0
-    self.start = time.clock()
+    self.start = time.time()
     return self
 
   def __exit__(self, *args):
-    self.elapsed_secs = time.clock() - self.start
+    self.elapsed_secs = time.time() - self.start
     self.elapsed = float(self.elapsed_secs * 1000)  # millisecs
     if self.verbose:
       print('elapsed time: %f ms' % self.elapsed)

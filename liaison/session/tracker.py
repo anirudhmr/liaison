@@ -45,6 +45,28 @@ class PeriodicTracker(object):
     return self._update_endpoint()
 
 
+class ProfileTracker(object):
+
+  def __init__(self, profile_every, n_profiles):
+    self._profile_every = profile_every
+    self._n_profiles_left = n_profiles
+    self.step = 0
+
+  def track_increment(self):
+    # don't profile the first sess.run
+    ret = False
+    if self.step > 0:
+      # don't profile if max profiles is hit
+      if self._n_profiles_left > 0:
+        if (self.step - 1) % self._profile_every == 0:
+          # profile condition satisfied
+          self._n_profiles_left -= 1
+          ret = True
+
+    self.step += 1
+    return ret
+
+
 class RunningAverage(object):
 
   def __init__(self, gamma, init_value=None):

@@ -20,7 +20,7 @@ class Agent(BaseAgent):
     self.config = ConfigDict(**kwargs)
     self._name = name
     self._action_spec = action_spec
-    self._load_model(name, **(model or {}))
+    self._load_model(name, action_spec=action_spec, **(model or {}))
 
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
@@ -93,9 +93,6 @@ class Agent(BaseAgent):
       logits, next_state = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
 
-      # convert to dict back for feed dict.
-      obs['graph_features'] = obs['graph_features']._asdict()
-
       action = sample_from_logits(logits, self.seed)
       return StepOutput(action, logits, next_state)
 
@@ -128,7 +125,7 @@ class Agent(BaseAgent):
     config = self.config
     with tf.variable_scope(self._name):
       # flatten graph features for policy network
-      with tf.device('cpu:0'):
+      with tf.variable_scope('flatten_graphs_for_logits'):
         # time dimension T + 1 => T
         observations_minus_1 = nest.map_structure(lambda k: k[:-1],
                                                   observations)
@@ -141,16 +138,17 @@ class Agent(BaseAgent):
         graph_features = self._flatten_graphs(graph_features)
         observations_minus_1['graph_features'] = graph_features
 
-      # get logits
-      # logits -> [T* B, ...]
-      target_logits, _ = self._model.get_logits_and_next_state(
-          *nest.map_structure(merge_first_two_dims,
-                              [step_types[:-1], rewards[:-1]]),
-          observations_minus_1,
-          *nest.map_structure(merge_first_two_dims, [prev_states[:-1]]))
+      with tf.variable_scope('target_logits'):
+        # get logits
+        # logits -> [T* B, ...]
+        target_logits, _ = self._model.get_logits_and_next_state(
+            *nest.map_structure(merge_first_two_dims,
+                                [step_types[:-1], rewards[:-1]]),
+            observations_minus_1,
+            *nest.map_structure(merge_first_two_dims, [prev_states[:-1]]))
 
-      # flatten graphs for value network
-      with tf.device('cpu:0'):
+      with tf.variable_scope('flatten_graphs_for_value_func'):
+        # flatten graphs for value network
         # merge time and batch dimensions
         observations = nest.map_structure(merge_first_two_dims, observations)
         graph_features = gn.graphs.GraphsTuple(
@@ -159,62 +157,65 @@ class Agent(BaseAgent):
         graph_features = self._flatten_graphs(graph_features)
         observations['graph_features'] = graph_features
 
-      # get value.
-      # [(T+1)* B]
-      values = self._model.get_value(
-          *nest.map_structure(merge_first_two_dims, [step_types, rewards]),
-          observations,
-          *nest.map_structure(merge_first_two_dims, [prev_states]))
+      with tf.variable_scope('value'):
+        # get value.
+        # [(T+1)* B]
+        values = self._model.get_value(
+            *nest.map_structure(merge_first_two_dims, [step_types, rewards]),
+            observations,
+            *nest.map_structure(merge_first_two_dims, [prev_states]))
 
-      t_dim = infer_shape(step_types)[0] - 1
-      bs_dim = infer_shape(step_types)[1]
-      values = tf.reshape(values, [t_dim + 1, bs_dim])
+      with tf.variable_scope('loss'):
+        t_dim = infer_shape(step_types)[0] - 1
+        bs_dim = infer_shape(step_types)[1]
+        values = tf.reshape(values, [t_dim + 1, bs_dim])
 
-      actions = step_outputs.action  # [T, B]
-      behavior_logits = step_outputs.logits  # [T, B]
-      # [T, B]
-      target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
+        actions = step_outputs.action  # [T, B]
+        behavior_logits = step_outputs.logits  # [T, B]
+        # [T, B]
+        target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
 
-      self.loss = VTraceLoss(step_types, actions, rewards, discounts,
-                             behavior_logits, target_logits, values,
-                             config.discount_factor,
-                             self._get_entropy_regularization_constant(),
-                             **config.loss)
+        self.loss = VTraceLoss(step_types, actions, rewards, discounts,
+                               behavior_logits, target_logits, values,
+                               config.discount_factor,
+                               self._get_entropy_regularization_constant(),
+                               **config.loss)
 
-      valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-      n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
-                              tf.float32)
-      opt_vals = self._optimize(self.loss.loss)
+      with tf.variable_scope('logged_vals'):
+        valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
+        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
+                                tf.float32)
+        opt_vals = self._optimize(self.loss.loss)
 
-      def f(x):
-        """Computes the valid mean stat."""
-        return tf.reduce_sum(tf.boolean_mask(x, valid_mask)) / n_valid_steps
+        def f(x):
+          """Computes the valid mean stat."""
+          return tf.reduce_sum(tf.boolean_mask(x, valid_mask)) / n_valid_steps
 
-      # TODO: Add histogram summaries
-      # https://github.com/google-research/batch-ppo/blob/master/agents/algorithms/ppo/utility.py
-      self._logged_values = {
-          # entropy
-          'entropy/target_policy_entropy':
-          f(compute_entropy(target_logits)),
-          'entropy/behavior_policy_entropy':
-          f(compute_entropy(behavior_logits)),
-          'entropy/is_ratio':
-          f(
-              tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-                  labels=actions, logits=target_logits) +
-                     tf.nn.sparse_softmax_cross_entropy_with_logits(
-                         labels=actions, logits=behavior_logits))),
+        # TODO: Add histogram summaries
+        # https://github.com/google-research/batch-ppo/blob/master/agents/algorithms/ppo/utility.py
+        self._logged_values = {
+            # entropy
+            'entropy/target_policy_entropy':
+            f(compute_entropy(target_logits)),
+            'entropy/behavior_policy_entropy':
+            f(compute_entropy(behavior_logits)),
+            'entropy/is_ratio':
+            f(
+                tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=actions, logits=target_logits) +
+                       tf.nn.sparse_softmax_cross_entropy_with_logits(
+                           labels=actions, logits=behavior_logits))),
 
-          # rewards
-          'reward/avg_reward':
-          f(rewards[1:]),
-          **opt_vals,
-          **self.loss.logged_values
-      }
-      # convert to dict back for feed dict.
-      observations['graph_features'] = observations['graph_features']._asdict()
+            # rewards
+            'reward/avg_reward':
+            f(rewards[1:]),
+            **opt_vals,
+            **self.loss.logged_values
+        }
 
-  def update(self, sess, feed_dict):
+  def update(self, sess, feed_dict, profile_kwargs):
+    """profile_kwargs pass to sess.run for profiling purposes."""
     _, vals = sess.run([self._train_op, self._logged_values],
-                       feed_dict=feed_dict)
+                       feed_dict=feed_dict,
+                       **profile_kwargs)
     return vals

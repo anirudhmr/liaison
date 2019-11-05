@@ -27,6 +27,7 @@ from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from queue import Queue
 from tensorflow.contrib.framework import nest
+from tensorflow.python.client import timeline
 
 TEMP_FOLDER = '/tmp/liaison/'
 
@@ -84,17 +85,12 @@ class Learner(object):
     self._publish_thread = Thread(target=self._publish)
     self._publish_thread.start()
     self._publish_tracker = PeriodicTracker(publish_every)
+    self._profile_step = self.config.profile_step
     self._checkpoint_every = checkpoint_every
 
     self._graph = tf.Graph()
     with self._graph.as_default():
       self._global_step_op = tf.train.get_or_create_global_step(self._graph)
-      if use_gpu:
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=config)
-      else:
-        self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
 
       self._agent = agent_class(name=agent_scope,
                                 action_spec=self._action_spec,
@@ -110,6 +106,15 @@ class Learner(object):
           observations=copy.copy(traj_phs['observation']),
           rewards=traj_phs['reward'],
           discounts=traj_phs['discount'])
+
+      if use_gpu:
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.intra_op_parallelism_threads = 1
+        config.inter_op_parallelism_threads = 1
+        self.sess = tf.Session(config=config)
+      else:
+        self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
 
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
@@ -254,6 +259,20 @@ class Learner(object):
                          dst_dir_name='%d/' % self.global_step)
     U.f_remove(export_path)
 
+  def _save_profile(self, options, run_metadata):
+    tl = timeline.Timeline(run_metadata.step_stats)
+    ctf = tl.generate_chrome_trace_format()
+    export_path = os.path.join(TEMP_FOLDER, str(uuid.uuid4()))
+    U.f_mkdir(export_path)
+    with open(os.path.join(export_path, 'timeline.json'), 'w') as f:
+      f.write(ctf)
+    file_uploader = self._get_file_uploader()
+    file_uploader.send('register_profile',
+                       src_fname=os.path.join(export_path, 'timeline.json'),
+                       dst_fname='timeline.json',
+                       dst_dir_name='')  # dst_dir_name is unused.
+    U.f_remove(export_path)
+
   @property
   def global_step(self):
     return self.sess.run(self._global_step_op)
@@ -272,7 +291,16 @@ class Learner(object):
           for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))
       }
       with U.Timer() as step_timer:
-        log_vals = self._agent.update(self.sess, feed_dict)
+        profile_kwargs = {}
+        if self.global_step == self._profile_step:
+          profile_kwargs = dict(
+              options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+              run_metadata=tf.RunMetadata())
+
+        log_vals = self._agent.update(self.sess, feed_dict, profile_kwargs)
+
+        if profile_kwargs:
+          self._save_profile(**profile_kwargs)
 
       for logger in self._loggers:
         logger.write(log_vals)

@@ -23,7 +23,7 @@ class Agent(BaseAgent):
     self.config = ConfigDict(**kwargs)
     self._name = name
     self._action_spec = action_spec
-    self._load_model(name, **(model or {}))
+    self._load_model(name, action_spec=action_spec, **(model or {}))
 
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
@@ -48,8 +48,6 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       logits, next_state = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
-      if 'mask' in obs:
-        mask = tf.reshape(mask, tf.shape(logits))
       action = sample_from_logits(logits, self.seed)
       return StepOutput(action, logits, next_state)
 
@@ -140,7 +138,9 @@ class Agent(BaseAgent):
           **self.loss.logged_values
       }
 
-  def update(self, sess, feed_dict):
+  def update(self, sess, feed_dict, profile_kwargs):
+    """profile_kwargs pass to sess.run for profiling purposes."""
     _, vals = sess.run([self._train_op, self._logged_values],
-                       feed_dict=feed_dict)
+                       feed_dict=feed_dict,
+                       **profile_kwargs)
     return vals

@@ -71,7 +71,7 @@ class Launcher:
                                 replay,
                                 learner,
                                 ps,
-                                tensorboard,
+                                visualizers,
         """
     if '-' in component_name_in:
       component_name, component_id = component_name_in.split('-')
@@ -92,10 +92,8 @@ class Launcher:
       self.run_replay_loadbalancer()
     elif component_name == 'replay_worker':
       self.run_replay_worker(replay_id=component_id)
-    elif component_name == 'tensorboard':
-      self.run_tensorboard()
-    elif component_name == 'systemboard':
-      self.run_systemboard()
+    elif component_name == 'visualizers':
+      self.run_visualizers()
     elif component_name == 'irs':
       self.run_irs()
     else:
@@ -223,21 +221,40 @@ class Launcher:
     replay.start_threads()
     replay.join()
 
-  def _launch_tensorboard(self, folder, port):
-    cmd = ['tensorboard', '--logdir', folder, '--port', str(port)]
-    subprocess.call(cmd)
-
-  def run_tensorboard(self):
+  def run_visualizers(self):
     """
-        Launches a tensorboard process
+        Launches the following visualization processes:
+          tensorboard
+          systemboard
+          profiler_ui
     """
+    procs = []
     # Visualize all work units with tensorboard.
     folder = os.path.join(self.results_folder, 'tensorplex_metrics')
-    self._launch_tensorboard(folder, os.environ['SYMPH_TENSORBOARD_PORT'])
+    cmd = [
+        'tensorboard', '--logdir', folder, '--port',
+        str(os.environ['SYMPH_VISUALIZERS_TB_PORT'])
+    ]
+    procs += [subprocess.Popen(cmd)]
 
-  def run_systemboard(self):
+    # launch systemboard
     folder = os.path.join(self.results_folder, 'tensorplex_system_profiles')
-    self._launch_tensorboard(folder, os.environ['SYMPH_SYSTEMBOARD_PORT'])
+    cmd = [
+        'tensorboard', '--logdir', folder, '--port',
+        str(os.environ['SYMPH_VISUALIZERS_SYSTEM_TB_PORT'])
+    ]
+    procs += [subprocess.Popen(cmd)]
+
+    # launch profile viewer
+    cmd = [
+        'python', '-m', 'profiler_ui.ui', '--profile_context_path',
+        os.path.join(self.results_folder, 'tensorflow_profiles',
+                     str(self.work_id), 'timeline.json'), '--port',
+        str(os.environ['SYMPH_VISUALIZERS_PROFILER_UI_PORT'])
+    ]
+    procs += [subprocess.Popen(cmd)]
+    # block for the above processes
+    U.wait_for_popen(procs)
 
   def _start_tensorplex(self):
     """
@@ -292,6 +309,8 @@ class Launcher:
         src_folder=os.path.join(self.results_folder, 'src', str(self.work_id)),
         checkpoint_folder=os.path.join(self.results_folder, 'checkpoints',
                                        str(self.work_id)),
+        profile_folder=os.path.join(self.results_folder, 'tensorflow_profiles',
+                                    str(self.work_id)),
         cmd_folder=os.path.join(self.results_folder, 'cmds',
                                 str(self.work_id)),
         **self.sess_config.irs)

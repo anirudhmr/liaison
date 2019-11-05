@@ -23,10 +23,12 @@ from pathlib import Path
 
 class Worker(Process):
 
-  def __init__(self, serving_host, serving_port, checkpoint_folder, **kwargs):
+  def __init__(self, serving_host, serving_port, checkpoint_folder,
+               profile_folder, **kwargs):
     Process.__init__(self)
     self.config = ConfigDict(**kwargs)
     self.checkpoint_folder = checkpoint_folder
+    self.profile_folder = profile_folder
     self.serving_host = serving_host
     self.serving_port = serving_port
 
@@ -135,6 +137,17 @@ class Worker(Process):
       logging.info("Received new checkpoint which is saved at %s/%s/%s",
                    self.checkpoint_folder, dst_dir_name, fname)
       self.enforce_checkpoint_policy()
+
+  def register_profile(self, offset, data, dst_dir_name, fname, done):
+    """TODO: If multi threaded client, add filelock support here."""
+    del dst_dir_name  # unused
+    U.f_mkdir(self.profile_folder)
+    self._stream_to_file(offset, data, os.path.join(self.profile_folder,
+                                                    fname), done)
+
+    if done:
+      logging.info("Received new profile which is saved at %s/%s",
+                   self.checkpoint_folder, fname)
 
   def enforce_checkpoint_policy(self):
     # Remove duplicates from checkpoint info.txt first
