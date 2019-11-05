@@ -74,7 +74,8 @@ class Trajectory(object):
 
     def f(spec, *l):
       l = list(filter(lambda k: k is not None, l))
-      return np.stack(l, axis=0).astype(spec.dtype)
+      # copy leads to crazy cpu util
+      return np.stack(l, axis=0).astype(spec.dtype, copy=False)
 
     return nest.map_structure_up_to(traj_spec, f, traj_spec, *trajs)
 

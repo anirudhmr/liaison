@@ -97,7 +97,7 @@ class LiaisonCPUScheduler:
     self._wunits.append([])
     self._assignment_vars.append([])
     for proc_id, process in enumerate(wu):
-      proc = Process(proc_id, process.cpu_cost, process.mem_cost)
+      proc = Process(proc_id, int(process.cpu_cost), int(process.mem_cost))
 
       ass_vars = self._add_process(proc, len(self._wunits) - 1, proc_id)
 

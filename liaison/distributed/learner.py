@@ -185,7 +185,8 @@ class Learner(object):
         combine_trajs=self._batch_and_preprocess_trajs,
         max_prefetch_queue=config.max_prefetch_queue * pf_bs,
         prefetch_processes=config.prefetch_processes,
-        prefetch_threads_per_process=config.prefetch_threads_per_process)
+        prefetch_threads_per_process=config.prefetch_threads_per_process,
+        tmp_dir=config.inmem_tmp_dir)
     self._exp_fetcher.start()
 
   def _setup_ps_client_handle(self):

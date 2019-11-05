@@ -6,7 +6,7 @@ import sonnet as snt
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
 
-MINF = np.float32(-1e9)
+INF = np.float32(1e9)
 
 
 def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
@@ -164,10 +164,8 @@ class Model:
     logits = tf.squeeze(logits, axis=-1)
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     mask = obs['node_mask']
-    updated = tf.tensor_scatter_add(tf.fill(tf.shape(mask), MINF), indices,
-                                    tf.fill(tf.shape(logits), -MINF))
-    logits = tf.tensor_scatter_add(updated, indices, logits)
-    logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), MINF))
+    logits = tf.scatter_nd(indices, logits, tf.shape(mask))
+    logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
     return logits, self._dummy_state(tf.shape(step_type)[0])
 
   def get_value(self, _, __, obs, ___):
@@ -177,19 +175,3 @@ class Model:
       value = gn.blocks.NodesToGlobalsAggregator(
           tf.unsorted_segment_mean)(graph_features)
       return self.value_torso(value)
-
-  # def step_preprocess(self, step_type, reward, obs, prev_state):
-  #   assert 'graph_features' in obs
-  #   data_dicts = gn.utils_np.unstack_data_dict(obs['graph_features'])
-  #   obs['graph_features'] = gn.utils_np.data_dicts_to_graphs_tuple(
-  #       data_dicts)._asdict()
-  #   return step_type, reward, obs, prev_state
-
-  # def update_preprocess(self, step_outputs, prev_states, step_types, rewards,
-  #                       observations, discounts):
-
-  #   assert 'graph_features' in observations
-  #   data_dicts = gn.utils_np.unstack_data_dict(observations['graph_features'])
-  #   observations['graph_features'] = gn.utils_np.data_dicts_to_graphs_tuple(
-  #       data_dicts)._asdict()
-  #   return step_outputs, prev_states, step_types, rewards, observations, discounts

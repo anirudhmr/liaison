@@ -44,9 +44,12 @@ class ScheduleManager:
     self.servers = []
     for node in nodes:
       server = Server(
-          node.name, U.relu(node.avail_cpu()), U.relu(node.avail_mem()),
-          list(map(U.relu, node.avail_gpu_compute(GPU_MODEL_TO_SCALE))),
-          list(map(U.relu, node.avail_gpu_mem())))
+          node.name, int(U.relu(node.avail_cpu())),
+          int(U.relu(node.avail_mem())),
+          list(
+              map(int, map(U.relu,
+                           node.avail_gpu_compute(GPU_MODEL_TO_SCALE)))),
+          list(map(int, map(U.relu, node.avail_gpu_mem()))))
       self.servers.append(server)
 
     # create processes in work units
@@ -55,10 +58,10 @@ class ScheduleManager:
       self.wunits.append([])
       for proc in procs:
         p = Process(name=proc.name,
-                    cpu_cost=proc.cpu_cost,
-                    mem_cost=proc.mem_cost,
-                    gpu_compute_cost=proc.gpu_compute_cost,
-                    gpu_mem_cost=proc.gpu_mem_cost)
+                    cpu_cost=int(proc.cpu_cost),
+                    mem_cost=int(proc.mem_cost),
+                    gpu_compute_cost=list(map(int, proc.gpu_compute_cost)),
+                    gpu_mem_cost=list(map(int, proc.gpu_mem_cost)))
         assert p.cpu_cost is not None, p.name
         assert p.mem_cost is not None, p.name
         self.wunits[-1].append(p)

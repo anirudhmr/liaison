@@ -84,12 +84,10 @@ class Agent(BaseAgent):
     self._validate_observations(obs)
     with tf.variable_scope(self._name):
       # flatten graph features for the policy network
-      with tf.device('cpu:0'):
-        # convert dict to graphstuple
-        graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
-        graph_features = self._flatten_graphs(graph_features)
+      # convert dict to graphstuple
+      graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
+      obs['graph_features'] = self._flatten_graphs(graph_features)
 
-      obs['graph_features'] = graph_features
       logits, next_state = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
 
@@ -181,11 +179,12 @@ class Agent(BaseAgent):
                                self._get_entropy_regularization_constant(),
                                **config.loss)
 
+      with tf.variable_scope('optimize'):
+        opt_vals = self._optimize(self.loss.loss)
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
         n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
                                 tf.float32)
-        opt_vals = self._optimize(self.loss.loss)
 
         def f(x):
           """Computes the valid mean stat."""

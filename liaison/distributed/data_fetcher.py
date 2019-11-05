@@ -1,7 +1,6 @@
 import os
 import queue
 from caraml.zmq import DataFetcher
-from benedict import BeneDict
 import liaison.utils as U
 from threading import Thread
 
@@ -27,6 +26,7 @@ class LearnerDataPrefetcher(DataFetcher):
       max_prefetch_queue,
       prefetch_processes,
       prefetch_threads_per_process,
+      tmp_dir,
       worker_preprocess=None,
   ):
     assert batch_size % prefetch_batch_size == 0
@@ -53,7 +53,8 @@ class LearnerDataPrefetcher(DataFetcher):
                      remote_deserialzer=get_deserializer(),
                      n_workers=self.prefetch_processes,
                      worker_handler=self.worker_preprocess,
-                     threads_per_worker=prefetch_threads_per_process)
+                     threads_per_worker=prefetch_threads_per_process,
+                     tmp_dir=tmp_dir)
 
   def run(self):
     self._combine_prefetch_thread = Thread(

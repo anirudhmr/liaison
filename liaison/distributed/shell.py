@@ -62,7 +62,7 @@ class Shell:
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
       else:
-        self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
+        self.sess = tf.Session()
 
       self._agent = agent_class(name=agent_scope,
                                 action_spec=action_spec,
