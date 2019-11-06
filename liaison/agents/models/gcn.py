@@ -34,7 +34,7 @@ def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
       layer_sizes,
       initializers=dict(
           w=glorot_uniform(seed),
-          b=initializers.init_ops.Constant(0.1)),  # small bias initializer.
+          b=initializers.init_ops.Constant(0)),  # small bias initializer.
       activate_final=activate_final,
       activation=get_activation_from_str(activation),
   )
@@ -66,13 +66,13 @@ class Model:
     with tf.variable_scope('edge_model'):
       self._edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
                                   activation,
-                                  False,
+                                  True,
                                   seed,
                                   layer_norm=True)
     with tf.variable_scope('node_model'):
       self._node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
                                   activation,
-                                  False,
+                                  True,
                                   seed,
                                   layer_norm=True)
 
@@ -98,8 +98,7 @@ class Model:
       self.policy_torso = snt.nets.MLP(
           policy_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
-                            b=initializers.init_ops.Constant(
-                                0.1)),  # small bias initializer.
+                            b=initializers.init_ops.Constant(0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
@@ -108,8 +107,7 @@ class Model:
       self.value_torso = snt.nets.MLP(
           value_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
-                            b=initializers.init_ops.Constant(
-                                0.1)),  # small bias initializer.
+                            b=initializers.init_ops.Constant(0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )

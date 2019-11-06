@@ -138,15 +138,15 @@ class LiaisonCPUScheduler:
     # For server i, the overload is defined as [L_i - C_i]+
     # We seek to minimize max_overload - min_overload as a
     # way to load balance the excess overloads.
-    d_max = compute_max([d.to_expression() for d in overload_ds],
-                        'load_balancing_max_helper', [0] * len(overload_ds),
-                        [max_load - server.cpu
-                         for server in self._servers], self.mip)
+    d_max = compute_max(
+        [d.to_expression() for d in overload_ds], 'load_balancing_max_helper',
+        [0] * len(overload_ds),
+        [max(0, max_load - server.cpu) for server in self._servers], self.mip)
 
-    d_min = compute_min([d.to_expression() for d in overload_ds],
-                        'load_balancing_min_helper', [0] * len(overload_ds),
-                        [max_load - server.cpu
-                         for server in self._servers], self.mip)
+    d_min = compute_min(
+        [d.to_expression() for d in overload_ds], 'load_balancing_min_helper',
+        [0] * len(overload_ds),
+        [max(0, max_load - server.cpu) for server in self._servers], self.mip)
 
     load_balancing_obj = Objective()
     load_balancing_obj.add_term(d_max.name, 1)

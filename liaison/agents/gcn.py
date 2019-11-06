@@ -194,6 +194,10 @@ class Agent(BaseAgent):
         # https://github.com/google-research/batch-ppo/blob/master/agents/algorithms/ppo/utility.py
         self._logged_values = {
             # entropy
+            'entropy/uniform_random_entropy':
+            f(
+                compute_entropy(
+                    tf.cast(tf.greater(target_logits, -1e8), tf.float32))),
             'entropy/target_policy_entropy':
             f(compute_entropy(target_logits)),
             'entropy/behavior_policy_entropy':
