@@ -32,9 +32,8 @@ GLOBAL_BLOCK_OPT = {
 def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
   mlp = snt.nets.MLP(
       layer_sizes,
-      initializers=dict(
-          w=glorot_uniform(seed),
-          b=initializers.init_ops.Constant(0)),  # small bias initializer.
+      initializers=dict(w=glorot_uniform(seed),
+                        b=initializers.init_ops.Constant(0)),
       activate_final=activate_final,
       activation=get_activation_from_str(activation),
   )

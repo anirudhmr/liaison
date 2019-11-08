@@ -16,7 +16,7 @@ def get_config():
   # makes observations for graphnet agent with node labels in node features and
   # shortest path embedded as edge features.
   config.make_obs_for_graphnet_semi_supervised = False
-
+  """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 
   return config

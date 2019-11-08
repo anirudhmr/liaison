@@ -41,14 +41,15 @@ class Env(BaseEnv):
 
   N_GLOBAL_FIELDS = 2
 
-  def __init__(self, id, seed, discount=1.0, graph_seed=None, **env_config):
+  def __init__(self, id, seed, discount=1.0, graph_seed=-1, **env_config):
+    """if graph_seed < 0, then use the environment seed"""
     self.config = ConfigDict(env_config)
     self.id = id
     self.seed = seed
     self.discount = discount
     self.set_seed(seed)
 
-    if graph_seed is None:
+    if graph_seed < 0:
       graph_seed = seed
     # generate graph with 32 nodes.
     nx_graph, self._path = generate_networkx_graph(graph_seed, [32, 33])

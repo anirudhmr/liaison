@@ -4,7 +4,6 @@ import shlex
 import socket
 import sys
 from copy import copy
-from multiprocessing.pool import ThreadPool
 
 import liaison.utils as U
 from caraml.zmq import ZmqClient

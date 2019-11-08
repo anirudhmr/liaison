@@ -58,13 +58,31 @@ class SchedulingTest(parameterized.TestCase):
 
     return servers, work_units
 
-  @parameterized.parameters((True, False), (True, True))
-  def testSolve(self, memory=False, large=False):
+  def _setup_underload(self):
+    N_WORK_UNITS = 2
+    N_PROCS = 8
+    N_SERVERS = 16
+
+    servers = [SERVER(64, 200, None, None)] * N_SERVERS
+    work_units = []
+    for i in range(N_WORK_UNITS):
+      procs = []
+      for j in range(N_PROCS):
+        proc = PROCESS(1, 175, None, None)
+        procs.append(proc)
+      work_units.append(procs)
+
+    return servers, work_units
+
+  @parameterized.parameters((1), (2), (3), (4))
+  def testSolve(self, case):
     # First situation
-    if memory:
+    if case == 1:
       f = self._setup_memory
-    elif large:
+    elif case == 2:
       f = self._large_setup
+    elif case == 3:
+      f = self._setup_underload
     else:
       f = self._setup
     servers, work_units = f()

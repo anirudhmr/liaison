@@ -7,9 +7,8 @@ from collections import namedtuple
 
 from ortools.linear_solver import pywraplp
 
-from .mip_primitives import (Constraint, Expression, Objective, Variable,
-                             MIPTracker, compute_min, compute_max,
-                             compute_relu)
+from .mip_primitives import (Constraint, Expression, MIPTracker, Objective,
+                             Variable, compute_max, compute_min, compute_relu)
 
 
 class Process:
