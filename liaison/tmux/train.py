@@ -1,14 +1,15 @@
 # python liaison/tmux/train.py --pdb_post_mortem -- create -r /data/nms/tfp/results/{experiment_name}/{exp_id} -e gn --filter='.*freebsd_([0-9]|1[0-5])_c220g5.*|.*110533.*' --n_actors=8 --resource_req_config.actor.mem=175 -- --agent_config_file=liaison/configs/agent/gcn.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py --env_config.class_path='liaison.env.shortest_path' --sess_config.learner.use_gpu=True --batch_size=128 --sess_config.learner.batch_size=32 --sess_config.actor.use_threaded_envs=False --traj_length=128 ^Cagent_config.discount_factor=1. --sess_config.replay.memory_size=8000 --sess_config.replay.load_balanced=False --sess_config.learner.publish_every=50 --agent_config.grad_clip=0.0 --agent_config.model.n_prop_layers=8 --agent_config.lr_min=1e-4 --sess_config.learner.inmem_tmp_dir='/users/arc/vol/work_dir'
+
 # python liaison/tmux/train.py --pdb_post_mortem -- create -r /tmp/ -e test --filter='.*os_mm.*' -- --agent_config_file=liaison/configs/agent/config.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py
 import argparse
 
-from liaison.launch import hyper
-from liaison.tmux.surreal_tmux import TurrealParser
-from liaison.tmux.liaison_placer import LiaisonPlacer
-from liaison.tmux.create_programs import build_program
-from liaison.utils import ConfigDict
 import argon
 from absl import app
+from liaison.launch import hyper
+from liaison.tmux.create_programs import build_program
+from liaison.tmux.liaison_placer import LiaisonPlacer
+from liaison.tmux.surreal_tmux import TurrealParser
+from liaison.utils import ConfigDict
 
 parser = argon.ArgumentParser('Liaison trainer', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
@@ -67,7 +68,6 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.discrete('agent_config.lr_init', [
           1e-3,
-          1e-4,
       ])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')

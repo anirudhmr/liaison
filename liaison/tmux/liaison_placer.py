@@ -6,7 +6,6 @@ from liaison.scheduling import ScheduleManager
 
 RES_DIRS = [
     '/'.join(__file__.split('/')[:-2]),
-    '/'.join(__file__.split('/')[:-3]) + '/.git'
 ]
 
 

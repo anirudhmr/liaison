@@ -95,6 +95,15 @@ class Agent(object):
         'opt/relative_gradient_norm': relative_norm,
     }
 
+  def _extract_logged_values(self, obs, reducer_fn):
+    """
+      If log_values found in obs then use reducer_fn and output as logs.
+    """
+    if 'log_values' in obs:
+      return dict(
+          log_values=tf.nest.map_structure(reducer_fn, obs['log_values']))
+    return {}
+
   def initial_state(self, bs):
     """initial state of the agent.
 

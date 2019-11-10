@@ -135,6 +135,8 @@ class Agent(BaseAgent):
           'reward/avg_reward':
           f(rewards[1:]),
           **opt_vals,
+          **self._extract_logged_values(
+              tf.nest.map_structure(lambda k: k[:-1], observations), f),
           **self.loss.logged_values
       }
 
