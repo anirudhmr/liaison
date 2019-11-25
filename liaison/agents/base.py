@@ -99,10 +99,14 @@ class Agent(object):
     """
       If log_values found in obs then use reducer_fn and output as logs.
     """
+    ret_d = dict()
     if 'log_values' in obs:
-      return dict(
-          log_values=tf.nest.map_structure(reducer_fn, obs['log_values']))
-    return {}
+      d = tf.nest.map_structure(reducer_fn, obs['log_values'])
+      ret_d = {}
+      for k, v in d.items():
+        assert not isinstance(v, dict)
+        ret_d['log_values/' + k] = v
+    return ret_d
 
   def initial_state(self, bs):
     """initial state of the agent.

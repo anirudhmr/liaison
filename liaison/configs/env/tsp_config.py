@@ -15,4 +15,8 @@ def get_config():
   """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 
+  config.dataset = 'tsp-20'
+  config.dataset_type = 'train'
+  config.graph_idx = 0
+
   return config

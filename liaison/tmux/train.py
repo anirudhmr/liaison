@@ -38,7 +38,7 @@ parser.add_argument('--pl_constraints',
                     default=[],
                     help='''
   If you would like to place all actor nodes on gpu-* servers, then use the string:
-  'actor-*:gpu-*'
+  'actor-.*:gpu-.*'
   ''')
 parser.add_argument('--coloc_constraints',
                     type=str,

@@ -1,5 +1,6 @@
 import functools
 
+import graph_nets as gn
 import numpy as np
 import tensorflow as tf
 from absl import logging
@@ -9,7 +10,6 @@ from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
-import graph_nets as gn
 
 
 class Agent(BaseAgent):
@@ -148,7 +148,8 @@ class Agent(BaseAgent):
       with tf.variable_scope('flatten_graphs_for_value_func'):
         # flatten graphs for value network
         # merge time and batch dimensions
-        observations = nest.map_structure(merge_first_two_dims, observations)
+        observations['graph_features'] = nest.map_structure(
+            merge_first_two_dims, observations['graph_features'])
         graph_features = gn.graphs.GraphsTuple(
             **observations['graph_features'])
         # flatten by merging the batch and node, edge dimensions
@@ -213,6 +214,8 @@ class Agent(BaseAgent):
             f(rewards[1:]),
             **opt_vals,
             **logits_logged_vals,
+            **self._extract_logged_values(
+                tf.nest.map_structure(lambda k: k[:-1], observations), f),
             **self.loss.logged_values
         }
 

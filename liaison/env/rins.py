@@ -17,53 +17,58 @@ from tensorflow.contrib.framework import nest
 
 class Env(BaseEnv):
   """
-    Travelling salesman environment.
-    At each step predict the next node in the path back to the source.
-    Similar to the rat-maze problem without obstacles.
+    RINS environment.
+    At each step predict the variable to unfix.
+    After k steps solve the sub-MIP problem formed by the unfixed variables.
+    Use the objective value of the solved sub-MIP as reward signal.
   """
-  # static
-  NODE_IS_SRC_FIELD = 0
-
-  # dynamic
-  # whether node is visited or not in this episode.
-  NODE_VISITED_FIELD = 1
-  # whether this is the current node
-  NODE_CUR_NODE_FIELD = 2
+  # fields present only in variable nodes.
   # mask bits
-  NODE_MASK_FIELD = 3
-  # x coord of the node
-  NODE_X_FIELD = 4
-  # y coord of the node
-  NODE_Y_FIELD = 5
-  # Normalized path index of the node.
-  NODE_PATH_INDEX_FIELD = 6
+  VARIABLE_MASK_FIELD = 0
+  # current integral assignment
+  VARIABLE_CURR_ASSIGNMENT_FIELD = 1
+  # whether node is unfixed or not.
+  VARIABLE_IS_UNFIXED_FIELD = 2
+  # current lp solution (if unfixed).
+  # if node fixed then this field is equal to the current assignment.
+  VARIABLE_LP_SOLN_FIELD = 3
+  # is always true for fixed nodes.
+  # is true if lp solution for unfixed node is integral
+  VARIABLE_IS_INTEGER_FIELD = 4
 
-  N_NODE_FIELDS = 7
+  N_VARIABLE_FIELDS = 5
 
-  # static
-  # edge distance as the cost.
+  # constant used in the constraints.
+  CONSTRAINT_CONSTANT_FIELD = 0
+  # slack in the constrant.
+  CONSTRAINT_SLACK_FIELD = 1
+
+  N_CONSTRAINT_FIELDS = 2
+
+  # coefficient in the constraint as edge weight.
   EDGE_WEIGHT_FIELD = 0
-  # dynamic
-  # whether the edge has been visited or not.
-  EDGE_VISITED_FIELD = 1
-  # The edge's path index (normalized)
-  EDGE_PATH_INDEX_FIELD = 2
+  # coefficient * variable value (lp solution value if unfixed)
+  EDGE_CONSTRAINT_TERM_FIELD = 1
 
-  N_EDGE_FIELDS = 3
+  N_EDGE_FIELDS = 2
 
   # dynamic
   GLOBAL_STEP_COUNT_FIELD = 0
   # counts the total return of the episode so far.
   GLOBAL_RETURNS_FIELD = 1
+  # step reward field
+  GLOBAL_REWARD_FIELD = 2
+  # current objective value
+  GLOBAL_OBJ_VALUE_FIELD = 3
 
-  N_GLOBAL_FIELDS = 2
+  N_GLOBAL_FIELDS = 4
 
   def __init__(self,
                id,
                seed,
                graph_seed=-1,
                graph_idx=0,
-               dataset='tsp-20',
+               dataset='milp-facilities-3',
                dataset_type='train',
                **env_config):
     """if graph_seed < 0, then use the environment seed"""

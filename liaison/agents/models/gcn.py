@@ -1,7 +1,8 @@
 """Graphnet based model."""
 
-import graph_nets as gn
 import numpy as np
+
+import graph_nets as gn
 import sonnet as snt
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
@@ -94,6 +95,7 @@ class Model:
           global_block_opt=GLOBAL_BLOCK_OPT)
 
     with tf.variable_scope('policy_network'):
+      print('WARNING: IMP TODO: Remove bias from the final layer.')
       self.policy_torso = snt.nets.MLP(
           policy_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
