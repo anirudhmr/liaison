@@ -1,7 +1,10 @@
+import copy
+from abc import ABC
+
 from pyscipopt import Model, multidict, quicksum
 
 
-class Variable:
+class Variable(ABC):
 
   def __init__(self, var_name, lower_bound=None, upper_bound=None):
     self.name = var_name
@@ -147,6 +150,20 @@ class Constraint:
   def add_terms(self, var_names, coeffs):
     self.expr.add_terms(var_names, coeffs)
 
+  def __len__(self):
+    return len(self.expr)
+
+  def cast_sense_to_le(self) -> Constraint:
+    rhs = self.rhs
+    expr = copy.deepcopy(self.expr)
+    if self.sense == 'GE':
+      expr = expr.negate()
+      rhs *= -1
+    c = Constraint('LE', rhs, self.name)
+    c.expr = expr
+    c.validate()
+    return c
+
   def relax(self, fixed_vars_to_values):
     """
       returns constraints after removing the fixed variables.
@@ -173,7 +190,7 @@ class Constraint:
       expr.constant = 0
 
       c = Constraint('LE', rhs)
-      c.expr = expr
+      c.expr = copy.deepcopy(expr)
       c.validate()
       return c
 
@@ -217,6 +234,9 @@ class Objective:
 
   def add_terms(self, var_names, coeffs):
     self.expr.add_terms(var_names, coeffs)
+
+  def __len__(self):
+    return len(self.expr)
 
   def relax(self, fixed_vars_to_values):
     """
@@ -278,9 +298,17 @@ class MIPInstance:
 
     assert set(all_var_names) == set(list(self.varname2var.keys()))
 
-  def relax(self, fixed_vars_to_values):
-    """returns lp version of mip without integer variables present
-       in fixed_vars_to_values.
+  def unfix(self,
+            fixed_vars_to_values: Dict[str, Union[int, float]],
+            integral_relax=False) -> MIPInstance:
+    """
+      Args:
+        fixed_vars_to_values: variables to fix and their values to fix to.
+        integral_relax: If true return an lp with all integral constraints on
+                        all variables relaxed.
+      Returns:
+        Leaves the current mipinstance unchanged.
+        Returns a new mipinstance with fixes and relaxations made.
     """
     for name, val in fixed_vars_to_values.items():
       # assert variables are defined.
@@ -303,7 +331,10 @@ class MIPInstance:
         # and eliminated in the sub-MIP
         pass
       else:
-        m.add_variable(var.integral_relax())
+        if integral_relax:
+          m.add_variable(var.integral_relax())
+        else:
+          m.add_variable(copy.deepcopy(var))
 
     m.obj = self.obj.relax(fixed_vars_to_values)
     assert m.obj is not None

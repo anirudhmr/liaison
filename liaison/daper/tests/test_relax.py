@@ -39,25 +39,13 @@ class ScipTest(absltest.TestCase):
 
   def _get_scip(self):
     model = Model()
-    model.hideOutput()
     return model
-
-  def test1(self):
-    m = self._setup()
-    solver = self._get_scip()
-    m.add_to_scip_solver(solver)
-    solver.optimize()
-    sol = {var.name: solver.getVal(var) for var in solver.getVars()}
-    # print('Solution: ', sol)
-    # optimal solution:
-    # x = 4, y = -1, z = 0
-    self.assertEqual(sol['x'], 4)
-    self.assertEqual(sol['y'], -1)
-    self.assertEqual(sol['z'], 0)
 
   def testRelax2(self):
     full_sol = dict(x=4, y=-1, z=0)
     for case in [
+        None,
+        dict(),
         dict(x=4),
         dict(y=-1),
         dict(z=0),
@@ -66,12 +54,13 @@ class ScipTest(absltest.TestCase):
         dict(y=-1, z=0)
     ]:
       m = self._setup()
-      m = m.relax(case)
+      if case: m = m.relax(case)
       solver = self._get_scip()
       m.add_to_scip_solver(solver)
       solver.optimize()
       sol = {var.name: solver.getVal(var) for var in solver.getVars()}
-      assert len(sol) == 3 - len(case)
+      if case:
+        assert len(sol) == 3 - len(case)
       for k, v in sol.items():
         self.assertEqual(v, full_sol[k])
 

@@ -1,8 +1,7 @@
 """Graphnet based model."""
 
-import numpy as np
-
 import graph_nets as gn
+import numpy as np
 import sonnet as snt
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
@@ -178,4 +177,4 @@ class Model:
       graph_features = self._convolve(obs['graph_features'])
       value = gn.blocks.NodesToGlobalsAggregator(
           tf.unsorted_segment_mean)(graph_features)
-      return self.value_torso(value)
+      return tf.squeeze(self.value_torso(value), axis=-1)
