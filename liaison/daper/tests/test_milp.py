@@ -14,13 +14,24 @@ class ScipTest(absltest.TestCase):
     problem = generate_instance('cauction', 20, 42)
     return problem
 
+  def _relax(self, prob):
+    return prob.relax({list(prob.varname2var.keys())[0]: 0})
+
   def testSCIP(self):
     prob = self._setup()
-    model = Model("test")
+    model = Model()
+    model.hideOutput()
     prob.add_to_scip_solver(model)
     model.optimize()
     with lock:
       print('SCIP Objective value: ', model.getObjVal())
+
+  def testRelaxSCIP(self):
+    prob = self._relax(self._setup())
+    model = Model()
+    model.hideOutput()
+    prob.add_to_scip_solver(model)
+    model.optimize()
 
   def testCPLEX(self):
     prob = self._setup()

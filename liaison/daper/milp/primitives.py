@@ -10,8 +10,7 @@ class Variable:
 
   def integral_relax(self):
     """relax the integrality constraint for lp."""
-    return ContinuousVariable(self.var_name, self.lower_bound,
-                              self.upper_bound)
+    return ContinuousVariable(self.name, self.lower_bound, self.upper_bound)
 
   def validate(self, val):
     if self.lower_bound is not None:
@@ -100,14 +99,17 @@ class Expression:
     self.var_names.extend(var_names)
     self.coeffs.extend(coeffs)
 
+  def __len__(self):
+    assert len(self.var_names) == len(self.coeffs)
+    return len(self.var_names)
+
   @property
   def is_constant(self):
     return len(self.var_names) == 0
 
   def negate(self):
     e = Expression(-self.constant)
-    e.add_terms(var_names, [-1 * c for c in coeffs])
-    e.validate()
+    e.add_terms(self.var_names, [-1 * c for c in self.coeffs])
     return e
 
   def reduce(self, fixed_vars_to_values):
@@ -154,7 +156,7 @@ class Constraint:
     """
     expr = self.expr.reduce(fixed_vars_to_values)
     if expr.is_constant:
-      if sense == 'LE':
+      if self.sense == 'LE':
         assert expr.constant <= self.rhs
       else:
         assert expr.constant >= self.rhs
@@ -222,7 +224,7 @@ class Objective:
       returns None if all variables get eliminated and objective is trivial.
     """
     o = Objective()
-    for var, coeff in self.expr.var_names:
+    for var, coeff in zip(self.expr.var_names, self.expr.coeffs):
       if var in fixed_vars_to_values:
         # ignore the fixed vars
         pass
@@ -250,6 +252,7 @@ class MIPInstance:
   def __init__(self, name=None):
     self.varname2var = dict()
     self.constraints = []
+    self.name = name
     self.obj = Objective()
 
   def add_variable(self, var):

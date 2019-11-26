@@ -2,7 +2,6 @@ import argparse
 import functools
 import os
 import pickle
-from multiprocessing.pool import ThreadPool
 
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
@@ -16,24 +15,22 @@ parser.add_argument('--problem_type',
 parser.add_argument('--problem_size', type=int, required=True)
 parser.add_argument('--time_limit', type=int, default=None)
 parser.add_argument('--seed', type=int, required=True)
+parser.add_argument('--use_cplex', action='store_true')
 args = parser.parse_args()
 
 
-def main():
-
-  milp = MILP()
-  milp.seed = args.seed
-  milp.problem_type = args.problem_type
-  mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
-                                     args.seed)
-
+def cplex(mip, milp):
+  """
+    Should set the relevant fields of milp with
+    optimal solution, objective value and feasible
+    solution, feasible obj value.
+  """
   import cplex
   solver = cplex.Cplex()
   if args.time_limit:
     solver.parameters.timelimit.set(args.time_limit)
 
   mip.add_to_cplex_solver(solver)
-
   print('Number of variables = ', solver.variables.get_num())
   print('Number of constraints = ', solver.linear_constraints.get_num())
 
@@ -56,7 +53,6 @@ def main():
   init_soln = solver.solution.pool.get_values(num_feasible_sols - 1)
   init_obj_val = solver.solution.pool.get_objective_value(num_feasible_sols -
                                                           1)
-  assert sorted(var_names) == sorted(list(solver.variables.get_names()))
 
   milp.feasible_objective = init_obj_val
   # convert to dict format from var_name -> value.
@@ -65,6 +61,41 @@ def main():
       for var, val in zip(solver.variables.get_names(), init_soln)
   }
 
+
+def scip(mip, milp):
+  from pyscipopt import Model
+  model = Model()
+  model.hideOutput()
+
+  mip.add_to_scip_solver(model)
+  model.optimize()
+  milp.optimal_objective = model.getObjVal()
+  milp.optimal_solution = {
+      var.name: model.getVal(var)
+      for var in model.getVars()
+  }
+  milp.is_optimal = (model.getStatus() == 'optimal')
+
+  feasible_sol = model.getSols()[-1]
+  milp.feasible_objective = model.getSolObjVal(feasible_sol)
+  milp.feasible_solution = {
+      var.name: model.feasible_sol[var]
+      for var in model.getVars()
+  }
+
+
+def main():
+
+  milp = MILP()
+  milp.seed = args.seed
+  milp.problem_type = args.problem_type
+  mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
+                                     args.seed)
+
+  if args.use_cplex():
+    cplex(mip, milp)
+  else:
+    scip(mip, milp)
   os.makedirs(os.path.dirname(args.out_file), exist_ok=True)
   with open(args.out_file, 'wb') as f:
     pickle.dump(milp, f)
