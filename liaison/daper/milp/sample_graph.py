@@ -79,7 +79,7 @@ def scip(mip, milp):
   feasible_sol = model.getSols()[-1]
   milp.feasible_objective = model.getSolObjVal(feasible_sol)
   milp.feasible_solution = {
-      var.name: model.feasible_sol[var]
+      var.name: feasible_sol[var]
       for var in model.getVars()
   }
 
@@ -92,7 +92,7 @@ def main():
   mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
                                      args.seed)
 
-  if args.use_cplex():
+  if args.use_cplex:
     cplex(mip, milp)
   else:
     scip(mip, milp)

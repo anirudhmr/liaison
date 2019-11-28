@@ -54,10 +54,11 @@ class ScipTest(absltest.TestCase):
         dict(y=-1, z=0)
     ]:
       m = self._setup()
-      if case: m = m.relax(case)
+      if case: m = m.unfix(case, integral_relax=True)
       solver = self._get_scip()
       m.add_to_scip_solver(solver)
       solver.optimize()
+      assert solver.getObjVal() == -11.
       sol = {var.name: solver.getVal(var) for var in solver.getVars()}
       if case:
         assert len(sol) == 3 - len(case)

@@ -1,7 +1,7 @@
 import copy
 import os
 import pickle
-from typing import Any, Dict, Map, Text, Tuple, Union
+from typing import Any, Dict, Text, Tuple, Union
 
 import networkx as nx
 import numpy as np
@@ -9,6 +9,7 @@ import scipy
 
 import graph_nets as gn
 from liaison.daper.dataset_constants import DATASET_PATH, LENGTH_MAP
+from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.specs import ArraySpec, BoundedArraySpec
@@ -69,6 +70,7 @@ class Env(BaseEnv):
                dataset='milp-facilities-3',
                dataset_type='train',
                k=5,
+               steps_per_episode=10,
                **env_config):
     """If graph_seed < 0, then use the environment seed.
        k -> Max number of variables to unfix at a time.
@@ -78,6 +80,7 @@ class Env(BaseEnv):
     self.config = ConfigDict(env_config)
     self.id = id
     self.k = k
+    self._steps_per_episode = steps_per_episode
     self.seed = seed
     self.set_seed(seed)
     if graph_seed < 0: graph_seed = seed
@@ -100,7 +103,7 @@ class Env(BaseEnv):
     return milp
 
   def _observation_mlp(self):
-    mask = np.int32(self._graph_features.nodes[:, Env.VARIABLE_MASK_FIELD])
+    mask = np.int32(variable_nodes[:, Env.VARIABLE_MASK_FIELD])
     obs = dict(features=self._graph_features.nodes.flatten(), mask=mask)
     return obs
 
@@ -115,13 +118,15 @@ class Env(BaseEnv):
              Env.N_OBJECTIVE_FIELDS)),
         dtype=np.float32)
 
-    nodes[0:len(variable_nodes), :] = variable_nodes
+    nodes[0:len(variable_nodes), 0:Env.N_VARIABLE_FIELDS] = variable_nodes
+
     constraint_node_offset = len(variable_nodes)
     nodes[constraint_node_offset:constraint_node_offset +
-          len(constraint_nodes), :] = constraint_nodes
+          len(constraint_nodes), 0:Env.N_CONSTRAINT_FIELDS] = constraint_nodes
+
     objective_node_offset = constraint_node_offset + len(constraint_nodes)
     nodes[objective_node_offset:objective_node_offset +
-          len(objective_nodes), :] = objective_nodes
+          len(objective_nodes), 0:Env.N_OBJECTIVE_FIELDS] = objective_nodes
 
     graph_features = dict(nodes=nodes,
                           edges=self._edges,
@@ -131,7 +136,7 @@ class Env(BaseEnv):
                           n_node=np.array(len(nodes), dtype=np.int32),
                           n_edge=np.array(len(self._edges), dtype=np.int32))
 
-    mask = np.int32(graph_features['nodes'][:, Env.VARIABLE_MASK_FIELD])
+    mask = np.int32(variable_nodes[:, Env.VARIABLE_MASK_FIELD])
     obs = dict(graph_features=graph_features, node_mask=mask)
     return obs
 
@@ -155,24 +160,24 @@ class Env(BaseEnv):
     self._n_steps = 0
     self._reset_next_step = False
     milp = self.milp
-    self._var_names = var_names = list(milp.varname2var.keys())
+    self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
-    variable_nodes = np.zeros((len(milp.varname2var), Env.N_VARIABLE_FIELDS),
-                              dtype=np.float32)
+    variable_nodes = np.zeros(
+        (len(milp.mip.varname2var), Env.N_VARIABLE_FIELDS), dtype=np.float32)
     # mask all variables
     variable_nodes[:, Env.VARIABLE_MASK_FIELD] = 1
     feas_sol = [milp.feasible_solution[v] for v in var_names]
     variable_nodes[:, Env.VARIABLE_CURR_ASSIGNMENT_FIELD] = feas_sol
     variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD] = feas_sol
     variable_nodes[:, Env.VARIABLE_IS_INTEGER_FIELD] = [
-        isinstance(milp.varname2var[var_name], IntegerVariable)
+        isinstance(milp.mip.varname2var[var_name], IntegerVariable)
         for var_name in var_names
     ]
 
     # now construct constraint nodes
     constraint_nodes = np.zeros(
-        (len(milp.constraints, Env.N_CONSTRAINT_FIELDS)), dtype=np.float32)
-    for i, c in enumerate(milp.constraints):
+        (len(milp.mip.constraints), Env.N_CONSTRAINT_FIELDS), dtype=np.float32)
+    for i, c in enumerate(milp.mip.constraints):
       c = c.cast_sense_to_le()
       constraint_nodes[i, Env.CONSTRAINT_CONSTANT_FIELD] = c.rhs
 
@@ -181,12 +186,12 @@ class Env(BaseEnv):
     objective_nodes[:, 1] = milp.feasible_objective
 
     # get undirected edge representation first
-    n_edges = sum([len(c) for c in milp.constraints]) + len(milp.obj)
+    n_edges = sum([len(c) for c in milp.mip.constraints]) + len(milp.mip.obj)
     edges = np.zeros((n_edges, Env.N_EDGE_FIELDS), dtype=np.float32)
     senders = np.zeros((n_edges), dtype=np.int32)
     receivers = np.zeros((n_edges), dtype=np.int32)
     i = 0
-    for cid, c in enumerate(milp.constraints):
+    for cid, c in enumerate(milp.mip.constraints):
       c = c.cast_sense_to_le()
       for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
         edges[i, Env.EDGE_WEIGHT_FIELD] = coeff
@@ -194,8 +199,8 @@ class Env(BaseEnv):
         receivers[i] = len(variable_nodes) + cid
         i += 1
 
-    for j, (var_name,
-            coeff) in enumerate(zip(milp.obj.var_name, milp.obj.coeffs)):
+    for j, (var_name, coeff) in enumerate(
+        zip(milp.mip.obj.expr.var_names, milp.mip.obj.expr.coeffs)):
       edges[i + j, Env.EDGE_WEIGHT_FIELD] = coeff
       senders[i + j] = var_names.index(var_name)
       receivers[i + j] = len(variable_nodes) + len(constraint_nodes)
@@ -207,25 +212,28 @@ class Env(BaseEnv):
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
 
-    self._nodes = nodes
     self._edges = edges
     self._globals = globals_
     self._senders, self._receivers = senders, receivers
     self._variable_nodes = variable_nodes
     self._objective_nodes = objective_nodes
     self._constraint_nodes = constraint_nodes
+    n_nodes = len(variable_nodes) + len(objective_nodes) + len(
+        constraint_nodes)
 
     # compute masks for each node type
-    self._var_type_mask = np.zeros((len(nodes)), dtype=np.int32)
+    self._var_type_mask = np.zeros((n_nodes), dtype=np.int32)
     self._var_type_mask[0:len(variable_nodes)] = 1
-    self._constraint_type_mask = np.zeros((len(nodes)), dtype=np.int32)
-    self._constraint_type_mask[constraint_node_offset:constraint_node_offset +
+    self._constraint_type_mask = np.zeros((n_nodes), dtype=np.int32)
+    self._constraint_type_mask[len(variable_nodes):len(variable_nodes) +
                                len(constraint_nodes)] = 1
-    self._obj_type_mask = np.zeros((len(nodes)), dtype=np.int32)
-    self._obj_type_mask[objective_node_offset:objective_node_offset +
-                        len(objective_nodes)] = 1
+    self._obj_type_mask = np.zeros((n_nodes), dtype=np.int32)
+    self._obj_type_mask[len(variable_nodes) +
+                        len(constraint_nodes):len(variable_nodes) +
+                        len(constraint_nodes) + len(objective_nodes)] = 1
     self._unfixed_variables = []
     self._curr_soln = copy.deepcopy(milp.feasible_solution)
+    self._curr_obj = milp.feasible_objective
 
     return restart(self._observation())
 
@@ -246,19 +254,18 @@ class Env(BaseEnv):
 
     self._n_steps += 1
     milp = self.milp
-    graph_features = self._graph_features
     curr_sol = self._curr_soln
+    curr_obj = self._curr_obj
     var_names = self._var_names
-    # action is the next node to unfix.
-    action = int(action)
-    mask = graph_features.nodes[:, Env.VARIABLE_MASK_FIELD]
-    # check if the previous step's mask was successfully applied
-    assert mask[action]
-
     # update graph features based on the action.
     globals_ = self._globals
     variable_nodes = self._variable_nodes
-    obj_nodes = self._obj_nodes
+    obj_nodes = self._objective_nodes
+    # action is the next node to unfix.
+    action = int(action)
+    mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
+    # check if the previous step's mask was successfully applied
+    assert mask[action]
 
     globals_[Env.GLOBAL_UNFIX_LEFT] -= 1
     self._unfixed_variables.append(var_names[action])
@@ -276,7 +283,7 @@ class Env(BaseEnv):
     if globals_[Env.GLOBAL_UNFIX_LEFT] == 0:
       # run mip
       local_search_case = True
-      mip = milp.mip.relax(fixed_assignment, integral_relax=False)
+      mip = milp.mip.unfix(fixed_assignment, integral_relax=False)
       ass, curr_obj = self._scip_solve(mip)
       curr_sol = dict()
       for var, val in fixed_assignment.items():
@@ -286,18 +293,20 @@ class Env(BaseEnv):
 
       # add back the newly found solutions for the sub-mip.
       # this updates the current solution to the new local one.
-      curr_sol = curr_sol.update(ass)
+      curr_sol.update(ass)
       # reset the current solution to the newly found one.
       self._curr_soln = curr_sol
+      self._curr_obj   =curr_obj
       # reset fixed variables.
       self._unfixed_variables = []
       # restock the limit for unfixes in this episode.
       globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
       curr_lp_sol = curr_sol
+      curr_lp_obj = curr_obj
     else:
       # run lp
       local_search_case = False
-      mip = milp.mip.relax(fixed_assignment, integral_relax=True)
+      mip = milp.mip.unfix(fixed_assignment, integral_relax=True)
       ass, curr_lp_obj = self._scip_solve(mip)
       curr_lp_sol = dict()
       for var, val in fixed_assignment.items():
@@ -306,7 +315,7 @@ class Env(BaseEnv):
         curr_lp_sol[var] = val
 
       # add back the newly found variable assignments for the lp.
-      curr_lp_sol = curr_lp_sol.update(ass)
+      curr_lp_sol.update(ass)
     # }
     ###################################################
 
@@ -324,7 +333,7 @@ class Env(BaseEnv):
     else:
       variable_nodes[:, Env.VARIABLE_MASK_FIELD] = 1
       for node in self._unfixed_variables:
-        variable_nodes[node, Env.VARIABLE_MASK_FIELD] = 0
+        variable_nodes[var_names.index(node), Env.VARIABLE_MASK_FIELD] = 0
 
     variable_nodes[:, Env.VARIABLE_CURR_ASSIGNMENT_FIELD] = [
         curr_sol[k] for k in var_names
@@ -332,8 +341,8 @@ class Env(BaseEnv):
     variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD] = [
         curr_lp_sol[k] for k in var_names
     ]
-    obj_nodes[:, OBJ_LP_VALUE_FIELD] = curr_lp_obj
-    obj_nodes[:, OBJ_INT_VALUE_FIELD] = curr_obj
+    obj_nodes[:, Env.OBJ_LP_VALUE_FIELD] = curr_lp_obj
+    obj_nodes[:, Env.OBJ_INT_VALUE_FIELD] = curr_obj
 
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True

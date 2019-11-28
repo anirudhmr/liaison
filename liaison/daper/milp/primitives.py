@@ -1,5 +1,6 @@
 import copy
 from abc import ABC
+from typing import Any, Dict, Text, Tuple, Union
 
 from pyscipopt import Model, multidict, quicksum
 
@@ -44,10 +45,6 @@ class ContinuousVariable(Variable):
 
 class IntegerVariable(Variable):
 
-  def validate(self, val):
-    assert isinstance(val, int)
-    super().validate(val)
-
   def add_to_cplex_solver(self, solver):
     solver.variables.add(names=[self.name])
     solver.variables.set_types(self.name, solver.variables.type.integer)
@@ -69,10 +66,6 @@ class BinaryVariable(IntegerVariable):
     super(BinaryVariable, self).__init__(var_name,
                                          lower_bound=0,
                                          upper_bound=1)
-
-  def validate(self, val):
-    assert isinstance(val, int)
-    super().validate(val)
 
   def add_to_cplex_solver(self, solver):
     solver.variables.add(names=[self.name])
@@ -140,6 +133,7 @@ class Constraint:
       senses: "LE", "GE"
     """
     assert sense in ['LE', 'GE']
+    self.name = name
     self.sense = sense
     self.rhs = float(rhs)
     self.expr = Expression()
@@ -153,7 +147,7 @@ class Constraint:
   def __len__(self):
     return len(self.expr)
 
-  def cast_sense_to_le(self) -> Constraint:
+  def cast_sense_to_le(self):
     rhs = self.rhs
     expr = copy.deepcopy(self.expr)
     if self.sense == 'GE':
@@ -226,8 +220,8 @@ class Constraint:
 class Objective:
   """Always minimize the objective."""
 
-  def __init__(self, name=None):
-    self.expr = Expression()
+  def __init__(self, name=None, constant=0):
+    self.expr = Expression(constant=constant)
 
   def add_term(self, var_name, coeff):
     self.expr.add_term(var_name, coeff)
@@ -244,18 +238,15 @@ class Objective:
       returns None if all variables get eliminated and objective is trivial.
     """
     o = Objective()
-    for var, coeff in zip(self.expr.var_names, self.expr.coeffs):
-      if var in fixed_vars_to_values:
-        # ignore the fixed vars
-        pass
-      else:
-        o.add_term(var, coeff)
+    expr = self.expr.reduce(fixed_vars_to_values)
+    o.expr = expr
 
     if len(o.expr) == 0:
       return None
     return o
 
   def add_to_cplex_solver(self, solver):
+    print('TODO: Raise warning cplex objective constant ignored.')
     solver.objective.set_sense(solver.objective.sense.minimize)
     solver.objective.set_linear(zip(self.expr.var_names, self.expr.coeffs))
 
@@ -265,6 +256,7 @@ class Objective:
             (varname2var[var] * coeff
              for var, coeff in zip(self.expr.var_names, self.expr.coeffs))),
         "minimize")
+    solver.addObjoffset(self.expr.constant)
 
 
 class MIPInstance:
@@ -300,7 +292,7 @@ class MIPInstance:
 
   def unfix(self,
             fixed_vars_to_values: Dict[str, Union[int, float]],
-            integral_relax=False) -> MIPInstance:
+            integral_relax=False):
     """
       Args:
         fixed_vars_to_values: variables to fix and their values to fix to.
