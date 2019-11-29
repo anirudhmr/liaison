@@ -1,6 +1,7 @@
 """MLP based model."""
 
 import numpy as np
+
 import sonnet as snt
 from liaison.agents.models.utils import *
 from liaison.specs import BoundedArraySpec
@@ -59,7 +60,7 @@ class Model:
       # mask some of the logits
       logits = tf.where(tf.equal(mask, 1), logits,
                         tf.fill(tf.shape(mask), MINF))
-    return logits, self._dummy_state(bs)
+    return logits, self._dummy_state(bs), {}
 
   def get_value(self, _, __, obs, ___):
 

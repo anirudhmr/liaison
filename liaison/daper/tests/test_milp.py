@@ -15,7 +15,8 @@ class ScipTest(absltest.TestCase):
     return problem
 
   def _relax(self, prob):
-    return prob.relax({list(prob.varname2var.keys())[0]: 0})
+    return prob.unfix({list(prob.varname2var.keys())[0]: 0},
+                      integral_relax=True)
 
   def testSCIP(self):
     prob = self._setup()

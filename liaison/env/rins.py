@@ -70,7 +70,7 @@ class Env(BaseEnv):
                dataset='milp-facilities-3',
                dataset_type='train',
                k=5,
-               steps_per_episode=10,
+               steps_per_episode=60,
                **env_config):
     """If graph_seed < 0, then use the environment seed.
        k -> Max number of variables to unfix at a time.
@@ -91,6 +91,8 @@ class Env(BaseEnv):
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = -10
+    self._prev_best_ep_return = -10
+    self._prev_final_ep_return = -10
     self._reset_next_step = True
     self.reset()
 
@@ -102,12 +104,28 @@ class Env(BaseEnv):
       milp = pickle.load(f)
     return milp
 
-  def _observation_mlp(self):
-    mask = np.int32(variable_nodes[:, Env.VARIABLE_MASK_FIELD])
-    obs = dict(features=self._graph_features.nodes.flatten(), mask=mask)
+  def _observation_mlp(self, nodes):
+    mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
+    obs = dict(features=nodes.flatten(), mask=mask)
     return obs
 
-  def _observation_graphnet_inductive(self):
+  def _observation_graphnet_inductive(self, nodes):
+
+    graph_features = dict(nodes=nodes,
+                          edges=self._edges,
+                          globals=self._globals,
+                          senders=np.array(self._senders, dtype=np.int32),
+                          receivers=np.array(self._receivers, dtype=np.int32),
+                          n_node=np.array(len(nodes), dtype=np.int32),
+                          n_edge=np.array(len(self._edges), dtype=np.int32))
+
+    node_mask = np.zeros(len(nodes), dtype=np.int32)
+    node_mask[0:len(self._variable_nodes
+                    )] = self._variable_nodes[:, Env.VARIABLE_MASK_FIELD]
+    obs = dict(graph_features=graph_features, node_mask=node_mask)
+    return obs
+
+  def _observation(self):
     variable_nodes = self._variable_nodes
     constraint_nodes = self._constraint_nodes
     objective_nodes = self._objective_nodes
@@ -128,42 +146,47 @@ class Env(BaseEnv):
     nodes[objective_node_offset:objective_node_offset +
           len(objective_nodes), 0:Env.N_OBJECTIVE_FIELDS] = objective_nodes
 
-    graph_features = dict(nodes=nodes,
-                          edges=self._edges,
-                          globals=self._globals,
-                          senders=np.array(self._senders, dtype=np.int32),
-                          receivers=np.array(self._receivers, dtype=np.int32),
-                          n_node=np.array(len(nodes), dtype=np.int32),
-                          n_edge=np.array(len(self._edges), dtype=np.int32))
-
-    mask = np.int32(variable_nodes[:, Env.VARIABLE_MASK_FIELD])
-    obs = dict(graph_features=graph_features, node_mask=mask)
-    return obs
-
-  def _observation(self):
     if self.config.make_obs_for_mlp:
-      obs = self._observation_mlp()
+      obs = self._observation_mlp(nodes)
     else:
-      obs = self._observation_graphnet_inductive()
+      obs = self._observation_graphnet_inductive(nodes)
 
     obs = dict(
         **obs,
         var_type_mask=self._var_type_mask,
         constraint_type_mask=self._constraint_type_mask,
         obj_type_mask=self._obj_type_mask,
-        log_values=dict(ep_return=np.float32(self._prev_ep_return)),
+        log_values=dict(
+            ep_return=np.float32(self._prev_ep_return),
+            best_ep_return=np.float32(self._prev_best_ep_return),
+            final_ep_return=np.float32(self._prev_final_ep_return),
+        ),
     )
+    # masks should be mutually disjoint.
+    assert not np.any(
+        np.logical_and(obs['var_type_mask'], obs['constraint_type_mask']))
+    assert not np.any(
+        np.logical_and(obs['var_type_mask'], obs['obj_type_mask']))
+    assert not np.any(
+        np.logical_and(obs['constraint_type_mask'], obs['obj_type_mask']))
+    assert np.all(
+        np.logical_or(
+            obs['var_type_mask'],
+            np.logical_or(obs['constraint_type_mask'], obs['obj_type_mask'])))
+
     return obs
 
   def reset(self):
+    milp = self.milp
     self._ep_return = 0
     self._n_steps = 0
     self._reset_next_step = False
-    milp = self.milp
+    self._best_ep_return = -milp.feasible_objective / milp.optimal_objective
+    self._final_ep_return = -milp.feasible_objective / milp.optimal_objective
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
-    variable_nodes = np.zeros(
-        (len(milp.mip.varname2var), Env.N_VARIABLE_FIELDS), dtype=np.float32)
+    variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS),
+                              dtype=np.float32)
     # mask all variables
     variable_nodes[:, Env.VARIABLE_MASK_FIELD] = 1
     feas_sol = [milp.feasible_solution[v] for v in var_names]
@@ -195,7 +218,9 @@ class Env(BaseEnv):
       c = c.cast_sense_to_le()
       for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
         edges[i, Env.EDGE_WEIGHT_FIELD] = coeff
+        # sender is the variable
         senders[i] = var_names.index(var_name)
+        # receiver is the constraint.
         receivers[i] = len(variable_nodes) + cid
         i += 1
 
@@ -207,8 +232,8 @@ class Env(BaseEnv):
 
     # now duplicate the edges to make them directed.
     edges = np.vstack((edges, edges))
-    senders, receivers = np.vstack((senders, receivers)), np.vstack(
-        (receivers, senders))
+    senders = np.vstack((senders, receivers))
+    receivers = np.vstack((receivers, senders))
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
 
@@ -296,7 +321,7 @@ class Env(BaseEnv):
       curr_sol.update(ass)
       # reset the current solution to the newly found one.
       self._curr_soln = curr_sol
-      self._curr_obj   =curr_obj
+      self._curr_obj = curr_obj
       # reset fixed variables.
       self._unfixed_variables = []
       # restock the limit for unfixes in this episode.
@@ -322,7 +347,11 @@ class Env(BaseEnv):
     ## Estimate reward
     if local_search_case:
       # lower the objective the better (minimization)
+      if milp.is_optimal:
+        assert curr_obj >= milp.optimal_objective
       rew = -1 * curr_obj / milp.optimal_objective
+      self._best_ep_return = max(self._best_ep_return, rew)
+      self._final_ep_return = rew
     else:
       rew = 0
     self._ep_return += rew
@@ -347,6 +376,8 @@ class Env(BaseEnv):
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
+      self._prev_best_ep_return = self._best_ep_return
+      self._prev_final_ep_return = self._final_ep_return
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())
@@ -368,7 +399,7 @@ class Env(BaseEnv):
     return BoundedArraySpec((),
                             np.int32,
                             minimum=0,
-                            maximum=len(self._graph_features.nodes) - 1,
+                            maximum=len(self._variable_nodes) - 1,
                             name='action_spec')
 
   def set_seed(self, seed):

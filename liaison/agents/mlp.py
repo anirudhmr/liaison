@@ -1,6 +1,7 @@
 import functools
 
 import numpy as np
+
 import tensorflow as tf
 from absl import logging
 from liaison.agents import BaseAgent, StepOutput, utils, vtrace_ops
@@ -46,7 +47,7 @@ class Agent(BaseAgent):
       StepOutput
     """
     with tf.variable_scope(self._name):
-      logits, next_state = self._model.get_logits_and_next_state(
+      logits, next_state, _ = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
       action = sample_from_logits(logits, self.seed)
       return StepOutput(action, logits, next_state)
@@ -74,7 +75,7 @@ class Agent(BaseAgent):
       # flatten graph features for policy network
       # get logits
       # logits -> [T* B, ...]
-      target_logits, _ = self._model.get_logits_and_next_state(
+      target_logits, _, _ = self._model.get_logits_and_next_state(
           *nest.map_structure(merge_first_two_dims, [
               step_types[:-1],
               rewards[:-1],

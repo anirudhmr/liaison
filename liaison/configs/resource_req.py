@@ -12,10 +12,10 @@ def get_config():
   config.learner.cpu = 1
   config.learner.mem = 0
   config.learner.gpu_mem = 0
-  # config.learner.gpu_compute = []
-  # config.learner.gpu_mem = []
-  config.learner.gpu_compute = [1]
-  config.learner.gpu_mem = [10]
+  config.learner.gpu_compute = []
+  config.learner.gpu_mem = []
+  # config.learner.gpu_compute = [1]
+  # config.learner.gpu_mem = [10]
 
   config.actor = ConfigDict()
   config.actor.cpu = 1

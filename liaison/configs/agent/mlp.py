@@ -1,5 +1,5 @@
-from liaison.utils import ConfigDict
 from liaison.configs.agent.config import get_config as get_base_config
+from liaison.utils import ConfigDict
 
 
 def get_config():

@@ -39,6 +39,8 @@ class RinsEnvTest(absltest.TestCase):
       assert np.sum(mask) > 0
       act = np.random.choice(range(len(mask)), p=mask / np.sum(mask))
       ts = env.step(act)
+      print(obs['log_values']['best_ep_return'],
+            obs['log_values']['final_ep_return'])
 
     self._print_done()
 

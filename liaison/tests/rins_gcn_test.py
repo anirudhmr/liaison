@@ -15,8 +15,6 @@ from tensorflow.contrib.framework import nest
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('model', 'mlp', 'Options: mlp, gcn')
-
 B = 8
 T = 9
 
@@ -45,13 +43,7 @@ class VtraceAgentTest(absltest.TestCase):
 
   def _get_model_config(self):
     config = ConfigDict()
-    if FLAGS.model == 'mlp':
-      config.class_path = "liaison.agents.models.mlp"
-      config.hidden_layer_sizes = [32, 32]
-    elif FLAGS.model == 'gcn':
-      config.class_path = "liaison.agents.models.gcn"
-    else:
-      raise Exception('Unknown model %s' % FLAGS.model)
+    config.class_path = "liaison.agents.models.gcn_rins"
     return config
 
   def _get_agent_instance(self):
@@ -86,17 +78,8 @@ class VtraceAgentTest(absltest.TestCase):
     config.loss = ConfigDict()
     config.loss.vf_loss_coeff = 1.0
 
-    with tf.variable_scope(FLAGS.model, reuse=tf.AUTO_REUSE):
-      if FLAGS.model == 'mlp':
-        return MLPAgent(action_spec=action_spec,
-                        name='test',
-                        seed=42,
-                        **config)
-      elif FLAGS.model == 'gcn':
-        return GCNAgent(action_spec=action_spec,
-                        name='test',
-                        seed=42,
-                        **config)
+    with tf.variable_scope('gcn_rins', reuse=tf.AUTO_REUSE):
+      return GCNAgent(action_spec=action_spec, name='test', seed=42, **config)
 
   def session(self):
     return tf.Session()
@@ -124,9 +107,21 @@ class VtraceAgentTest(absltest.TestCase):
 
     step_type = np.zeros((B, ), dtype=np.int32)
     reward = np.zeros((B, ), dtype=np.float32)
+
+    var_type_mask = np.zeros((B, N_NODES), dtype=np.int32)
+    constraint_type_mask = np.zeros((B, N_NODES), dtype=np.int32)
+    obj_type_mask = np.zeros((B, N_NODES), dtype=np.int32)
+    var_type_mask[:, 0] = 1
+    constraint_type_mask[:, 1] = 1
+    obj_type_mask[:, 2] = 1
+
     obs = dict(features=np.zeros((B, N_NODES), dtype=np.float32),
                graph_features=self._get_graph_features_step(),
-               node_mask=np.ones((B, N_NODES), dtype=np.int32))
+               node_mask=np.ones((B, N_NODES), dtype=np.int32),
+               var_type_mask=var_type_mask,
+               constraint_type_mask=constraint_type_mask,
+               obj_type_mask=obj_type_mask)
+
     prev_state = init_state  # hack that works for now!
 
     step_type, reward, obs, prev_state = agent.step_preprocess(
@@ -160,9 +155,20 @@ class VtraceAgentTest(absltest.TestCase):
     step_type = np.zeros((T + 1, B), dtype=np.int32)
     reward = np.zeros((T + 1, B), dtype=np.float32)
     discount = np.zeros((T + 1, B), dtype=np.float32)
+
+    var_type_mask = np.zeros((T + 1, B, N_NODES), dtype=np.int32)
+    constraint_type_mask = np.zeros((T + 1, B, N_NODES), dtype=np.int32)
+    obj_type_mask = np.zeros((T + 1, B, N_NODES), dtype=np.int32)
+    var_type_mask[:, :, 0] = 1
+    constraint_type_mask[:, :, 1] = 1
+    obj_type_mask[:, :, 2] = 1
+
     obs = dict(features=np.zeros((T + 1, B, N_NODES), dtype=np.float32),
                graph_features=self._get_graph_features_update(),
-               node_mask=np.ones(((T + 1), B, N_NODES), dtype=np.int32))
+               node_mask=np.ones(((T + 1), B, N_NODES), dtype=np.int32),
+               var_type_mask=var_type_mask,
+               constraint_type_mask=constraint_type_mask,
+               obj_type_mask=obj_type_mask)
 
     step_output = StepOutput(action=np.zeros((T, B), dtype=np.int32),
                              logits=np.zeros((T, B, N_NODES),

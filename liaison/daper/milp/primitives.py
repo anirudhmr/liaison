@@ -246,9 +246,9 @@ class Objective:
     return o
 
   def add_to_cplex_solver(self, solver):
-    print('TODO: Raise warning cplex objective constant ignored.')
     solver.objective.set_sense(solver.objective.sense.minimize)
     solver.objective.set_linear(zip(self.expr.var_names, self.expr.coeffs))
+    solver.objective.set_offset(self.expr.constant)
 
   def add_to_scip_solver(self, solver, varname2var):
     solver.setObjective(

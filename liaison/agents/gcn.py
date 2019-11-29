@@ -1,7 +1,8 @@
 import functools
 
-import graph_nets as gn
 import numpy as np
+
+import graph_nets as gn
 import tensorflow as tf
 from absl import logging
 from liaison.agents import BaseAgent, StepOutput, utils, vtrace_ops
@@ -97,8 +98,6 @@ class Agent(BaseAgent):
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
       raise Exception('graph_features not found in observation.')
-    elif 'node_mask' not in obs:
-      raise Exception('node_mask not found in observation.')
 
   def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
                        observations, discounts):
@@ -182,6 +181,7 @@ class Agent(BaseAgent):
 
       with tf.variable_scope('optimize'):
         opt_vals = self._optimize(self.loss.loss)
+
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
         n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
