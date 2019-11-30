@@ -15,6 +15,7 @@ import copy
 import logging
 import os
 import uuid
+from queue import Queue
 from threading import Thread
 
 import liaison.utils as U
@@ -25,7 +26,6 @@ from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
                                  ParameterPublisher, Trajectory)
 from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
-from queue import Queue
 from tensorflow.contrib.framework import nest
 from tensorflow.python.client import timeline
 
@@ -110,8 +110,8 @@ class Learner(object):
       if use_gpu:
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-        config.intra_op_parallelism_threads = 1
-        config.inter_op_parallelism_threads = 1
+        # config.intra_op_parallelism_threads = 1
+        # config.inter_op_parallelism_threads = 1
         self.sess = tf.Session(config=config)
       else:
         self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))

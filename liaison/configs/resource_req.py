@@ -23,6 +23,12 @@ def get_config():
   config.actor.gpu_compute = []
   config.actor.gpu_mem = []
 
+  config.evaluator = ConfigDict()
+  config.evaluator.cpu = 1
+  config.evaluator.mem = 0
+  config.evaluator.gpu_compute = []
+  config.evaluator.gpu_mem = []
+
   config.replay = ConfigDict()
   config.replay.cpu = 1
   config.replay.mem = 0

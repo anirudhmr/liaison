@@ -2,18 +2,21 @@
 Defines the LaunchSettings class that holds all the
 information one needs to launch a component of surreal
 """
+import faulthandler
 import os
 import subprocess
 import sys
 from argparse import ArgumentParser
 from threading import Thread
 
-import faulthandler
 import liaison.utils as U
-from liaison.distributed import Actor, Learner, ShardedParameterServer
-from liaison.loggers import (ConsoleLogger, DownSampleLogger, TensorplexLogger)
+from argon import to_nested_dicts
+from liaison.distributed import (Actor, Evaluator, Learner,
+                                 ShardedParameterServer)
 from liaison.irs import IRSServer
+from liaison.loggers import ConsoleLogger, DownSampleLogger, TensorplexLogger
 from liaison.replay import ReplayLoadBalancer
+from liaison.utils import ConfigDict
 from tensorplex import Loggerplex, Tensorplex
 
 faulthandler.enable()
@@ -59,20 +62,6 @@ class Launcher:
     self.launch(args.component_name)
 
   def launch(self, component_name_in):
-    """
-            Launches a surreal experiment
-
-        Args:
-            component_name: Allowed components:
-                                agent-{*},
-                                agents-{*},
-                                eval-{*},
-                                evals-{*},
-                                replay,
-                                learner,
-                                ps,
-                                visualizers,
-        """
     if '-' in component_name_in:
       component_name, component_id = component_name_in.split('-')
       component_id = int(component_id)
@@ -82,6 +71,8 @@ class Launcher:
 
     if component_name == 'actor':
       self.run_actor(actor_id=component_id)
+    elif component_name == 'evaluator':
+      self.run_evaluator(id=component_id)
     elif component_name == 'learner':
       self.run_learner()
     elif component_name == 'ps':
@@ -123,7 +114,7 @@ class Launcher:
     env_class = U.import_obj(env_config.class_name, env_config.class_path)
 
     shell_config = dict(agent_class=agent_class,
-                        agent_config=self.agent_config,
+                        agent_config=agent_config,
                         **self.sess_config.shell)
 
     actor_config = dict(actor_id=actor_id,
@@ -137,6 +128,43 @@ class Launcher:
                         **self.sess_config.actor)
 
     Actor(**actor_config)  # blocking constructor.
+
+  def _setup_evaluator_loggers(self):
+    loggers = []
+    loggers.append(ConsoleLogger(print_every=1))
+    loggers.append(TensorplexLogger(client_id='evaluator/0'))
+    return loggers
+
+  def run_evaluator(self, id):
+
+    # use random evaluator
+    agent_config = U.import_obj('get_config',
+                                'liaison.configs.agent.ur_discrete')()
+
+    env_config, sess_config = (self.env_config, self.sess_config)
+    agent_class = U.import_obj(agent_config.class_name,
+                               agent_config.class_path)
+
+    shell_class = U.import_obj(sess_config.shell.class_name,
+                               sess_config.shell.class_path)
+
+    env_class = U.import_obj(env_config.class_name, env_config.class_path)
+
+    shell_config = dict(agent_class=agent_class,
+                        agent_config=agent_config,
+                        **self.sess_config.shell)
+    batch_size = sess_config.evaluator.batch_size
+
+    evaluator_config = dict(shell_class=shell_class,
+                            shell_config=shell_config,
+                            env_class=env_class,
+                            env_configs=[self.env_config] * batch_size,
+                            traj_length=self.traj_length,
+                            loggers=self._setup_evaluator_loggers(),
+                            seed=self.seed,
+                            **self.sess_config.evaluator)
+
+    Evaluator(**evaluator_config)  # blocking constructor.
 
   def _setup_learner_loggers(self):
     loggers = []
@@ -286,7 +314,9 @@ class Launcher:
       """
       tensorplex.register_normal_group('learner').register_indexed_group(
           'actor', tensorplex_config.agent_bin_size).register_indexed_group(
-              'replay', 100).register_indexed_group('ps', 100)
+              'replay',
+              100).register_indexed_group('ps', 100).register_indexed_group(
+                  'evaluator', tensorplex_config.agent_bin_size)
 
       thread = Thread(target=tensorplex.start_server, kwargs=dict(port=port))
       thread.start()

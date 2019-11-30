@@ -57,10 +57,12 @@ class Env(BaseEnv):
 
   N_EDGE_FIELDS = 1
 
+  GLOBAL_STEP_NUMBER = 0
   # number of unfixes left before sub-mip is solved
-  GLOBAL_UNFIX_LEFT = 0
+  GLOBAL_UNFIX_LEFT = 1
+  GLOBAL_N_LOCAL_MOVES = 2
 
-  N_GLOBAL_FIELDS = 1
+  N_GLOBAL_FIELDS = 3
 
   def __init__(self,
                id,
@@ -91,6 +93,7 @@ class Env(BaseEnv):
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = -10
+    self._prev_avg_ep_return = -10
     self._prev_best_ep_return = -10
     self._prev_final_ep_return = -10
     self._reset_next_step = True
@@ -106,7 +109,8 @@ class Env(BaseEnv):
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
-    obs = dict(features=nodes.flatten(), mask=mask)
+    features = np.hstack((nodes.flatten(), self._globals))
+    obs = dict(features=features, mask=mask)
     return obs
 
   def _observation_graphnet_inductive(self, nodes):
@@ -122,7 +126,9 @@ class Env(BaseEnv):
     node_mask = np.zeros(len(nodes), dtype=np.int32)
     node_mask[0:len(self._variable_nodes
                     )] = self._variable_nodes[:, Env.VARIABLE_MASK_FIELD]
-    obs = dict(graph_features=graph_features, node_mask=node_mask)
+    obs = dict(graph_features=graph_features,
+               node_mask=node_mask,
+               mask=node_mask)
     return obs
 
   def _observation(self):
@@ -158,6 +164,7 @@ class Env(BaseEnv):
         obj_type_mask=self._obj_type_mask,
         log_values=dict(
             ep_return=np.float32(self._prev_ep_return),
+            avg_ep_return=np.float32(self._prev_avg_ep_return),
             best_ep_return=np.float32(self._prev_best_ep_return),
             final_ep_return=np.float32(self._prev_final_ep_return),
         ),
@@ -180,9 +187,11 @@ class Env(BaseEnv):
     milp = self.milp
     self._ep_return = 0
     self._n_steps = 0
+    self._n_local_moves = 0
     self._reset_next_step = False
     self._best_ep_return = -milp.feasible_objective / milp.optimal_objective
     self._final_ep_return = -milp.feasible_objective / milp.optimal_objective
+    self._rews = []
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
     variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS),
@@ -232,10 +241,13 @@ class Env(BaseEnv):
 
     # now duplicate the edges to make them directed.
     edges = np.vstack((edges, edges))
-    senders = np.vstack((senders, receivers))
-    receivers = np.vstack((receivers, senders))
+    senders = np.hstack((senders, receivers))
+    receivers = np.hstack((receivers, senders))
+
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
+    globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
 
     self._edges = edges
     self._globals = globals_
@@ -328,6 +340,7 @@ class Env(BaseEnv):
       globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
       curr_lp_sol = curr_sol
       curr_lp_obj = curr_obj
+      self._n_local_moves += 1
     else:
       # run lp
       local_search_case = False
@@ -348,10 +361,12 @@ class Env(BaseEnv):
     if local_search_case:
       # lower the objective the better (minimization)
       if milp.is_optimal:
-        assert curr_obj >= milp.optimal_objective
+        assert abs(curr_obj - milp.optimal_objective) >= -1e-4, (
+            curr_obj, milp.optimal_objective)
       rew = -1 * curr_obj / milp.optimal_objective
       self._best_ep_return = max(self._best_ep_return, rew)
       self._final_ep_return = rew
+      self._rews.append(rew)
     else:
       rew = 0
     self._ep_return += rew
@@ -373,11 +388,15 @@ class Env(BaseEnv):
     obj_nodes[:, Env.OBJ_LP_VALUE_FIELD] = curr_lp_obj
     obj_nodes[:, Env.OBJ_INT_VALUE_FIELD] = curr_obj
 
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps
+    globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
+
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_best_ep_return = self._best_ep_return
       self._prev_final_ep_return = self._final_ep_return
+      self._prev_avg_ep_return = np.mean(self._rews)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())

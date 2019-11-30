@@ -4,10 +4,11 @@ at each step."""
 from __future__ import absolute_import, division, print_function
 
 import numpy as np
+
 import tensorflow as tf
 from absl import logging
-from liaison.agents import BaseAgent
-from liaison.agents import StepOutput
+from liaison.agents import BaseAgent, StepOutput
+from liaison.agents.utils import *
 
 _ACTION_SPEC_UNBOUNDED = 'action spec `{}` is not correctly bounded.'
 _DTYPE_NOT_INTEGRAL = '`dtype` must be integral, got {}.'
@@ -23,6 +24,13 @@ class Agent(BaseAgent):
     self.seed = seed
     self._name = name
     self._action_spec = action_spec
+
+    class DummyModel:
+
+      def __init__(self):
+        pass
+
+    self._model = DummyModel()
     self.set_seed(self.seed)
 
   def _validate_action_spec(self, action_spec):
@@ -55,17 +63,21 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       with tf.name_scope('ur_step'):
         batch_size = tf.shape(step_type)[0]
+        if 'mask' in obs:
+          logits = tf.cast(tf.identity(obs['mask']), tf.float32)
+          logits *= 1e9  # multiply by infinity
+          action = sample_from_logits(logits, self.seed)
+        else:
+          base = tf.random.uniform(self._action_spec.shape,
+                                   dtype=tf.float32,
+                                   minval=0,
+                                   maxval=1)
 
-        base = tf.random.uniform(self._action_spec.shape,
-                                 dtype=tf.float32,
-                                 minval=0,
-                                 maxval=1)
+          L = self._action_spec.minimum
+          R = self._action_spec.maximum
 
-        L = self._action_spec.minimum
-        R = self._action_spec.maximum
-
-        action = tf.cast(L + (base * (R - L)), self._action_spec.dtype)
-        logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
+          action = tf.cast(L + (base * (R - L)), self._action_spec.dtype)
+          logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
         return StepOutput(action, logits, self._dummy_state(batch_size))
 
   def build_update_ops(self, *args, **kwargs):

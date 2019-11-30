@@ -200,6 +200,7 @@ class Model:
                        obs['constraint_type_mask'], obs['obj_type_mask']))
       value = gn.blocks.NodesToGlobalsAggregator(
           tf.unsorted_segment_mean)(graph_features)
+      value = tf.concat([value, graph_features.globals], axis=-1)
       return tf.squeeze(self.value_torso(value), axis=-1)
 
   def _dummy_state(self, bs):

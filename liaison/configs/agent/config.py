@@ -1,4 +1,6 @@
 from liaison.utils import ConfigDict
+
+
 """
 Must have attribute class_path attribute.
 """
@@ -9,7 +11,7 @@ def get_config():
 
   config.model = ConfigDict()
 
-  config.lr_init = 1e-3
+  config.lr_init = 1e-4
   config.lr_min = 1e-4
   config.lr_start_dec_step = 1000
   config.lr_dec_steps = 1000

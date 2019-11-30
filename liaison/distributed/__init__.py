@@ -11,3 +11,4 @@ from .exp_collector import ExperienceCollectorServer
 from .data_fetcher import LearnerDataPrefetcher
 
 from .learner import Learner
+from .evaluator import Evaluator

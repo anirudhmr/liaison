@@ -25,8 +25,7 @@ class Model:
       self.policy = snt.nets.MLP(
           hidden_layer_sizes + [self.n_actions],
           initializers=dict(w=glorot_uniform(seed),
-                            b=initializers.init_ops.Constant(
-                                0.1)),  # small bias initializer.
+                            b=initializers.init_ops.Constant(0.0)),
           activate_final=False,
           activation=get_activation_from_str(activation),
       )
@@ -35,8 +34,7 @@ class Model:
       self.value = snt.nets.MLP(
           self.hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(self.seed),
-                            b=initializers.init_ops.Constant(
-                                0.1)),  # small bias initializer.
+                            b=initializers.init_ops.Constant(0.0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
@@ -59,7 +57,7 @@ class Model:
       logits = tf.reshape(logits, tf.shape(mask))
       # mask some of the logits
       logits = tf.where(tf.equal(mask, 1), logits,
-                        tf.fill(tf.shape(mask), MINF))
+                        tf.fill(tf.shape(logits), MINF))
     return logits, self._dummy_state(bs), {}
 
   def get_value(self, _, __, obs, ___):
@@ -67,4 +65,4 @@ class Model:
     if 'features' not in obs:
       raise Exception('features not found in observation.')
 
-    return self.value(obs['features'])
+    return tf.squeeze(self.value(obs['features']), axis=-1)

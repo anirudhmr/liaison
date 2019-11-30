@@ -18,7 +18,11 @@ lock = Lock()
 class RinsEnvTest(absltest.TestCase):
 
   def _get_env(self):
-    return Env(0, seed=42, graph_seed=42, make_obs_for_mlp=False)
+    return Env(0,
+               seed=42,
+               graph_seed=42,
+               make_obs_for_mlp=False,
+               dataset='milp-facilities-10')
 
   def _print_done(self):
     with lock:
@@ -34,13 +38,15 @@ class RinsEnvTest(absltest.TestCase):
     ts = env.reset()
     for i in range(500):
       assert ts.reward == 0 or ts.reward <= -1
+      import pdb
+      pdb.set_trace()
       obs = ts.observation
       mask = obs['node_mask']
       assert np.sum(mask) > 0
       act = np.random.choice(range(len(mask)), p=mask / np.sum(mask))
       ts = env.step(act)
-      print(obs['log_values']['best_ep_return'],
-            obs['log_values']['final_ep_return'])
+      # print(obs['log_values']['best_ep_return'],
+      #       obs['log_values']['final_ep_return'])
 
     self._print_done()
 

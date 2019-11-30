@@ -25,6 +25,11 @@ def get_config():
   config.actor.use_parallel_envs = True
   config.actor.use_threaded_envs = False
 
+  config.evaluator = ConfigDict()
+  config.evaluator.use_parallel_envs = True
+  config.evaluator.use_threaded_envs = False
+  config.evaluator.batch_size = 64
+
   config.shell = ConfigDict()
   # shell class path is default to the distributed folder.
   config.shell.class_path = 'liaison.distributed.shell'
