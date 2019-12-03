@@ -110,6 +110,22 @@ class Env(BaseEnv):
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
     features = np.hstack((nodes.flatten(), self._globals))
+
+    if self.config.mlp_embed_constraints:
+      milp = self.milp
+      var_names = self._var_names
+      # constraint_features[i, j] = coefficient for the
+      #                             jth variable in the ith constraint
+      constraint_features = np.zeros(
+          (len(milp.mip.constraints), len(var_names)), dtype=np.float32)
+
+      for cid, c in enumerate(milp.mip.constraints):
+        c = c.cast_sense_to_le()
+        for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
+          constraint_features[cid, var_names.index(var_name)] = coeff
+
+      features = np.hstack((features, constraint_features.flatten()))
+
     obs = dict(features=features, mask=mask)
     return obs
 

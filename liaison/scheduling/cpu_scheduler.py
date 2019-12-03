@@ -236,6 +236,16 @@ class LiaisonCPUScheduler:
       for process_vars in wu_vars:
         l = solver.solution.get_values(
             [server_var.name for server_var in process_vars])
+        # numerical threshold = 1e-6
+        l2 = []
+        for x in l:
+          if x <= 1e-6:
+            l2.append(0)
+          elif x >= 1 - 1e-6:
+            l2.append(1)
+          else:
+            raise Exception()
+        l = l2
         assert l.count(1) == 1
         assignment[-1].append(l.index(1))
     return assignment

@@ -1,5 +1,7 @@
-import numpy as np
+import builtins
 import itertools
+
+import numpy as np
 
 
 def range(option, start, stop, step=1):
@@ -38,7 +40,7 @@ def merge_list_of_dicts(l):
 
 def zip(*args):
   results = []
-  for d_l in zip(*args):
+  for d_l in builtins.zip(*args):
     results.append(merge_list_of_dicts(d_l))
   return results
 

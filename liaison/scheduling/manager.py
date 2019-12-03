@@ -12,6 +12,7 @@ GPU_MODEL_TO_SCALE = {
     'V100': 2,
     'P100': 2,
     'Titan X': 1,
+    'Tesla K40m': 1,
 }
 
 

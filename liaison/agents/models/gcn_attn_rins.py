@@ -13,16 +13,8 @@ EDGE_BLOCK_OPT = {
     "use_edges": True,
     "use_receiver_nodes": False,
     "use_sender_nodes": True,
-    "use_globals": True
-}
-
-NODE_BLOCK_OPT = {
-    "use_received_edges": True,
-    "use_sent_edges": False,
-    "use_nodes": True,
     "use_globals": True,
 }
-
 GLOBAL_BLOCK_OPT = {
     "use_edges": False,
     "use_nodes": False,
@@ -58,9 +50,13 @@ class Model:
                node_embed_dim=32,
                global_embed_dim=8,
                node_hidden_layer_sizes=[64, 64],
-               edge_hidden_layer_sizes=[64, 64],
+               edge_hidden_layer_sizes=[64],
                policy_torso_hidden_layer_sizes=[64, 64],
                value_torso_hidden_layer_sizes=[64, 64],
+               query_key_product_hidden_layer_sizes=[32, 32],
+               num_heads=8,
+               key_dim=64,
+               value_dim=64,
                action_spec=None):
     self.activation = activation
     self.n_prop_layers = n_prop_layers
@@ -86,6 +82,7 @@ class Model:
     for i in range(n_prop_layers):
       with tf.variable_scope('graphnet_model_%d' % i):
         with tf.variable_scope('edge_model'):
+          # TODO: Does layer norm without activate_final make sense?
           edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
                                 activation,
                                 activate_final=False,
@@ -97,15 +94,29 @@ class Model:
                                 activate_final=False,
                                 seed=seed,
                                 layer_norm=True)
-        # global(node(edge))
-        self._graphnet_models[i] = gn.modules.GraphNetwork(
-            edge_model_fn=lambda: edge_model,
-            node_model_fn=lambda: node_model,
-            global_model_fn=lambda: lambda x:
-            x,  # Don't summarize nodes/edges to the globals.
-            node_block_opt=NODE_BLOCK_OPT,
-            edge_block_opt=EDGE_BLOCK_OPT,
-            global_block_opt=GLOBAL_BLOCK_OPT)
+        with tf.variable_scope('attention_model'):
+          # global(node(attention(edge)))
+          self._graphnet_models[i] = gn.modules.EdgeGAT(
+              attention_node_projection_model=snt.Linear(
+                  num_heads * key_dim, name='attention_node_project'),
+              attention_edge_projection_model=snt.Linear(
+                  num_heads * (key_dim + value_dim),
+                  name='attention_edge_project'),
+              query_key_product_model=make_mlp(
+                  query_key_product_hidden_layer_sizes + [1],
+                  activation,
+                  activate_final=False,
+                  seed=seed,
+                  layer_norm=False),
+              edge_model_fn=lambda: edge_model,
+              node_model_fn=lambda: node_model,
+              global_model_fn=lambda: lambda x:
+              x,  # Don't summarize nodes/edges to the globals.
+              edge_block_opt=EDGE_BLOCK_OPT,
+              global_block_opt=GLOBAL_BLOCK_OPT,
+              num_heads=num_heads,
+              key_size=key_dim,
+              value_size=value_dim)
 
     with tf.variable_scope('policy_torso'):
       self.policy_torso = snt.nets.MLP(
@@ -155,45 +166,13 @@ class Model:
   def _convolve(self, graph_features: gn.graphs.GraphsTuple):
     for i in range(self.n_prop_layers):
       with tf.variable_scope('prop_layer_%d' % i):
-        # one round of message passing
         new_graph_features = self._graphnet_models[i](graph_features)
-
         # residual connections
         graph_features = graph_features.replace(
             nodes=new_graph_features.nodes + graph_features.nodes,
             edges=new_graph_features.edges + graph_features.edges,
             globals=new_graph_features.globals + graph_features.globals)
-
     return graph_features
-
-  def _attn_convolve(self, graph_features: gn.graphs.GraphsTuple):
-
-    num_heads = self.config.num_heads
-    key_size = self.config.key_size
-    value_size = self.config.node_embed_dim
-
-    for i in range(self._n_prop_layers):
-      with tf.variable_scope('attention'):
-        nodes = graph_features.nodes
-        qkv_size = 2 * key_size + value_size
-        total_size = qkv_size * num_heads  # denote as F
-
-        # [total_num_nodes, d] => [total_num_nodes, F]
-        qkv_flat = self._attention_dense_layers[i](nodes)
-
-        qkv = tf.reshape(qkv_flat, [-1, num_heads, qkv_size])
-        # q => [total_num_nodes, num_heads, key_size]
-        # k => [total_num_nodes, num_heads, key_size]
-        # v => [total_num_nodes, num_heads, value_size]
-        q, k, v = tf.split(qkv, [key_size, key_size, value_size], -1)
-
-      with tf.variable_scope('prop_layer_%d' % i):
-        new_graph_features = self._graphnet_models[i](v, k, q, graph_features)
-        # residual connections
-        graph_features = graph_features.replace(
-            nodes=new_graph_features.nodes + graph_features.nodes,
-            edges=new_graph_features.edges + graph_features.edges,
-            globals=new_graph_features.globals + graph_features.globals)
 
   def get_logits_and_next_state(self, step_type, _, obs, __):
     self._validate_observations(obs)
