@@ -67,7 +67,7 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          hyper.zip(hyper.discrete('env_config.k', [20, 40]),
+          hyper.zip(hyper.discrete('env_config.k', [40]),
                     hyper.discrete('env_config.steps_per_episode',
                                    [100, 400])),
           hyper.discrete('agent_config.lr_init', [1e-4]),

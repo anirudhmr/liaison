@@ -128,6 +128,26 @@ class Env(BaseEnv):
     obs = dict(features=features, mask=mask)
     return obs
 
+  def _observation_self_attention(self, nodes):
+
+    mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
+    features = np.hstack((nodes.flatten(), self._globals))
+    cv = []
+    for cid, c in enumerate(self.milp.mip.constraints):
+      c = c.cast_sense_to_le()
+      y = np.zeros(len(self._var_names), dtype=np.int32)
+      for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
+        y[self._var_names.index(var_name)] = coeff
+      cv.append(y)
+
+    # var_embeddings[i][j] = c => ith variable uses jth constraint with coefficient c
+    var_embeddings = np.transpose(np.asarray(cv, dtype=np.float32))
+
+    obs = dict(mask=mask,
+               var_nodes=np.float32(self._variable_nodes),
+               var_embeddings=var_embeddings)
+    return obs
+
   def _observation_graphnet_inductive(self, nodes):
 
     graph_features = dict(nodes=nodes,
@@ -169,6 +189,8 @@ class Env(BaseEnv):
 
     if self.config.make_obs_for_mlp:
       obs = self._observation_mlp(nodes)
+    elif self.config.make_obs_for_self_attention:
+      obs = self._observation_self_attention(nodes)
     else:
       obs = self._observation_graphnet_inductive(nodes)
 

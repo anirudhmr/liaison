@@ -18,10 +18,10 @@ class Variable(ABC):
 
   def validate(self, val):
     if self.lower_bound is not None:
-      assert val >= self.lower_bound
+      assert val >= self.lower_bound - 1e-4, (val, self.lower_bound)
 
     if self.upper_bound is not None:
-      assert val <= self.upper_bound
+      assert val <= self.upper_bound + 1e-4, (val, self.upper_bound)
 
     return True
 
@@ -168,9 +168,9 @@ class Constraint:
     expr = self.expr.reduce(fixed_vars_to_values)
     if expr.is_constant:
       if self.sense == 'LE':
-        assert expr.constant <= self.rhs
+        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs)
       else:
-        assert expr.constant >= self.rhs
+        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs)
       return None
     else:
       # convert to 'LE' format

@@ -15,6 +15,8 @@ def get_config():
   # adds all the constraints to MLP state space.
   # adds #variables * #constraints dimensions to the state space.
   config.mlp_embed_constraints = False
+
+  config.make_obs_for_self_attention = False
   """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 

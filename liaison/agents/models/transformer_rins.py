@@ -14,14 +14,14 @@ class Model:
 
   def __init__(self,
                seed,
-               depth=6,
+               depth=4,
                node_embed_dim=32,
                embed_dim=128,
                policy_torso_hidden_layer_sizes=[64, 64],
                value_torso_hidden_layer_sizes=[64, 64],
                num_heads=8,
-               key_dim=64,
-               value_dim=64,
+               key_dim=32,
+               value_dim=32,
                action_spec=None):
     self.seed = seed
     self._depth = depth
@@ -39,12 +39,12 @@ class Model:
     self._attn_layers = []
     self._ff_layers = []
     for i in range(depth):
-      with tf.variable_scope('self_attention'):
+      with tf.variable_scope('self_attention_%d' % i):
         attn_layer = SelfAttention(node_embed_dim, num_heads, key_dim,
                                    value_dim)
         self._attn_layers.append(attn_layer)
 
-      with tf.variable_scope('ff_layer'):
+      with tf.variable_scope('ff_layer_%d' % i):
         ff_layer = snt.nets.MLP([4 * node_embed_dim, node_embed_dim],
                                 activation=tf.nn.relu,
                                 initializers=dict(

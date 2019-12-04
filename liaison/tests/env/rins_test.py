@@ -2,7 +2,6 @@ import pdb
 from threading import Lock
 
 import numpy as np
-
 import tensorflow as tf
 from absl import logging
 from absl.testing import absltest
@@ -22,6 +21,7 @@ class RinsEnvTest(absltest.TestCase):
                seed=42,
                graph_seed=42,
                make_obs_for_mlp=False,
+               make_obs_for_self_attention=False,
                dataset='milp-facilities-10')
 
   def _print_done(self):
@@ -37,9 +37,6 @@ class RinsEnvTest(absltest.TestCase):
     env = self._get_env()
     ts = env.reset()
     for i in range(500):
-      assert ts.reward == 0 or ts.reward <= -1
-      import pdb
-      pdb.set_trace()
       obs = ts.observation
       mask = obs['node_mask']
       assert np.sum(mask) > 0

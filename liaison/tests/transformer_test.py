@@ -24,7 +24,7 @@ class VtraceAgentTest(absltest.TestCase):
 
   def _get_model_config(self):
     config = ConfigDict()
-    config.class_path = "liaison.agents.models.transformer"
+    config.class_path = "liaison.agents.models.transformer_rins"
     return config
 
   def _get_agent_instance(self):
