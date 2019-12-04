@@ -29,7 +29,7 @@ def get_config():
   config.evaluator.gpu_mem = []
 
   config.replay = ConfigDict()
-  config.replay.cpu = 1
+  config.replay.cpu = 0
   config.replay.mem = 0
   config.replay.gpu_compute = []
   config.replay.gpu_mem = []

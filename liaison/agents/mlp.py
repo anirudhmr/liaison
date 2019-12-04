@@ -1,7 +1,6 @@
 import functools
 
 import numpy as np
-
 import tensorflow as tf
 from absl import logging
 from liaison.agents import BaseAgent, StepOutput, utils, vtrace_ops
@@ -10,10 +9,6 @@ from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
-
-_ACTION_SPEC_UNBOUNDED = 'action spec `{}` is not correctly bounded.'
-_DTYPE_NOT_INTEGRAL = '`dtype` must be integral, got {}.'
-_SHAPE_NOT_SPECIFIED = 'action spec `shape` must be fully specified, got {}.'
 
 
 class Agent(BaseAgent):

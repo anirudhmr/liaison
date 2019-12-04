@@ -71,7 +71,7 @@ class Evaluator:
       # just use the last timestep's log_values.
       for k, v in ts.observation['log_values'].items():
         log_values['log_values/%s_mean' % k] = np.mean(v)
-        log_values['log_values/%s_std' % k] = np.std(v)
+        # log_values['log_values/%s_std' % k] = np.std(v)
 
     # send log_values
     for logger in self._loggers:

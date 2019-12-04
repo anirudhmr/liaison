@@ -3,11 +3,10 @@ import os
 import pickle
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
 from liaison.daper.dataset_constants import DATASET_PATH, LENGTH_MAP
 from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
@@ -92,10 +91,10 @@ class Env(BaseEnv):
 
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
-    self._prev_ep_return = -10
-    self._prev_avg_ep_return = -10
-    self._prev_best_ep_return = -10
-    self._prev_final_ep_return = -10
+    self._prev_ep_return = 0
+    self._prev_avg_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
+    self._prev_best_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
+    self._prev_final_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
     self._reset_next_step = True
     self.reset()
 
@@ -196,7 +195,6 @@ class Env(BaseEnv):
         np.logical_or(
             obs['var_type_mask'],
             np.logical_or(obs['constraint_type_mask'], obs['obj_type_mask'])))
-
     return obs
 
   def reset(self):
@@ -205,9 +203,9 @@ class Env(BaseEnv):
     self._n_steps = 0
     self._n_local_moves = 0
     self._reset_next_step = False
-    self._best_ep_return = -milp.feasible_objective / milp.optimal_objective
-    self._final_ep_return = -milp.feasible_objective / milp.optimal_objective
-    self._rews = []
+    self._best_ep_return = milp.feasible_objective / milp.optimal_objective
+    self._final_ep_return = milp.feasible_objective / milp.optimal_objective
+    self._obj_vals = [milp.feasible_objective / milp.optimal_objective]
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
     variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS),
@@ -286,6 +284,7 @@ class Env(BaseEnv):
                         len(constraint_nodes) + len(objective_nodes)] = 1
     self._unfixed_variables = []
     self._curr_soln = copy.deepcopy(milp.feasible_solution)
+    self._prev_obj = milp.feasible_objective
     self._curr_obj = milp.feasible_objective
 
     return restart(self._observation())
@@ -349,6 +348,7 @@ class Env(BaseEnv):
       curr_sol.update(ass)
       # reset the current solution to the newly found one.
       self._curr_soln = curr_sol
+      self._prev_obj = self._curr_obj
       self._curr_obj = curr_obj
       # reset fixed variables.
       self._unfixed_variables = []
@@ -377,12 +377,15 @@ class Env(BaseEnv):
     if local_search_case:
       # lower the objective the better (minimization)
       if milp.is_optimal:
-        assert abs(curr_obj - milp.optimal_objective) >= -1e-4, (
+        assert curr_obj - milp.optimal_objective >= -1e-4, (
             curr_obj, milp.optimal_objective)
-      rew = -1 * curr_obj / milp.optimal_objective
-      self._best_ep_return = max(self._best_ep_return, rew)
-      self._final_ep_return = rew
-      self._rews.append(rew)
+      # old way of assigning reward change to incremental delta rewards.
+      # rew = -1 * curr_obj / milp.optimal_objective
+      rew = (self._prev_obj - curr_obj) / milp.feasible_objective
+      self._best_ep_return = min(curr_obj / milp.optimal_objective,
+                                 self._best_ep_return)
+      self._final_ep_return = curr_obj / milp.optimal_objective
+      self._obj_vals.append(curr_obj / milp.optimal_objective)
     else:
       rew = 0
     self._ep_return += rew
@@ -412,7 +415,7 @@ class Env(BaseEnv):
       self._prev_ep_return = self._ep_return
       self._prev_best_ep_return = self._best_ep_return
       self._prev_final_ep_return = self._final_ep_return
-      self._prev_avg_ep_return = np.mean(self._rews)
+      self._prev_avg_ep_return = np.mean(self._obj_vals)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())

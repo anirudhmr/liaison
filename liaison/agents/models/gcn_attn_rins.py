@@ -1,8 +1,7 @@
 """Graphnet based model."""
 
-import numpy as np
-
 import graph_nets as gn
+import numpy as np
 import sonnet as snt
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
@@ -79,6 +78,7 @@ class Model:
           node_model_fn=None)
 
     self._graphnet_models = [None for _ in range(n_prop_layers)]
+    self._node_layer_norms = []
     for i in range(n_prop_layers):
       with tf.variable_scope('graphnet_model_%d' % i):
         with tf.variable_scope('edge_model'):
@@ -117,6 +117,8 @@ class Model:
               num_heads=num_heads,
               key_size=key_dim,
               value_size=value_dim)
+        with tf.variable_scope('node_layer_norm'):
+          self._node_layer_norms.append(snt.LayerNorm())
 
     with tf.variable_scope('policy_torso'):
       self.policy_torso = snt.nets.MLP(
@@ -172,6 +174,10 @@ class Model:
             nodes=new_graph_features.nodes + graph_features.nodes,
             edges=new_graph_features.edges + graph_features.edges,
             globals=new_graph_features.globals + graph_features.globals)
+
+        # layer norm
+        graph_features = graph_features.replace(
+            nodes=self._node_layer_norms[i](graph_features.nodes))
     return graph_features
 
   def get_logits_and_next_state(self, step_type, _, obs, __):
