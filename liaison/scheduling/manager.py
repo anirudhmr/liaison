@@ -23,7 +23,7 @@ class ScheduleManager:
                wunits,
                scheduling_constraints=None,
                colocation_constraints=None,
-               time_limit=None,
+               time_limit=10,
                gpu_overload_obj_coeff=1,
                gpu_load_balancing_obj_coeff=1,
                gpu_wu_consolidation_obj_coeff=0.25,

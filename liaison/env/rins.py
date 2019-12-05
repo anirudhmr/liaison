@@ -3,10 +3,11 @@ import os
 import pickle
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
 from liaison.daper.dataset_constants import DATASET_PATH, LENGTH_MAP
 from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
@@ -108,7 +109,7 @@ class Env(BaseEnv):
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
-    features = np.hstack((nodes.flatten(), self._globals))
+    features = np.hstack((self._variable_nodes.flatten(), self._globals))
 
     if self.config.mlp_embed_constraints:
       milp = self.milp
@@ -247,7 +248,7 @@ class Env(BaseEnv):
         (len(milp.mip.constraints), Env.N_CONSTRAINT_FIELDS), dtype=np.float32)
     for i, c in enumerate(milp.mip.constraints):
       c = c.cast_sense_to_le()
-      constraint_nodes[i, Env.CONSTRAINT_CONSTANT_FIELD] = c.rhs
+      constraint_nodes[i, Env.CONSTRAINT_CONSTANT_FIELD] = c.rhs / 5e3
 
     objective_nodes = np.zeros((1, Env.N_OBJECTIVE_FIELDS), dtype=np.float32)
     objective_nodes[:, 0] = milp.feasible_objective
@@ -318,7 +319,7 @@ class Env(BaseEnv):
     solver.hideOutput()
     mip.add_to_scip_solver(solver)
     solver.optimize()
-    obj = solver.getObjVal()
+    obj = float(solver.getObjVal())
     ass = {var.name: solver.getVal(var) for var in solver.getVars()}
     return ass, obj
 
@@ -426,10 +427,12 @@ class Env(BaseEnv):
     variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD] = [
         curr_lp_sol[k] for k in var_names
     ]
-    obj_nodes[:, Env.OBJ_LP_VALUE_FIELD] = curr_lp_obj
-    obj_nodes[:, Env.OBJ_INT_VALUE_FIELD] = curr_obj
+    obj_nodes[:, Env.
+              OBJ_LP_VALUE_FIELD] = curr_lp_obj / milp.feasible_objective
+    obj_nodes[:, Env.OBJ_INT_VALUE_FIELD] = curr_obj / milp.feasible_objective
 
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(
+        self._steps_per_episode)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
 
     if self._n_steps == self._steps_per_episode:

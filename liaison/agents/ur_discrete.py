@@ -4,11 +4,11 @@ at each step."""
 from __future__ import absolute_import, division, print_function
 
 import numpy as np
-
 import tensorflow as tf
 from absl import logging
 from liaison.agents import BaseAgent, StepOutput
 from liaison.agents.utils import *
+from liaison.env import StepType
 
 _ACTION_SPEC_UNBOUNDED = 'action spec `{}` is not correctly bounded.'
 _DTYPE_NOT_INTEGRAL = '`dtype` must be integral, got {}.'
@@ -80,10 +80,27 @@ class Agent(BaseAgent):
           logits = tf.fill(tf.expand_dims(batch_size, 0), 0)
         return StepOutput(action, logits, self._dummy_state(batch_size))
 
-  def build_update_ops(self, *args, **kwargs):
+  def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
+                       observations, discounts):
     global_step = tf.train.get_or_create_global_step()
     self._incr_op = tf.assign(global_step, global_step + 1)
 
-  def update(self, sess, feed_dict):
-    gs = sess.run(self._incr_op)
-    return {'steps/global_step': gs}
+    valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
+    n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
+                            tf.float32)
+
+    def f(x):
+      """Computes the valid mean stat."""
+      return tf.reduce_sum(tf.boolean_mask(x, valid_mask)) / n_valid_steps
+
+    self._logged_values = {
+        'steps/global_step':
+        global_step,
+        **self._extract_logged_values(
+            tf.nest.map_structure(lambda k: k[:-1], observations), f)
+    }
+
+  def update(self, sess, feed_dict, _):
+    gs, logvals = sess.run([self._incr_op, self._logged_values],
+                           feed_dict=feed_dict)
+    return logvals

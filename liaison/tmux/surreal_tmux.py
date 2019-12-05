@@ -21,8 +21,8 @@ PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
 
 class TurrealParser(SymphonyParser):
 
-  def create_cluster(self):
-    return Cluster.new('tmux')
+  def create_cluster(self, args):
+    return Cluster.new('tmux', server_name=args.tmux_server_name)
 
   def setup(self):
     super().setup()
@@ -98,7 +98,6 @@ class TurrealParser(SymphonyParser):
     """
     self.experiment_name = self._process_experiment_name(args.experiment_name)
 
-    self.cluster = cluster = self.create_cluster()
     self._setup_xmanager_client(args)
     exp_id = self._register_exp(self.experiment_name)
 
@@ -178,5 +177,6 @@ class TurrealParser(SymphonyParser):
     args.remainder = remainder
     args.has_remainder = has_remainder
 
+    self.cluster = self.create_cluster(args)
     args.func(args)
     return args.func, args_l
