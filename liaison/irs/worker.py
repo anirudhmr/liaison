@@ -1,19 +1,20 @@
 """Start IRS Server."""
 
-from __future__ import absolute_import, division, print_function
-
 import json
 import logging
 import os
+import pickle
 import shutil
 import time
 from multiprocessing import Process
+from pathlib import Path
 
 import liaison.utils as U
 from absl import logging
 from caraml.zmq import ZmqProxyThread, ZmqServer
 from liaison.utils import ConfigDict
-from pathlib import Path
+
+
 """
   Request format:
     (request_type -> str, args -> List, kwargs -> Dict)
@@ -24,11 +25,12 @@ from pathlib import Path
 class Worker(Process):
 
   def __init__(self, serving_host, serving_port, checkpoint_folder,
-               profile_folder, **kwargs):
+               profile_folder, kvstream_folder, **kwargs):
     Process.__init__(self)
     self.config = ConfigDict(**kwargs)
     self.checkpoint_folder = checkpoint_folder
     self.profile_folder = profile_folder
+    self.kvstream_folder = kvstream_folder
     self.serving_host = serving_host
     self.serving_port = serving_port
 
@@ -163,3 +165,10 @@ class Worker(Process):
                                  if i not in to_remove])
 
     self._enforce_checkpoint_policy()
+
+  def record_kv_data(self, stream, kv_data, **kwargs):
+    """Add key-value data to the stream."""
+    U.f_mkdir(self.kvstream_folder)
+    with open(os.path.join(self.kvstream_folder, stream) + '.pkl', 'wb') as f:
+      d = dict(kv=kv_data, stream=stream, **kwargs)
+      pickle.dump(d, f)

@@ -3,10 +3,10 @@
 from __future__ import absolute_import, division, print_function
 
 import liaison.utils as U
-from liaison.utils import ConfigDict
-from absl import logging, app
+from absl import app, logging
 from argon import ArgumentParser, to_nested_dicts
 from liaison.launch.launcher import Launcher
+from liaison.utils import ConfigDict
 
 parser = ArgumentParser('main entry script for all spawned liaison processes.')
 # agent_config
@@ -17,6 +17,9 @@ parser.add_config_file(name='env', required=True)
 
 # sess_config
 parser.add_config_file(name='sess', required=True)
+
+# eval_config
+parser.add_config_file(name='eval', required=False)
 
 parser.add_argument('--batch_size', type=int, default=8, help='Batch size')
 parser.add_argument('--traj_length',
@@ -52,6 +55,7 @@ class LauncherSetup(Launcher):
     self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))
     self.sess_config = ConfigDict(to_nested_dicts(args.sess_config))
+    self.eval_config = ConfigDict(to_nested_dicts(args.eval_config))
 
 
 def main(_):

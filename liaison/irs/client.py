@@ -4,11 +4,11 @@ import os
 from caraml.zmq import ZmqClient, ZmqTimeoutError
 
 
-def Client(object):
+class Client:
 
   def __init__(self,
-               host=os.env['SYMPH_IRS_FRONTEND_HOST'],
-               port=os.env['SYMPH_IRS_FRONTEND_PORT']):
+               host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
+               port=os.environ['SYMPH_IRS_FRONTEND_PORT']):
     self._cli = ZmqClient(host=host,
                           port=port,
                           serializer='pyarrow',

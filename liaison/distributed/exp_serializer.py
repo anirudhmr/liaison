@@ -4,8 +4,8 @@
 
   Use compression to shrink the experiences.
 """
-import pyarrow as pa
 import graph_nets as gn
+import pyarrow as pa
 
 # Add custom types here as required.
 CUSTOM_TYPES = {}

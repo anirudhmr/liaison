@@ -7,15 +7,16 @@ import os
 import subprocess
 import sys
 from argparse import ArgumentParser
+from multiprocessing import Process
 from threading import Thread
 
 import liaison.utils as U
 from argon import to_nested_dicts
 from liaison.distributed import (Actor, Evaluator, Learner,
                                  ShardedParameterServer)
-from liaison.irs import IRSServer
+from liaison.irs import IRSClient, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
-                             TensorplexLogger)
+                             KVStreamLogger, TensorplexLogger)
 from liaison.replay import ReplayLoadBalancer
 from liaison.utils import ConfigDict
 from tensorplex import Loggerplex, Tensorplex
@@ -130,42 +131,49 @@ class Launcher:
 
     Actor(**actor_config)  # blocking constructor.
 
-  def _setup_evaluator_loggers(self):
+  def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
     loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
     loggers.append(AvgPipeLogger(TensorplexLogger(client_id='evaluator/0')))
+    loggers.append(
+        KVStreamLogger(stream_id=f'{evaluator_name}', client=IRSClient()))
     return loggers
 
   def run_evaluator(self, id):
 
     # use random evaluator
-    agent_config = U.import_obj('get_config',
-                                'liaison.configs.agent.ur_discrete')()
+    env_config, sess_config, agent_config = (self.env_config, self.sess_config,
+                                             self.agent_config)
+    eval_config = self.eval_config
 
-    env_config, sess_config = (self.env_config, self.sess_config)
     agent_class = U.import_obj(agent_config.class_name,
                                agent_config.class_path)
-
     shell_class = U.import_obj(sess_config.shell.class_name,
                                sess_config.shell.class_path)
-
     env_class = U.import_obj(env_config.class_name, env_config.class_path)
-
     shell_config = dict(agent_class=agent_class,
                         agent_config=agent_config,
                         **self.sess_config.shell)
-    batch_size = sess_config.evaluator.batch_size
 
-    evaluator_config = dict(shell_class=shell_class,
-                            shell_config=shell_config,
-                            env_class=env_class,
-                            env_configs=[self.env_config] * batch_size,
-                            traj_length=self.traj_length,
-                            loggers=self._setup_evaluator_loggers(),
-                            seed=self.seed,
-                            **self.sess_config.evaluator)
+    procs = []
+    for eval_type in ['train', 'valid', 'test']:
+      env_config = ConfigDict(**self.env_config)
+      env_config.update({eval_config.dataset_type_field: eval_type})
+      evaluator_config = dict(shell_class=shell_class,
+                              shell_config=shell_config,
+                              env_class=env_class,
+                              env_configs=[env_config] *
+                              eval_config.batch_size,
+                              traj_length=self.traj_length,
+                              loggers=self._setup_evaluator_loggers(eval_type),
+                              seed=self.seed,
+                              **eval_config)
+      # blocking constructor
+      procs.append(Process(target=Evaluator, kwargs=evaluator_config))
+      procs[-1].start()
 
-    Evaluator(**evaluator_config)  # blocking constructor.
+    for proc in procs:
+      proc.join()
 
   def _setup_learner_loggers(self):
     loggers = []
@@ -344,6 +352,8 @@ class Launcher:
                                     str(self.work_id)),
         cmd_folder=os.path.join(self.results_folder, 'cmds',
                                 str(self.work_id)),
+        kvstream_folder=os.path.join(self.results_folder, 'kvstream',
+                                     str(self.work_id)),
         **self.sess_config.irs)
     self._irs_server.launch()
     self._irs_server.join()
