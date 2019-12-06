@@ -66,12 +66,13 @@ def train(argv):
   exp_flags = []
   exps = []
   for work_id, params in enumerate(
-      hyper.product(
-          hyper.zip(
-              hyper.discrete('env_config.k', [10, 20, 30]),
-              hyper.discrete('env_config.steps_per_episode', [100, 200, 300])),
-          hyper.discrete('agent_config.lr_init', [1e-5, 2e-5]),
-      )):
+      # hyper.product(
+      #     hyper.zip(
+      #         hyper.discrete('env_config.k', [10, 20, 30]),
+      #         hyper.discrete('env_config.steps_per_episode', [100, 200, 300])),
+      #     hyper.discrete('agent_config.lr_init', [1e-5, 2e-5]),
+      # )):
+      hyper.discrete('agent_config.lr_init', [1e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first experiment.

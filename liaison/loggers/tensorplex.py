@@ -1,8 +1,11 @@
 import os
-import liaison.utils as U
-from tensorplex import LoggerplexClient, TensorplexClient
 
+import numpy as np
+
+import liaison.utils as U
+import tree as nest
 from liaison.loggers import BaseLogger
+from tensorplex import LoggerplexClient, TensorplexClient
 
 
 class Logger(BaseLogger):

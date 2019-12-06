@@ -39,11 +39,11 @@ class Shell:
       self,
       action_spec,
       obs_spec,
-      batch_size,
       seed,
       # Above args provided by actor.
       agent_class,
       agent_config,
+      batch_size,
       agent_scope='shell',
       sync_period=None,
       use_gpu=False,
@@ -69,7 +69,6 @@ class Shell:
                                 seed=seed,
                                 **agent_config)
 
-      self._batch_size = batch_size
       self._batch_size_ph = tf.placeholder_with_default(
           batch_size, shape=(), name='shell_batch_size_ph')
       self.sess.run(tf.global_variables_initializer())
@@ -171,7 +170,6 @@ class Shell:
                                 feed_dict={
                                     self._step_type_ph: step_type,
                                     self._reward_ph: reward,
-                                    self._batch_size_ph: self._batch_size,
                                     self._next_state_ph: next_state,
                                     **obs_feed_dict,
                                 })

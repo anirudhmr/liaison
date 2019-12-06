@@ -219,9 +219,11 @@ class Model:
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-    mask = obs['node_mask']
-    logits = tf.scatter_nd(indices, logits, tf.shape(mask))
-    logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
+    if 'node_mask' in obs:
+      mask = obs['node_mask']
+      logits = tf.scatter_nd(indices, logits, tf.shape(mask))
+      logits = tf.where(tf.equal(mask, 1), logits,
+                        tf.fill(tf.shape(mask), -INF))
     return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
 
   def get_value(self, _, __, obs, ___):

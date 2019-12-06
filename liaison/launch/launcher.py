@@ -14,7 +14,8 @@ from argon import to_nested_dicts
 from liaison.distributed import (Actor, Evaluator, Learner,
                                  ShardedParameterServer)
 from liaison.irs import IRSServer
-from liaison.loggers import ConsoleLogger, DownSampleLogger, TensorplexLogger
+from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
+                             TensorplexLogger)
 from liaison.replay import ReplayLoadBalancer
 from liaison.utils import ConfigDict
 from tensorplex import Loggerplex, Tensorplex
@@ -131,8 +132,8 @@ class Launcher:
 
   def _setup_evaluator_loggers(self):
     loggers = []
-    loggers.append(ConsoleLogger(print_every=1))
-    loggers.append(TensorplexLogger(client_id='evaluator/0'))
+    loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
+    loggers.append(AvgPipeLogger(TensorplexLogger(client_id='evaluator/0')))
     return loggers
 
   def run_evaluator(self, id):

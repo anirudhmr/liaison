@@ -68,7 +68,8 @@ class Env(BaseEnv):
                id,
                seed,
                graph_seed=-1,
-               graph_idx=0,
+               graph_start_idx=0,
+               n_graphs=1,
                dataset='milp-facilities-3',
                dataset_type='train',
                k=5,
@@ -88,24 +89,31 @@ class Env(BaseEnv):
     if graph_seed < 0: graph_seed = seed
     self._setup_graph_random_state(graph_seed)
 
-    self.milp = self._load_graph(dataset, dataset_type, int(graph_idx))
+    self.milps = self._load_graph(dataset, dataset_type, graph_start_idx,
+                                  n_graphs)
 
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = 0
-    self._prev_avg_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
-    self._prev_best_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
-    self._prev_final_ep_return = self.milp.feasible_objective / self.milp.optimal_objective
+    self._prev_avg_ep_return = 0
+    self._prev_best_ep_return = 0
+    self._prev_final_ep_return = 0
     self._reset_next_step = True
     self.reset()
 
-  def _load_graph(self, dataset: str, dataset_type: str, graph_idx: int):
+  def _load_graph(self, dataset: str, dataset_type: str, graph_start_idx: int,
+                  n_graphs: int):
     path = DATASET_PATH[dataset]
-    assert graph_idx < LENGTH_MAP[dataset][dataset_type]
-    with open(os.path.join(path, dataset_type, '%d.pkl' % graph_idx),
-              'rb') as f:
-      milp = pickle.load(f)
-    return milp
+    milps = []
+    for graph_idx in range(graph_start_idx, graph_start_idx + n_graphs):
+      with open(os.path.join(path, dataset_type, f'{graph_idx}.pkl'),
+                'rb') as f:
+        milp = pickle.load(f)
+        milps.append(milp)
+    return milps
+
+  def _sample(self):
+    return np.random.choice(self.milps)
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
@@ -221,7 +229,7 @@ class Env(BaseEnv):
     return obs
 
   def reset(self):
-    milp = self.milp
+    self.milp = milp = self._sample()
     self._ep_return = 0
     self._n_steps = 0
     self._n_local_moves = 0

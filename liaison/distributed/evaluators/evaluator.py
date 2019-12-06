@@ -4,6 +4,8 @@
 """
 import numpy as np
 
+import tree as nest
+from liaison.env import StepType
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 
 
@@ -24,15 +26,16 @@ class Evaluator:
       traj_length,
       loggers,
       seed,
+      n_evaluations=1,
       batch_size=1,  # num_envs
       use_parallel_envs=False,
       use_threaded_envs=False,
       **unused_config):
-
     del unused_config
     self.batch_size = batch_size
     self._traj_length = traj_length
     self._loggers = loggers
+    self._n_evaluations = n_evaluations
     if use_parallel_envs:
       self._env = ParallelBatchedEnv(batch_size,
                                      env_class,
@@ -55,24 +58,32 @@ class Evaluator:
     self._run_loop()
 
   def _run_loop(self):
-    ts = self._env.reset()
-    ep_rew = ts.reward
-    for i in range(self._traj_length):
-      step_output = self._shell.step(step_type=ts.step_type,
-                                     reward=ts.reward,
-                                     observation=ts.observation)
-      ts = self._env.step(step_output.action)
-      ep_rew += ts.reward
+    # performs n_evaluations before exiting
+    for i in range(self._n_evaluations):
+      # perform an evaluation
+      # env_mask[i] = should the ith env be masked for the shell.
+      env_mask = np.ones(self.batch_size, dtype=bool)
 
-    log_values = dict(ep_reward_mean=np.mean(ep_rew),
-                      ep_reward_std=np.std(ep_rew))
+      ts = self._env.reset()
+      ep_rew = ts.reward
+      log_values = [None] * len(env_mask)
+      while np.any(env_mask):
+        for i, mask in enumerate(env_mask):
+          if mask and ts.step_type[i] == StepType.LAST:
+            env_mask[i] = False
+            log_values[i] = dict(ep_reward=ep_rew[i])
+            if 'log_values' in ts.observation:
+              # just use the last timestep's log_values.
+              for k, v in ts.observation['log_values'].items():
+                log_values[i].update({f'log_values/{k}': v[i]})
 
-    if 'log_values' in ts.observation:
-      # just use the last timestep's log_values.
-      for k, v in ts.observation['log_values'].items():
-        log_values['log_values/%s_mean' % k] = np.mean(v)
-        # log_values['log_values/%s_std' % k] = np.std(v)
+        step_output = self._shell.step(step_type=ts.step_type,
+                                       reward=ts.reward,
+                                       observation=ts.observation)
+        ts = self._env.step(step_output.action)
+        ep_rew += (ts.reward * env_mask)
 
-    # send log_values
-    for logger in self._loggers:
-      logger.write(log_values)
+      # stack all logvalues
+      log_values = nest.map_structure(lambda *l: np.vstack(l), *log_values)
+      for logger in self._loggers:
+        logger.write(log_values)

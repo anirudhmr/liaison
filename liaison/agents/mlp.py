@@ -1,9 +1,10 @@
 import functools
 
 import numpy as np
+
 import tensorflow as tf
 from absl import logging
-from liaison.agents import BaseAgent, StepOutput, utils, vtrace_ops
+from liaison.agents import BaseAgent, StepOutput, utils
 from liaison.agents.losses.vtrace import Loss as VTraceLoss
 from liaison.agents.utils import *
 from liaison.env import StepType

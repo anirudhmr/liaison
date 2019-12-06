@@ -1,5 +1,5 @@
 import tensorflow as tf
-from liaison.agents import vtrace_ops
+from liaison.agents.losses import vtrace_ops
 from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict

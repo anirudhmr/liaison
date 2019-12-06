@@ -10,10 +10,10 @@
 
 from __future__ import absolute_import, division, print_function
 
-import os
 import logging
+import os
 
-from liaison.env.batch import SerialBatchedEnv, ParallelBatchedEnv
+from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 
 from .exp_sender import ExpSender
 from .spec_server import SpecServer
@@ -61,8 +61,8 @@ class Actor:
     self._shell = shell_class(
         action_spec=self._action_spec,
         obs_spec=self._obs_spec,
-        batch_size=batch_size,
         seed=seed,
+        batch_size=batch_size,
         **shell_config,
     )
 

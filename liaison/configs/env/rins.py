@@ -22,7 +22,8 @@ def get_config():
 
   config.dataset = 'milp-facilities-3'
   config.dataset_type = 'train'
-  config.graph_idx = 0
+  config.graph_start_idx = 0
+  config.n_graphs = 1
 
   config.k = 5
   config.steps_per_episode = 60
