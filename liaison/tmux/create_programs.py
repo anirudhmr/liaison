@@ -28,19 +28,18 @@ def build_program(exp, n_actors, res_req_config, with_visualizers=True):
   for i in range(n_actors):
     actors.append(actor_pg.new_process('actor-{}'.format(i)))
 
-  evaluator_pg = exp.new_process_group('evaluator-*')
-  evaluators = [evaluator_pg.new_process('evaluator-0')]
+  evaluator = exp.new_process('evaluators')
 
   setup_network(
       actors=actors,
       learner=learner,
       replay=replay,
       ps=ps,
-      evaluators=evaluators,
+      evaluator=evaluator,
       visualizers=visualizers,
       irs=irs,
   )
-  for proc in [learner, replay, ps, irs, visualizers] + actors + evaluators:
+  for proc in [learner, replay, ps, irs, visualizers] + actors + [evaluator]:
     if proc:
       proc.set_costs(**get_fuzzy_match(res_req_config, proc.name))
 
@@ -50,7 +49,7 @@ def setup_network(*,
                   ps,
                   replay,
                   learner,
-                  evaluators=None,
+                  evaluator=None,
                   visualizers=None,
                   irs=None):
   """
@@ -92,10 +91,9 @@ def setup_network(*,
     proc.connects('tensorplex-system')
     proc.connects('irs-frontend')
 
-  for proc in evaluators:
-    proc.connects('tensorplex')
-    proc.connects('irs-frontend')
-    proc.connects('ps-frontend')
+  evaluator.connects('tensorplex')
+  evaluator.connects('irs-frontend')
+  evaluator.connects('ps-frontend')
 
   if visualizers:
     visualizers.binds('visualizers-tb')

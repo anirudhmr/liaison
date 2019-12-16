@@ -9,9 +9,9 @@ import re
 import sys
 import time
 from contextlib import contextmanager
+from enum import Enum, EnumMeta
 from threading import Lock, Thread
 
-from enum import Enum, EnumMeta
 from liaison.utils import ConfigDict
 
 
@@ -700,6 +700,9 @@ def wait_for_popen(processes, verbose=True):
           if verbose:
             print('Process {} exited with code 0'.format(i))
         else:
+          print('Exception ',
+                ''.join(map(lambda k: k.decode('utf-8'), process.stderr)))
+
           for process in processes:
             if process is not None:
               process.kill()

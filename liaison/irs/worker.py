@@ -168,6 +168,7 @@ class Worker(Process):
 
   def record_kv_data(self, stream, kv_data, **kwargs):
     """Add key-value data to the stream."""
+    logging.info(f'Received new kvdata on stream {stream}')
     U.f_mkdir(self.kvstream_folder)
     with open(os.path.join(self.kvstream_folder, stream) + '.pkl', 'wb') as f:
       d = dict(kv=kv_data, stream=stream, **kwargs)

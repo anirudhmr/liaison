@@ -8,12 +8,13 @@ class Client:
 
   def __init__(self,
                host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
-               port=os.environ['SYMPH_IRS_FRONTEND_PORT']):
+               port=os.environ['SYMPH_IRS_FRONTEND_PORT'],
+               timeout=2):
     self._cli = ZmqClient(host=host,
                           port=port,
                           serializer='pyarrow',
                           deserializer='pyarrow',
-                          timeout=2)
+                          timeout=timeout)
 
   def _send_to_server(self, req, *args, **kwargs):
     while True:

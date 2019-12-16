@@ -66,7 +66,10 @@ class Launcher:
   def launch(self, component_name_in):
     if '-' in component_name_in:
       component_name, component_id = component_name_in.split('-')
-      component_id = int(component_id)
+      try:
+        component_id = int(component_id)
+      except ValueError:
+        pass
     else:
       component_name = component_name_in
       component_id = None
@@ -75,6 +78,8 @@ class Launcher:
       self.run_actor(actor_id=component_id)
     elif component_name == 'evaluator':
       self.run_evaluator(id=component_id)
+    elif component_name == 'evaluators':
+      self.run_evaluators()
     elif component_name == 'learner':
       self.run_learner()
     elif component_name == 'ps':
@@ -93,9 +98,14 @@ class Launcher:
       raise ValueError('Unexpected component {}'.format(component_name))
 
   def run_component(self, component_name):
+    # note that redirecting to sys.stdout instead of subprocess.PIPE
+    # would mean that U.wait_for_popen would not be capturing the stderr
+    # and some printing could get broken.
     return subprocess.Popen(
         [sys.executable, '-u', sys.argv[0], component_name, '--'] +
-        self.config_args)
+        self.config_args,
+        stdout=sys.stdout,
+        stderr=subprocess.STDOUT)
 
   def run_actor(self, actor_id):
     """
@@ -136,12 +146,11 @@ class Launcher:
     loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
     loggers.append(AvgPipeLogger(TensorplexLogger(client_id='evaluator/0')))
     loggers.append(
-        KVStreamLogger(stream_id=f'{evaluator_name}', client=IRSClient()))
+        KVStreamLogger(stream_id=f'{evaluator_name}',
+                       client=IRSClient(timeout=20)))
     return loggers
 
-  def run_evaluator(self, id):
-
-    # use random evaluator
+  def run_evaluator(self, id: str):
     env_config, sess_config, agent_config = (self.env_config, self.sess_config,
                                              self.agent_config)
     eval_config = self.eval_config
@@ -155,25 +164,24 @@ class Launcher:
                         agent_config=agent_config,
                         **self.sess_config.shell)
 
-    procs = []
-    for eval_type in ['train', 'valid', 'test']:
-      env_config = ConfigDict(**self.env_config)
-      env_config.update({eval_config.dataset_type_field: eval_type})
-      evaluator_config = dict(shell_class=shell_class,
-                              shell_config=shell_config,
-                              env_class=env_class,
-                              env_configs=[env_config] *
-                              eval_config.batch_size,
-                              traj_length=self.traj_length,
-                              loggers=self._setup_evaluator_loggers(eval_type),
-                              seed=self.seed,
-                              **eval_config)
-      # blocking constructor
-      procs.append(Process(target=Evaluator, kwargs=evaluator_config))
-      procs[-1].start()
+    env_config = ConfigDict(**self.env_config)
+    env_config.update({eval_config.dataset_type_field: id})
+    evaluator_config = dict(shell_class=shell_class,
+                            shell_config=shell_config,
+                            env_class=env_class,
+                            env_configs=[env_config] * eval_config.batch_size,
+                            traj_length=self.traj_length,
+                            loggers=self._setup_evaluator_loggers(id),
+                            seed=self.seed,
+                            **eval_config)
+    Evaluator(**evaluator_config)
 
-    for proc in procs:
-      proc.join()
+  def run_evaluators(self):
+    components = [
+        self.run_component(f'evaluator-{eval_type}')
+        for eval_type in ['train', 'valid', 'test']
+    ]
+    U.wait_for_popen(components)
 
   def _setup_learner_loggers(self):
     loggers = []

@@ -112,7 +112,9 @@ class Env(BaseEnv):
         milps.append(milp)
     return milps
 
-  def _sample(self):
+  def _sample(self, choice=None):
+    if choice is not None:
+      return self.milps[choice]
     return np.random.choice(self.milps)
 
   def _observation_mlp(self, nodes):
@@ -228,8 +230,14 @@ class Env(BaseEnv):
             np.logical_or(obs['constraint_type_mask'], obs['obj_type_mask'])))
     return obs
 
-  def reset(self):
-    self.milp = milp = self._sample()
+  def resample_and_reset(self, i):
+    self.milp = self._sample(i)
+    return self.reset(resample=False)
+
+  def reset(self, resample=True):
+    if resample:
+      self.milp = self._sample()
+    milp = self.milp
     self._ep_return = 0
     self._n_steps = 0
     self._n_local_moves = 0
