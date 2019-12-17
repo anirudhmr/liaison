@@ -75,7 +75,6 @@ class Evaluator:
       # each evaluation is repeated for n_trials
       for trial_id in range(self._n_trials):
         print(f'Starting trial {trial_id}')
-        sys.stdout.flush()
 
         # perform an evaluation
         # env_mask[i] = should the ith env be masked for the shell.

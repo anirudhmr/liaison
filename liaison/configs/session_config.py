@@ -38,7 +38,7 @@ def get_config():
   config.replay = ConfigDict()
   config.replay.class_path = 'liaison.replay.uniform_replay'
   config.replay.class_name = 'UniformReplay'
-  config.replay.load_balanced = True
+  config.replay.load_balanced = False  # unknown bug
   config.replay.n_shards = 2
   config.replay.evict_interval = 0
   config.replay.memory_size = 100

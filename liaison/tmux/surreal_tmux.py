@@ -66,20 +66,9 @@ class TurrealParser(SymphonyParser):
   def _register_exp(self, exp_name):
     return self._xm_client.register(name=exp_name)
 
-  def _record_commands(self, exp_id, preamble_cmds, procs, dry_run):
-    commands = dict()
-    for proc in procs:
-      env_cmds = [
-          'export {}={}'.format(k, shlex.quote(v))
-          for k, v in proc.env.items()
-      ]
-      cmds = env_cmds + preamble_cmds + proc.cmds
-      commands[proc.name] = cmds
-
-    self._xm_client.record_commands(exp_id=exp_id,
-                                    commands=commands,
-                                    dry_run=dry_run)
-    return commands
+  def _record_launch_command(self, exp_id):
+    """Records the launch command with the irs."""
+    self._xm_client.record_metadata(exp_id=exp_id, command=' '.join(sys.argv))
 
   def _register_commands_with_irs(self, commands, host, port):
     self._cli = ZmqClient(host=host,
@@ -100,6 +89,7 @@ class TurrealParser(SymphonyParser):
 
     self._setup_xmanager_client(args)
     exp_id = self._register_exp(self.experiment_name)
+    self._record_launch_command(exp_id)
 
     results_folder = args.results_folder.format(
         experiment_name=self.experiment_name, exp_id=exp_id)
@@ -147,9 +137,6 @@ class TurrealParser(SymphonyParser):
         commands.append(cmd_gen.get_command(proc.name))
 
       self.cluster.launch(exp)
-    # self._register_commands_with_irs(commands,
-    #                                  host=irs.env['SYMPH_IRS_FRONTEND_HOST'],
-    #                                  port=irs.env['SYMPH_IRS_FRONTEND_PORT'])
 
   def main(self, argv):
     assert argv.count('--') <= 1, \

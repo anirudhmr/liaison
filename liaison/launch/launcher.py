@@ -164,12 +164,21 @@ class Launcher:
                         agent_config=agent_config,
                         **self.sess_config.shell)
 
-    env_config = ConfigDict(**self.env_config)
-    env_config.update({eval_config.dataset_type_field: id})
+    env_configs = []
+
+    for i in range(eval_config.batch_size):
+      env_config = ConfigDict(**self.env_config)
+      env_config.update({
+          eval_config.dataset_type_field: id,
+          'graph_start_idx': i,
+          'n_graphs': 1,
+      })
+      env_configs.append(env_config)
+
     evaluator_config = dict(shell_class=shell_class,
                             shell_config=shell_config,
                             env_class=env_class,
-                            env_configs=[env_config] * eval_config.batch_size,
+                            env_configs=env_configs,
                             traj_length=self.traj_length,
                             loggers=self._setup_evaluator_loggers(id),
                             seed=self.seed,

@@ -3,6 +3,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import sys
 from multiprocessing import Process
 
 import liaison.utils as U
@@ -11,6 +12,8 @@ from caraml.zmq import ZmqProxyThread
 from git import Repo
 from liaison.irs import IRSWorker
 from liaison.utils import ConfigDict
+
+
 """
   Request format:
     (request_type -> str, args -> List, kwargs -> Dict)
@@ -43,6 +46,7 @@ class Server(object):
                            work_id=work_id,
                            irs_n_shards=n_shards)
     self._register_src()
+    self._register_cmd()
 
   def launch(self):
     """
@@ -88,6 +92,12 @@ class Server(object):
     U.pretty_dump(sess_config, os.path.join(config_folder, 'sess_config.json'))
 
     U.pretty_dump(kwargs, os.path.join(config_folder, 'misc_config.json'))
+
+  def _register_cmd(self):
+    cmd_folder = self.config.cmd_folder
+    U.f_mkdir(cmd_folder)
+    with open(os.path.join(cmd_folder, 'cmd.txt'), 'w') as f:
+      f.write('\n'.join(sys.argv))
 
   def _register_src(self):
     src_folder = self.config.src_folder
