@@ -24,6 +24,7 @@ parser.add_argument('--cpu_overload_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_load_balancing_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=int, default=10)
 parser.add_argument('--filter_nodes_regex', type=str, default='.*')
+parser.add_argument('--without_evaluators', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
@@ -67,18 +68,21 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          hyper.zip(hyper.discrete('env_config.k', [20, 30]),
-                    hyper.discrete('env_config.steps_per_episode',
-                                   [200, 300])),
-          hyper.discrete('agent_config.lr_init', [1e-5, 2e-5]),
+          hyper.zip(
+              hyper.discrete('env_config.k', [20, 20, 30, 30]),
+              hyper.discrete('env_config.steps_per_episode',
+                             [200, 2000, 300, 3000])),
+          hyper.discrete('agent_config.lr_init', [2e-5, 1e-4]),
       )):
+    # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first experiment.
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
-                  with_visualizers=(work_id == 0))
+                  with_visualizers=(work_id == 0),
+                  with_evaluators=(not args.without_evaluators))
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += hyper.to_commandline(params)

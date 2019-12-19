@@ -6,7 +6,6 @@ import sys
 import time
 
 import numpy as np
-
 import tree as nest
 from liaison.env import StepType
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
@@ -53,11 +52,16 @@ class Evaluator:
       self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
     self._action_spec = self._env.action_spec()
     self._obs_spec = self._env.observation_spec()
+
+    if 'sync_period' in shell_config:
+      del shell_config['sync_period']
+
     self._shell = shell_class(
         action_spec=self._action_spec,
         obs_spec=self._obs_spec,
         batch_size=batch_size,
         seed=seed,
+        sync_period=int(1e20),  # don't sync unless asked to do so explicitly.
         **shell_config,
     )
 
@@ -67,6 +71,7 @@ class Evaluator:
   def _run_loop(self):
     # performs n_evaluations before exiting
     for eval_id in range(self.max_evaluations):
+      self._shell.sync()
       print(f'Starting evaluation {eval_id}')
       # eval_log_values -> List[List[Dict[str, numeric]]]
       # eval_log_values[i] = eval log values for the ith trial

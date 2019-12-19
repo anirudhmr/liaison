@@ -12,7 +12,11 @@ def get_fuzzy_match(config, name):
   raise Exception('No fuzzy match found for key %s' % name)
 
 
-def build_program(exp, n_actors, res_req_config, with_visualizers=True):
+def build_program(exp,
+                  n_actors,
+                  res_req_config,
+                  with_visualizers=True,
+                  with_evaluators=True):
   learner = exp.new_process('learner')
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
@@ -28,7 +32,10 @@ def build_program(exp, n_actors, res_req_config, with_visualizers=True):
   for i in range(n_actors):
     actors.append(actor_pg.new_process('actor-{}'.format(i)))
 
-  evaluator = exp.new_process('evaluators')
+  if with_evaluators:
+    evaluator = exp.new_process('evaluators')
+  else:
+    evaluator = None
 
   setup_network(
       actors=actors,
@@ -91,9 +98,10 @@ def setup_network(*,
     proc.connects('tensorplex-system')
     proc.connects('irs-frontend')
 
-  evaluator.connects('tensorplex')
-  evaluator.connects('irs-frontend')
-  evaluator.connects('ps-frontend')
+  if evaluator:
+    evaluator.connects('tensorplex')
+    evaluator.connects('irs-frontend')
+    evaluator.connects('ps-frontend')
 
   if visualizers:
     visualizers.binds('visualizers-tb')

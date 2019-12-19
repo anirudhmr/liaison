@@ -5,8 +5,8 @@ def get_config():
   config = ConfigDict()
 
   config.n_trials = 3
-  config.eval_sleep_time = 10 * 60
-  config.batch_size = 64
+  config.eval_sleep_time = 15 * 60
+  config.batch_size = 128
 
   config.use_parallel_envs = True
   config.use_threaded_envs = False

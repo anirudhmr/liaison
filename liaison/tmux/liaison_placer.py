@@ -203,6 +203,13 @@ class LiaisonPlacer:
               else:
                 proc_matched = True
                 self._set_placement(proc, matches[0])
+                s = node.exec_commands("bash -c 'env | grep CUDA'",
+                                       allocation=proc.allocation)
+                s = s.replace('\n', '').replace('\r', '')
+                if len(s):
+                  # CUDA_VISIBLE_DEVICES=2,3
+                  s = s.split('CUDA_VISIBLE_DEVICES=')[-1].split(',')
+                  proc.set_gpus(s)
 
         if proc_matched:
           # dont include it in filtered procs

@@ -152,9 +152,12 @@ class Shell:
             feed_dict={self._var_name_to_phs[var_name]: var_vals[var_name]})
       logging.info("Synced weights.")
 
+  def sync(self):
+    return self._sync_variables()
+
   def step(self, step_type, reward, observation):
     if self._sync_checker.should_sync(self._step_number):
-      self._sync_variables()
+      self.sync()
 
     # bass the batch through pre-processing
     step_type, reward, obs, next_state = self._agent.step_preprocess(

@@ -11,7 +11,7 @@ LENGTH_MAP = {
     'tsp-50': dict(train=1000, valid=100, test=100),
     'tsp-100': dict(train=1000, valid=100, test=100),
     'milp-facilities-3': dict(train=1000, valid=128, test=128),
-    'milp-facilities-10': dict(train=1000, valid=128, test=128),
+    'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
 }
 
 assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())

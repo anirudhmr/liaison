@@ -52,10 +52,14 @@ class LauncherSetup(Launcher):
     self.seed = args.seed
     self.results_folder = args.results_folder
 
-    self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))
     self.sess_config = ConfigDict(to_nested_dicts(args.sess_config))
-    self.eval_config = ConfigDict(to_nested_dicts(args.eval_config))
+    self.agent_config = ConfigDict(to_nested_dicts(args.agent_config))
+
+    if hasattr(args, 'eval_config'):
+      self.eval_config = ConfigDict(to_nested_dicts(args.eval_config))
+    else:
+      self.eval_config = ConfigDict()
 
 
 def main(_):
