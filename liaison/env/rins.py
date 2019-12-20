@@ -3,11 +3,10 @@ import os
 import pickle
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
 from liaison.daper.dataset_constants import DATASET_PATH, LENGTH_MAP
 from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
@@ -113,9 +112,10 @@ class Env(BaseEnv):
     return milps
 
   def _sample(self, choice=None):
-    if choice is not None:
-      return self.milps[choice]
-    return np.random.choice(self.milps)
+    if choice is None:
+      choice = np.random.choice(range(len(self.milps)))
+    self._milp_choice = choice
+    return self.milps[choice]
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
@@ -323,9 +323,8 @@ class Env(BaseEnv):
                         len(constraint_nodes) + len(objective_nodes)] = 1
     self._unfixed_variables = []
     self._curr_soln = copy.deepcopy(milp.feasible_solution)
-    self._prev_obj = milp.feasible_objective
     self._curr_obj = milp.feasible_objective
-
+    self._prev_obj = milp.feasible_objective
     return restart(self._observation())
 
   def _scip_solve(self, mip: MIPInstance
@@ -335,9 +334,20 @@ class Env(BaseEnv):
     solver.hideOutput()
     mip.add_to_scip_solver(solver)
     solver.optimize()
+    assert solver.getStatus() == 'optimal', solver.getStatus()
     obj = float(solver.getObjVal())
     ass = {var.name: solver.getVal(var) for var in solver.getVars()}
     return ass, obj
+
+  def _write_debug(self, local_search_case, fixed_assignment):
+    with open(f'/tmp/rins-{os.getpid()}.pkl', 'wb') as f:
+      pickle.dump(
+          dict(local_search_case=local_search_case,
+               curr_soln=self._curr_soln,
+               fixed_assignment=fixed_assignment,
+               unfixed_variables=self._unfixed_variables,
+               n_local_moves=self._n_local_moves,
+               milp_choice=self._milp_choice), f)
 
   def step(self, action):
     if self._reset_next_step:
@@ -371,23 +381,27 @@ class Env(BaseEnv):
     # populates curr_sol, local_search_case and curr_lp_sol fields before exiting
     ###################################################
     # {
+    self._write_debug(globals_[Env.GLOBAL_UNFIX_LEFT] == 0, fixed_assignment)
     if globals_[Env.GLOBAL_UNFIX_LEFT] == 0:
       # run mip
       local_search_case = True
-      mip = milp.mip.unfix(fixed_assignment, integral_relax=False)
+      mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=False)
       ass, curr_obj = self._scip_solve(mip)
-      curr_sol = dict()
-      for var, val in fixed_assignment.items():
-        # ass should only contain unfixed variables.
-        assert var not in ass
-        curr_sol[var] = val
+      curr_sol = ass
+      # for var, val in fixed_assignment.items():
+      #   # ass should only contain unfixed variables.
+      #   assert var not in ass
+      #   curr_sol[var] = val
 
-      # add back the newly found solutions for the sub-mip.
-      # this updates the current solution to the new local one.
-      curr_sol.update(ass)
+      # # add back the newly found solutions for the sub-mip.
+      # # this updates the current solution to the new local one.
+      # curr_sol.update(ass)
+      milp.mip.validate_sol(curr_sol)
       # reset the current solution to the newly found one.
       self._curr_soln = curr_sol
       self._prev_obj = self._curr_obj
+      assert curr_obj <= self._curr_obj + 1e-4, (curr_obj, self._curr_obj,
+                                                 os.getpid())
       self._curr_obj = curr_obj
       # reset fixed variables.
       self._unfixed_variables = []
@@ -399,16 +413,16 @@ class Env(BaseEnv):
     else:
       # run lp
       local_search_case = False
-      mip = milp.mip.unfix(fixed_assignment, integral_relax=True)
+      mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=True)
       ass, curr_lp_obj = self._scip_solve(mip)
-      curr_lp_sol = dict()
-      for var, val in fixed_assignment.items():
-        # ass should only contain unfixed variables.
-        assert var not in ass
-        curr_lp_sol[var] = val
+      curr_lp_sol = ass
+      # for var, val in fixed_assignment.items():
+      #   # ass should only contain unfixed variables.
+      #   assert var not in ass
+      #   curr_lp_sol[var] = val
 
-      # add back the newly found variable assignments for the lp.
-      curr_lp_sol.update(ass)
+      # # add back the newly found variable assignments for the lp.
+      # curr_lp_sol.update(ass)
     # }
     ###################################################
 
@@ -417,7 +431,7 @@ class Env(BaseEnv):
       # lower the objective the better (minimization)
       if milp.is_optimal:
         assert curr_obj - milp.optimal_objective >= -1e-4, (
-            curr_obj, milp.optimal_objective)
+            curr_obj, milp.optimal_objective, os.getpid())
       # old way of assigning reward change to incremental delta rewards.
       # rew = -1 * curr_obj / milp.optimal_objective
       rew = (self._prev_obj - curr_obj) / milp.feasible_objective

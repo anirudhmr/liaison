@@ -1,4 +1,5 @@
 import copy
+import os
 from abc import ABC
 from typing import Any, Dict, Text, Tuple, Union
 
@@ -18,10 +19,10 @@ class Variable(ABC):
 
   def validate(self, val):
     if self.lower_bound is not None:
-      assert val >= self.lower_bound - 1e-4, (val, self.lower_bound)
+      assert val >= self.lower_bound - 1e-5, (val, self.lower_bound)
 
     if self.upper_bound is not None:
-      assert val <= self.upper_bound + 1e-4, (val, self.upper_bound)
+      assert val <= self.upper_bound + 1e-5, (val, self.upper_bound)
 
     return True
 
@@ -125,6 +126,17 @@ class Expression:
     e.constant = reduced_val
     return e
 
+  def __str__(self):
+    ret = ''
+    if self.constant > 0:
+      ret += f'{self.constant} + '
+
+    for i, (v, c) in enumerate(zip(self.var_names, self.coeffs)):
+      ret += f'{c} * {v}'
+      if i != len(self) - 1:
+        ret += ' + '
+    return ret
+
 
 class Constraint:
 
@@ -168,9 +180,11 @@ class Constraint:
     expr = self.expr.reduce(fixed_vars_to_values)
     if expr.is_constant:
       if self.sense == 'LE':
-        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs)
+        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs,
+                                                  os.getpid())
       else:
-        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs)
+        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs,
+                                                  os.getpid())
       return None
     else:
       # convert to 'LE' format
@@ -190,6 +204,23 @@ class Constraint:
 
   def validate(self):
     assert self.expr.constant == 0
+    return True
+
+  def validate_assignment(self, ass: Dict[str, float]):
+    c = self.relax(ass)
+    assert c is None
+    return True
+
+  def __str__(self):
+    ret = ''
+    if self.name:
+      ret += f'Name of the constraint: {self.name}\n'
+    else:
+      ret += 'Unnamed constraint:\n'
+
+    ret += str(self.expr)
+    ret += f' {self.sense} {self.rhs}'
+    return ret
 
   def add_to_cplex_solver(self, solver):
     self.validate()
@@ -290,16 +321,16 @@ class MIPInstance:
 
     assert set(all_var_names) == set(list(self.varname2var.keys()))
 
-  def unfix(self,
-            fixed_vars_to_values: Dict[str, Union[int, float]],
-            integral_relax=False):
+  def old_fix(self,
+              fixed_ass: Dict[str, float],
+              relax_integral_constraints=False):
     """
       Args:
         fixed_vars_to_values: variables to fix and their values to fix to.
         integral_relax: If true return an lp with all integral constraints on
                         all variables relaxed.
       Returns:
-        Leaves the current mipinstance unchanged.
+        Leaves the current mipinstance unchanged (immutable call).
         Returns a new mipinstance with fixes and relaxations made.
     """
     for name, val in fixed_vars_to_values.items():
@@ -333,6 +364,48 @@ class MIPInstance:
     m.validate()
     return m
 
+  def fix(self, fixed_ass: Dict[str, float], relax_integral_constraints=False):
+    """
+      Args:
+        fixed_vars_to_values: variables to fix and their values to fix to.
+        integral_relax: If true return an lp with all integral constraints on
+                        all variables relaxed.
+      Returns:
+        Leaves the current mipinstance unchanged (immutable call).
+        Returns a new mipinstance with fixes and relaxations made.
+    """
+    for name, val in fixed_ass.items():
+      # assert variables are defined.
+      assert name in self.varname2var
+      self.varname2var[name].validate(val)
+
+    if self.name:
+      m = MIPInstance(self.name + '-relaxed')
+    else:
+      m = MIPInstance()
+
+    m.constraints = copy.deepcopy(self.constraints)
+    # add fixed assignment constraints
+    for var, val in fixed_ass.items():
+      c1 = m.new_constraint('LE',
+                            val + 1e-3,
+                            name=f'fix-var-{var}-to-LE-{val}')
+      c1.add_term(var, 1)
+      c2 = m.new_constraint('GE',
+                            val - 1e-3,
+                            name=f'fix-var-{var}-to-GE-{val}')
+      c2.add_term(var, 1)
+
+    for vname, var in self.varname2var.items():
+      if relax_integral_constraints:
+        m.add_variable(var.integral_relax())
+      else:
+        m.add_variable(copy.deepcopy(var))
+
+    m.obj = copy.deepcopy(self.obj)
+    m.validate()
+    return m
+
   def add_to_scip_solver(self, solver):
     self.validate()
 
@@ -363,3 +436,16 @@ class MIPInstance:
       c.add_to_cplex_solver(solver)
 
     self.obj.add_to_cplex_solver(solver)
+
+  def validate_sol(self, solution: Dict[str, float]):
+
+    for k in self.varname2var:
+      # assert solution is the full solution.
+      assert k in solution
+
+    for c in self.constraints:
+      c.validate_assignment(solution)
+
+    for k, v in solution.items():
+      assert self.varname2var[k].validate(v)
+    return True

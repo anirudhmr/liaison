@@ -1,16 +1,15 @@
 """Python RL Environment API."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import abc
 import collections
+import enum
+
+import six
 
 # Internal dependencies.
 
-import enum
-import six
 
 
 class TimeStep(
@@ -186,8 +185,6 @@ class Env(object):
 
 
 # Helper functions for creating TimeStep namedtuples with default settings.
-
-
 def restart(observation):
   """Returns a `TimeStep` with `step_type` set to `StepType.FIRST`."""
   return TimeStep(StepType.FIRST, 0.0, 0.0, observation)
