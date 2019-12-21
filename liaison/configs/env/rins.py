@@ -25,6 +25,9 @@ def get_config():
   config.graph_start_idx = 0
   config.n_graphs = 1
 
+  config.max_nodes = -1
+  config.max_edges = -1
+
   config.k = 5
   config.steps_per_episode = 60
 

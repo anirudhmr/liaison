@@ -252,6 +252,7 @@ class Objective:
   """Always minimize the objective."""
 
   def __init__(self, name=None, constant=0):
+    self.name = name
     self.expr = Expression(constant=constant)
 
   def add_term(self, var_name, coeff):
@@ -262,6 +263,11 @@ class Objective:
 
   def __len__(self):
     return len(self.expr)
+
+  def __str__(self):
+    ret = f'Objective Name: {self.name}\n'
+    ret += str(self.expr)
+    return ret
 
   def relax(self, fixed_vars_to_values):
     """
@@ -375,7 +381,7 @@ class MIPInstance:
         Returns a new mipinstance with fixes and relaxations made.
     """
     for name, val in fixed_ass.items():
-      # assert variables are defined.
+      # variables are defined.
       assert name in self.varname2var
       self.varname2var[name].validate(val)
 

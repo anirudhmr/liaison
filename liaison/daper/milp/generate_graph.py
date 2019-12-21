@@ -4,9 +4,8 @@ from itertools import combinations
 
 import numpy as np
 import scipy.sparse
-
 from liaison.daper.milp.primitives import (BinaryVariable, ContinuousVariable,
-                                           IntegerVariable, MIPInstance)
+                                           MIPInstance)
 
 
 def generate_cauctions(random,
