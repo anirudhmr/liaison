@@ -1,6 +1,7 @@
 import copy
 import os
 import pickle
+from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
 import graph_nets as gn
@@ -101,10 +102,10 @@ class Env(BaseEnv):
 
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
-    self._prev_ep_return = 0
-    self._prev_avg_ep_return = 0
-    self._prev_best_ep_return = 0
-    self._prev_final_ep_return = 0
+    self._prev_ep_return = 10
+    self._prev_avg_ep_return = 10
+    self._prev_best_ep_return = 10
+    self._prev_final_ep_return = 10
     self._reset_next_step = True
     self.reset()
 
@@ -284,9 +285,11 @@ class Env(BaseEnv):
     self._n_steps = 0
     self._n_local_moves = 0
     self._reset_next_step = False
-    self._best_ep_return = milp.feasible_objective / milp.optimal_objective
-    self._final_ep_return = milp.feasible_objective / milp.optimal_objective
-    self._obj_vals = [milp.feasible_objective / milp.optimal_objective]
+    self._best_ep_return = fabs(
+        (milp.feasible_objective - milp.optimal_objective) /
+        milp.optimal_objective)
+    self._final_ep_return = self._best_ep_return
+    self._obj_rel_gap = [self._best_ep_return]
 
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
@@ -497,10 +500,10 @@ class Env(BaseEnv):
       # old way of assigning reward change to incremental delta rewards.
       # rew = -1 * curr_obj / milp.optimal_objective
       rew = (self._prev_obj - curr_obj) / self.config.obj_normalizer
-      self._best_ep_return = min(curr_obj / milp.optimal_objective,
-                                 self._best_ep_return)
-      self._final_ep_return = curr_obj / milp.optimal_objective
-      self._obj_vals.append(curr_obj / milp.optimal_objective)
+      self._final_ep_return = fabs(
+          (curr_obj - milp.optimal_objective) / milp.optimal_objective)
+      self._best_ep_return = min(self._final_ep_return, self._best_ep_return)
+      self._obj_rel_gap.append(self._final_ep_return)
     else:
       rew = 0
     self._ep_return += rew
@@ -531,7 +534,7 @@ class Env(BaseEnv):
       self._prev_ep_return = self._ep_return
       self._prev_best_ep_return = self._best_ep_return
       self._prev_final_ep_return = self._final_ep_return
-      self._prev_avg_ep_return = np.mean(self._obj_vals)
+      self._prev_avg_ep_return = np.mean(self._obj_rel_gap)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())
