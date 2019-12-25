@@ -14,6 +14,7 @@ def get_config():
   config.model.n_prop_layers = 4
   config.model.node_hidden_layer_sizes = [32]
   config.model.edge_hidden_layer_sizes = [32]
+  config.model.sum_aggregation = True
 
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0

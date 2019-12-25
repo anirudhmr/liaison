@@ -286,12 +286,13 @@ class Learner(object):
       with U.Timer() as batch_timer:
         batch = self._exp_fetcher.get()
 
-      # run update step on the sampled batch
-      feed_dict = {
-          ph: val
-          for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))
-      }
       with U.Timer() as step_timer:
+        # run update step on the sampled batch
+        feed_dict = {
+            ph: val
+            for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(
+                batch))
+        }
         profile_kwargs = {}
         if self.global_step == self._profile_step:
           profile_kwargs = dict(
@@ -303,8 +304,9 @@ class Learner(object):
         if profile_kwargs:
           self._save_profile(**profile_kwargs)
 
-      for logger in self._loggers:
-        logger.write(log_vals)
+      with U.Timer() as log_timer:
+        for logger in self._loggers:
+          logger.write(log_vals)
 
       # after first sess.run finishes send the metagraph.
       if self.global_step == 1:
@@ -322,14 +324,17 @@ class Learner(object):
           self._create_ckpt()
         system_logs['ckpt_time_sec'] = ckpt_timer.to_seconds()
 
-      # log system profile
-      for logger in self._system_loggers:
-        logger.write(
-            dict(global_step=self.global_step,
-                 sps=self._batch_size * self._traj_length /
-                 float(step_timer.to_seconds()),
-                 per_step_time_sec=step_timer.to_seconds(),
-                 batch_fetch_time_sec=batch_timer.to_seconds(),
-                 **system_logs))
+      with U.Timer() as system_log_timer:
+        # log system profile
+        for logger in self._system_loggers:
+          logger.write(
+              dict(global_step=self.global_step,
+                   sps=self._batch_size * self._traj_length /
+                   float(step_timer.to_seconds()),
+                   per_step_time_sec=step_timer.to_seconds(),
+                   batch_fetch_time_sec=batch_timer.to_seconds(),
+                   **system_logs))
+      system_logs['log_time_sec'] = log_timer.to_seconds(
+      ) + system_log_timer.to_seconds()
 
     self._publish_queue.put(None)  # exit the thread once training ends.

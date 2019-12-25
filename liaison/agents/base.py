@@ -104,7 +104,6 @@ class Agent(object):
       d = tf.nest.map_structure(reducer_fn, obs['log_values'])
       ret_d = {}
       for k, v in d.items():
-        assert not isinstance(v, dict)
         ret_d['log_values/' + k] = v
     return ret_d
 

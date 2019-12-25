@@ -1,8 +1,7 @@
 """Graphnet based model."""
 
-import numpy as np
-
 import graph_nets as gn
+import numpy as np
 import sonnet as snt
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
@@ -61,7 +60,8 @@ class Model:
                edge_hidden_layer_sizes=[64, 64],
                policy_torso_hidden_layer_sizes=[64, 64],
                value_torso_hidden_layer_sizes=[64, 64],
-               action_spec=None):
+               action_spec=None,
+               sum_aggregation=True):
     self.activation = activation
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -105,7 +105,9 @@ class Model:
             x,  # Don't summarize nodes/edges to the globals.
             node_block_opt=NODE_BLOCK_OPT,
             edge_block_opt=EDGE_BLOCK_OPT,
-            global_block_opt=GLOBAL_BLOCK_OPT)
+            global_block_opt=GLOBAL_BLOCK_OPT,
+            reducer=tf.unsorted_segment_sum
+            if sum_aggregation else tf.unsorted_segment_mean)
 
     with tf.variable_scope('policy_torso'):
       self.policy_torso = snt.nets.MLP(

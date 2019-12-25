@@ -56,7 +56,8 @@ class Model:
                edge_hidden_layer_sizes=[64, 64],
                policy_torso_hidden_layer_sizes=[32, 32],
                value_torso_hidden_layer_sizes=[32, 32],
-               action_spec=None):
+               action_spec=None,
+               sum_aggregation=True):
     self.activation = activation
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -91,7 +92,9 @@ class Model:
           x,  # Don't summarize nodes/edges to the globals.
           node_block_opt=NODE_BLOCK_OPT,
           edge_block_opt=EDGE_BLOCK_OPT,
-          global_block_opt=GLOBAL_BLOCK_OPT)
+          global_block_opt=GLOBAL_BLOCK_OPT,
+          reducer=tf.unsored_segment_sum
+          if sum_aggregation else tf.unsorted_segment_mean)
 
     with tf.variable_scope('policy_network'):
       print('WARNING: IMP TODO: Remove bias from the final layer.')

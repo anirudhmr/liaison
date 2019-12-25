@@ -11,8 +11,7 @@ from caraml.zmq import ZmqServer
 from liaison.agents import BaseAgent, StepOutput
 from liaison.distributed import Actor, ExperienceCollectorServer, Shell
 from liaison.distributed.parameter_server import PSRequest, PSResponse
-from liaison.env import StepType, TimeStep
-from liaison.env import XOREnv
+from liaison.env import StepType, TimeStep, XOREnv
 from liaison.specs.specs import ArraySpec, BoundedArraySpec
 
 B = 8
@@ -30,6 +29,13 @@ class DummyAgent(BaseAgent):
   def __init__(self, name, **kwargs):
     del kwargs
     self._name = name
+
+    class DummyModel:
+
+      def __init__(self):
+        pass
+
+    self._model = DummyModel()
 
   def _dummy_state(self, batch_size):
     return tf.fill(tf.expand_dims(batch_size, 0), 0)
@@ -118,17 +124,17 @@ class ActorTest(absltest.TestCase):
         ps_client_timeout=2,
         ps_client_not_ready_sleep=2,
     )
-    return Actor(
-        actor_id=0,
-        shell_class=Shell,
-        shell_config=shell_config,
-        env_class=XOREnv,
-        env_configs=[{}] * N_ENVS,
-        traj_length=TRAJ_LENGTH,
-        seed=SEED,
-        batch_size=N_ENVS,
-        n_unrolls=1000,
-    )
+    return Actor(actor_id=0,
+                 shell_class=Shell,
+                 shell_config=shell_config,
+                 env_class=XOREnv,
+                 env_configs=[{}] * N_ENVS,
+                 traj_length=TRAJ_LENGTH,
+                 seed=SEED,
+                 batch_size=N_ENVS,
+                 n_unrolls=1000,
+                 use_full_episode_traj=True,
+                 discount_factor=1.0)
 
   def testInit(self):
     self._get_actor()

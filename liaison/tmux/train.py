@@ -69,15 +69,16 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           hyper.zip(
-              hyper.discrete('env_config.k', [10, 20, 30, 40]),
+              hyper.discrete('env_config.k', [5, 10, 15, 20]),
               hyper.discrete('env_config.steps_per_episode',
-                             [100, 200, 300, 400])),
-          hyper.discrete('agent_config.lr_init', [1e-5, 1e-4]),
-      )):
-    # hyper.discrete('agent_config.lr_init', [2e-5])):
+                             [50, 100, 150, 200])),
+          hyper.discrete('agent_config.model.sum_aggregation', [True]),
+          hyper.discrete('agent_config.lr_init', [5e-4]),
+          hyper.discrete('agent_config.ent_dec_init', [.01]))):
+    # hyper.discrete('agent_config.lr_init', [2e-5]))):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
-    # start tensorboard only for the first experiment.
+    # start tensorboard only for the first work unit.
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),

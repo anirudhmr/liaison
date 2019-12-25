@@ -102,10 +102,10 @@ class Env(BaseEnv):
 
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
-    self._prev_ep_return = 10
-    self._prev_avg_ep_return = 10
-    self._prev_best_ep_return = 10
-    self._prev_final_ep_return = 10
+    self._prev_ep_return = np.nan
+    self._prev_avg_ep_return = np.nan
+    self._prev_best_ep_return = np.nan
+    self._prev_final_ep_return = np.nan
     self._reset_next_step = True
     self.reset()
 

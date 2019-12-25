@@ -2,8 +2,9 @@
 
 from __future__ import absolute_import, division, print_function
 
-import functools
 import copy
+import functools
+
 import numpy as np
 from liaison.agents import StepOutput
 from liaison.specs import ArraySpec, BoundedArraySpec
