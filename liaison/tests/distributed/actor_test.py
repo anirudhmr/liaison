@@ -10,11 +10,11 @@ from absl.testing import absltest
 from caraml.zmq import ZmqServer
 from liaison.agents import BaseAgent, StepOutput
 from liaison.distributed import Actor, ExperienceCollectorServer, Shell
+from liaison.distributed.actor_full_episode import Actor as FullEpisodeActor
 from liaison.distributed.parameter_server import PSRequest, PSResponse
 from liaison.env import StepType, TimeStep, XOREnv
 from liaison.specs.specs import ArraySpec, BoundedArraySpec
 
-B = 8
 _LOCALHOST = 'localhost'
 PS_FRONTEND_PORT = '6000'
 COLLECTOR_FRONTEND_PORT = '6001'
@@ -108,6 +108,7 @@ class ActorTest(absltest.TestCase):
                                            port=COLLECTOR_FRONTEND_PORT,
                                            exp_handler=lambda k: None,
                                            load_balanced=False)
+    exp_server.daemon = True
     exp_server.start()
     return exp_server
 
@@ -124,19 +125,19 @@ class ActorTest(absltest.TestCase):
         ps_client_timeout=2,
         ps_client_not_ready_sleep=2,
     )
-    return Actor(actor_id=0,
-                 shell_class=Shell,
-                 shell_config=shell_config,
-                 env_class=XOREnv,
-                 env_configs=[{}] * N_ENVS,
-                 traj_length=TRAJ_LENGTH,
-                 seed=SEED,
-                 batch_size=N_ENVS,
-                 n_unrolls=1000,
-                 use_full_episode_traj=True,
-                 discount_factor=1.0)
+    return FullEpisodeActor(actor_id=0,
+                            shell_class=Shell,
+                            shell_config=shell_config,
+                            env_class=XOREnv,
+                            env_configs=[{}] * N_ENVS,
+                            traj_length=TRAJ_LENGTH,
+                            seed=SEED,
+                            batch_size=N_ENVS,
+                            n_unrolls=1000,
+                            use_full_episode_traj=True,
+                            discount_factor=1.0)
 
-  def testInit(self):
+  def testRun(self):
     self._get_actor()
 
 

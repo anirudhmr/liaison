@@ -21,9 +21,12 @@ def get_config():
   config.learner.profile_step = 5
 
   config.actor = ConfigDict()
+  config.actor.class_path = 'liaison.distributed.actor'
+  config.actor.class_name = 'Actor'
   config.actor.n_unrolls = None  # loop forever.
   config.actor.use_parallel_envs = True
   config.actor.use_threaded_envs = False
+  config.actor.discount_factor = 1.0
 
   config.shell = ConfigDict()
   # shell class path is default to the distributed folder.

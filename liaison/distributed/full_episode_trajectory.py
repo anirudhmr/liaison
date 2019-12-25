@@ -1,7 +1,5 @@
 """Define trajectory class to keep track of what's being shipped to replay."""
 
-from __future__ import absolute_import, division, print_function
-
 import copy
 import functools
 
@@ -10,6 +8,7 @@ from liaison.agents import StepOutput
 from liaison.distributed.trajectory import Trajectory as BaseTrajectory
 from liaison.env import StepType
 from liaison.specs import ArraySpec, BoundedArraySpec
+from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
 
 
@@ -49,22 +48,30 @@ class Trajectory(BaseTrajectory):
                            name='traj_discount_spec'),
         observation=nest.map_structure(expand_spec, obs_spec),
         step_output=nest.map_structure(expand_spec, step_output_spec))
+
     # self._trajs[i] = trajectory of the ith experience in the batch.
     self._trajs = None
     # list of timesteps that have been backtracked
     # and ready to be split into chunks to be shipped out.
-    # Note that this means that we assume it is natural transition from
-    # the end of an episode of one environment to the begin of episode
-    # of another environment. This assumption might not hold true if there
-    # is state maintained anywhere in the timesteps/agent actions
-    # that is carried across the episodes of any given environment.
-    self._finished_timesteps = []
+    # _finished_timesteps[i] = Finished timesteps for the ith item of the batch.
+    self._finished_timesteps = None
     # used to chop the trajectory into chunks.
-    self._chopping_traj = BaseTrajectory(obs_spec, step_output_spec)
+
+    obs_spec2 = copy.deepcopy(obs_spec)
+    obs_spec2['value_bootstrap'] = ArraySpec(dtype=np.float32,
+                                             shape=(None, ),
+                                             name='value_bootstrap_spec')
+    self._chopping_trajs = [
+        BaseTrajectory(obs_spec2, step_output_spec) for _ in range(batch_size)
+    ]
+    self._len = 0
 
   def reset(self):
     self._trajs = [[] for _ in range(self._batch_size)]
-    self._chopping_traj.reset()
+    for traj in self._chopping_trajs:
+      traj.reset()
+    self._len = 0
+    self._finished_timesteps = [[] for _ in range(self._batch_size)]
 
   def start(self, step_type, reward, discount, observation, next_state):
     self.add(step_type, reward, discount, observation,
@@ -72,6 +79,7 @@ class Trajectory(BaseTrajectory):
 
   def add(self, step_type, reward, discount, observation, step_output):
 
+    self._len += 1
     ts = dict(step_type=step_type,
               reward=reward,
               discount=discount,
@@ -83,28 +91,28 @@ class Trajectory(BaseTrajectory):
         self._trajs.append([])
       self._trajs[i].append(ts)
       if ts['step_type'] == StepType.LAST:
-        self._backtrack_trajectory(self._trajs[i])
+        self._backtrack_trajectory(i, self._trajs[i])
         self._trajs[i] = []
 
-  def _backtrack_trajectory(self, traj):
+  def _backtrack_trajectory(self, i, traj):
     """
       traj: List of timesteps that are ready to be backtracked.
     """
     assert traj[0]['step_type'] == StepType.FIRST
     assert all([ts['step_type'] == StepType.MID for ts in traj[1:-1]])
     assert traj[-1]['step_type'] == StepType.LAST
-    value = 0
+    value = 0.0
     vals = []
-    for ts in reverse(traj):
-      value = ts['discount'] * ts['reward'] + self._disc_factor * value
+    for ts in reversed(traj):
+      value = ts['discount'] * ts['reward'] + self._discount_factor * value
       vals.append(value)
-    vals = list(reverse(vals))
+    vals = list(reversed(vals))
     # shift the vals by one to the left by removing head and appending 0
     vals.pop(0)
     vals.append(0)
     for ts, val in zip(traj, vals):
-      ts['value_boostrap'] = val
-    self._finished_timesteps.extend(traj)
+      ts['observation']['value_bootstrap'] = val
+    self._finished_timesteps[i].extend(traj)
 
   def debatch_timestep(self, ts):
     """Debatches a single timestep.
@@ -141,35 +149,58 @@ class Trajectory(BaseTrajectory):
               traj_spec, list(map(lambda k: k if k is None else k[i], d))))
     return l
 
+  def __len__(self):
+    return self._len
+
   def debatch_and_stack(self):
     traj_len = self._traj_len
-    chopping_traj = self._chopping_traj
 
     exps = []
-    for ts in self._finished_timesteps:
-      if len(chopping_traj) == 0:
-        # tihs branch is taken only after reset is called on trajectory.
-        chopping_traj.start(
-            next_state=ts['step_output']['next_state'],
-            # remove step_output from ts
-            **{k: v
-               for k, v in ts.items() if k != 'step_output'})
-        assert ts['step_output']['action'] is None
-        assert ts['step_output']['logits'] is None
-        continue
+    for i, finished_ts in enumerate(self._finished_timesteps):
+      chopping_traj = self._chopping_trajs[i]
+      for ts in finished_ts:
+        if len(chopping_traj) == 0:
+          # tihs branch is taken only after reset is called on trajectory.
+          chopping_traj.start(
+              next_state=ts['step_output']['next_state'],
+              # remove step_output from ts
+              **ConfigDict(
+                  **{k: v
+                     for k, v in ts.items() if k != 'step_output'}))
+          assert ts['step_output']['action'] is None
+          assert ts['step_output']['logits'] is None
+          continue
 
-      chopping_traj.add(**ts)
-      assert len(chopping_traj) <= traj_len + 1
+        chopping_traj.add(**ConfigDict(**ts))
+        assert ts['step_output']['action'] is not None
+        assert len(chopping_traj) <= traj_len + 1
 
-      if len(chopping_traj) == traj_len + 1:
-        exps.extend(chopping_traj.debatch_and_stack())
-        chopping_traj.reset()
+        if len(chopping_traj) == traj_len + 1:
+          # TODO: Add dummy batch dimension and use debatch_and_stack
+          # for uniformity.
+          exps.append(chopping_traj.stack())
+          chopping_traj.reset()
+          chopping_traj.start(
+              next_state=ts['step_output']['next_state'],
+              # remove step_output from ts
+              **ConfigDict(
+                  **{k: v
+                     for k, v in ts.items() if k != 'step_output'}))
 
-      if len(chopping_traj) == 0:
-        chopping_traj.start(
-            next_state=ts['step_output']['next_state'],
-            # remove step_output from ts
-            **{k: v
-               for k, v in ts.items() if k != 'step_output'})
+      self._finished_timesteps[i] = []
 
+    def f(path, spec, v):
+      if path[0] == 'step_output' and path[1] != 'next_state':
+        assert len(v) == traj_len
+        return
+      assert len(v) == traj_len + 1
+
+    assert all([
+        nest.map_structure_with_tuple_paths_up_to(self.spec, f, self.spec, exp)
+        for exp in exps
+    ])
     return exps
+
+  @property
+  def spec(self):
+    return self._chopping_trajs[0].spec

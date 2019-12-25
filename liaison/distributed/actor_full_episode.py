@@ -15,13 +15,14 @@ import os
 
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 
+from .actor import Actor as BaseActor
 from .exp_sender import ExpSender
 from .full_episode_trajectory import Trajectory as FullEpisodeTrajectory
 from .spec_server import SpecServer
 from .trajectory import Trajectory
 
 
-class Actor:
+class Actor(BaseActor):
   """
   Actor is responsible for the following.
 
@@ -43,6 +44,7 @@ class Actor:
       n_unrolls=None,  # None => loop forever
       use_parallel_envs=False,
       use_threaded_envs=False,
+      discount_factor=None,
       **sess_config):
 
     del sess_config
@@ -67,8 +69,12 @@ class Actor:
         **shell_config,
     )
 
-    self._traj = Trajectory(obs_spec=self._obs_spec,
-                            step_output_spec=self._shell.step_output_spec())
+    self._traj = FullEpisodeTrajectory(
+        obs_spec=self._obs_spec,
+        step_output_spec=self._shell.step_output_spec(),
+        batch_size=batch_size,
+        discount_factor=discount_factor,
+        traj_length=traj_length)
 
     if actor_id == 0:
       self._start_spec_server()
@@ -91,29 +97,8 @@ class Actor:
                                      observation=ts.observation)
       ts = self._env.step(step_output.action)
       self._traj.add(step_output=step_output, **dict(ts._asdict()))
-      if len(self._traj) == self._traj_length + 1:
+      if i > 0 and i % self._traj_length == 0:
+        # dont reset the trajectory.
         exps = self._traj.debatch_and_stack()
-        self._traj.reset()
         self._send_experiences(exps)
-        self._traj.start(next_state=self._shell.next_state,
-                         **dict(ts._asdict()))
       i += 1
-
-  def _setup_exp_sender(self):
-    self._exp_sender = ExpSender(
-        host=os.environ['SYMPH_COLLECTOR_FRONTEND_HOST'],
-        port=os.environ['SYMPH_COLLECTOR_FRONTEND_PORT'],
-        flush_iteration=self.batch_size)
-
-  def _send_experiences(self, exps):
-    for exp in exps:
-      self._exp_sender.send(hash_dict=exp)
-
-  def _start_spec_server(self):
-    logging.info("Starting spec server.")
-    print("Starting spec server.")
-
-    self._spec_server = SpecServer(port=os.environ['SYMPH_SPEC_PORT'],
-                                   traj_spec=self._traj.spec,
-                                   action_spec=self._action_spec)
-    self._spec_server.start()

@@ -59,7 +59,8 @@ class Trajectory(object):
                 reward=reward,
                 discount=discount,
                 observation=observation,
-                step_output=step_output._asdict())
+                step_output=step_output._asdict() if isinstance(
+                    step_output, StepOutput) else step_output)
     self._trajs.append(traj)
 
   def reset(self):

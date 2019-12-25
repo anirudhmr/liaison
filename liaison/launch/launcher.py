@@ -12,8 +12,7 @@ from threading import Thread
 
 import liaison.utils as U
 from argon import to_nested_dicts
-from liaison.distributed import (Actor, Evaluator, Learner,
-                                 ShardedParameterServer)
+from liaison.distributed import Evaluator, Learner, ShardedParameterServer
 from liaison.irs import IRSClient, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
                              KVStreamLogger, TensorplexLogger)
@@ -139,7 +138,9 @@ class Launcher:
                         batch_size=self.batch_size,
                         **self.sess_config.actor)
 
-    Actor(**actor_config)  # blocking constructor.
+    actor_class = U.import_obj(sess_config.actor.class_name,
+                               sess_config.actor.class_path)
+    actor_class(**actor_config)  # blocking constructor.
 
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
