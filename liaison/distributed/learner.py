@@ -1,8 +1,9 @@
 """Learner for distributed RL.
 Requires env variables:
-  SYMPH_PS_FRONTEND_HOST
-  SYMPH_PS_FRONTEND_PORT
-  SYMPH_PARAMETER_PUBLISH_PORT
+  SYMPH_PS_PUBLISHING_HOST
+  SYMPH_PS_PUBLISHING_PORT
+  SYMPH_PS_SERVING_HOST
+  SYMPH_PS_SERVING_PORT
   SYMPH_SPEC_HOST
   SYMPH_SPEC_PORT
   SYMPH_IRS_FRONTEND_HOST
@@ -23,7 +24,7 @@ import tensorflow as tf
 from caraml.zmq import (ZmqClient, ZmqFileUploader, ZmqProxyThread, ZmqPub,
                         ZmqServer, ZmqSub, ZmqTimeoutError)
 from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
-                                 ParameterPublisher, Trajectory)
+                                 SimpleParameterPublisher, Trajectory)
 from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from tensorflow.contrib.framework import nest
@@ -191,14 +192,14 @@ class Learner(object):
 
   def _setup_ps_client_handle(self):
     """Initialize self._ps_client and connect it to the ps."""
-    self._ps_client = ParameterClient(
-        host=os.environ['SYMPH_PS_FRONTEND_HOST'],
-        port=os.environ['SYMPH_PS_FRONTEND_PORT'],
-        agent_scope=self._agent_scope)
+    self._ps_client = ParameterClient(host=os.environ['SYMPH_PS_SERVING_HOST'],
+                                      port=os.environ['SYMPH_PS_SERVING_PORT'],
+                                      agent_scope=self._agent_scope)
 
   def _setup_ps_publisher(self):
-    self._ps_publisher = ParameterPublisher(
-        port=os.environ['SYMPH_PARAMETER_PUBLISH_PORT'],
+    self._ps_publisher = SimpleParameterPublisher(
+        host=os.environ['SYMPH_PS_PUBLISHING_HOST'],
+        port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
         agent_scope=self._agent_scope)
 
   def _initial_publish(self):

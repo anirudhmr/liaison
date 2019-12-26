@@ -1,5 +1,7 @@
 from .parameter_server import (ParameterClient, ParameterPublisher,
                                ShardedParameterServer, ParameterServer)
+from .simple_parameter_server import ParameterServer as SimpleParameterServer
+from .simple_parameter_server import ParameterPublisher as SimpleParameterPublisher
 from .shell import Shell
 from .trajectory import Trajectory
 

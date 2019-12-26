@@ -9,7 +9,6 @@ from multiprocessing import Process
 import liaison.utils as U
 from absl import logging
 from caraml.zmq import ZmqProxyThread
-from git import Repo
 from liaison.irs import IRSWorker
 from liaison.utils import ConfigDict
 
@@ -102,6 +101,9 @@ class Server(object):
   def _register_src(self):
     src_folder = self.config.src_folder
     U.f_mkdir(src_folder)
+    # this import requires fetching git executable which might not be available
+    # on all systems.
+    from git import Repo
     repo = Repo('./')
     commit = repo.head.commit
     src = dict(

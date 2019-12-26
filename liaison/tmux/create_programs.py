@@ -69,14 +69,13 @@ def setup_network(*,
                 symphony processes
     """
   for proc in actors:
-    proc.connects('ps-frontend')
+    proc.connects('ps-serving')
     proc.connects('collector-frontend')
 
   actors[0].binds('spec')
 
-  ps.binds('ps-frontend')
-  ps.binds('ps-backend')
-  ps.connects('parameter-publish')
+  ps.binds('ps-publishing')
+  ps.binds('ps-serving')
 
   replay.binds('collector-frontend')
   replay.binds('sampler-frontend')
@@ -85,7 +84,7 @@ def setup_network(*,
 
   learner.connects('spec')
   learner.connects('sampler-frontend')
-  learner.binds('parameter-publish')
+  learner.binds('ps-publishing')
   learner.binds('prefetch-queue')
 
   irs.binds('tensorplex')
@@ -101,7 +100,7 @@ def setup_network(*,
   if evaluator:
     evaluator.connects('tensorplex')
     evaluator.connects('irs-frontend')
-    evaluator.connects('ps-frontend')
+    evaluator.connects('ps-serving')
 
   if visualizers:
     visualizers.binds('visualizers-tb')

@@ -1,7 +1,7 @@
 import re
 from multiprocessing.pool import ThreadPool
 
-from ccc.src import NodeLoader, SlurmNode
+from ccc.src import LSFNode, NodeLoader, SlurmNode
 from liaison.scheduling import ScheduleManager
 
 RES_DIRS = [
@@ -39,23 +39,26 @@ class LiaisonPlacer:
     # use whitelist_nodes only for hard placements.
     filtered_wunits = self._filter_out_hard_placements(wunits,
                                                        nodes + whitelist_nodes)
-    filtered_wunits, slurm_nodes, nodes = self._filter_out_slurm_placements(
+    filtered_wunits, slurm_or_lsf_nodes, filtered_nodes = self._filter_out_slurm_or_lsf_placements(
         filtered_wunits, nodes, pl_constraints)
 
     if len(filtered_wunits) == 0:
       return
 
-    if len(nodes) == 0:
-      if len(slurm_nodes) == 1:
+    if len(filtered_nodes) == 0:
+      # if no other node left but few procs still remaining
+      # they are to be scheduled on the slurm node.
+      if len(slurm_or_lsf_nodes) == 1:
         for procs in filtered_wunits:
           for proc in procs:
-            self._set_placement(proc, slurm_nodes[0])
+            self._set_placement(proc, slurm_or_lsf_nodes[0])
       else:
         raise Exception(
             'More than one slurm nodes remaining to assign to pending processes.'
         )
       return
 
+    nodes = filtered_nodes
     with ThreadPool(len(nodes)) as pool:
       pool.map(lambda node: node.collect_spy_stats(spy_measurement_interval),
                nodes)
@@ -127,7 +130,8 @@ class LiaisonPlacer:
   def _set_placement(self, proc, node):
     allocation = node.allocate(cpu=proc.cpu_cost,
                                mem=proc.mem_cost,
-                               n_gpus=len(proc.gpu_mem_cost))
+                               n_gpus=len(proc.gpu_mem_cost),
+                               name=f'Allocation_for_{proc.name}')
     proc.set_allocation(allocation)
     proc.set_placement(node)
 
@@ -158,13 +162,37 @@ class LiaisonPlacer:
 
     return filtered_wunits
 
-  def _filter_out_slurm_placements(self, wunits, nodes, pl_constraints):
-    """Filter out the slurm nodes and the procs that go on to slurm nodes."""
-    slurm_nodes = []
+  def _set_gpus_for_slurm_or_lsf_node(self, node, proc):
+    assert isinstance(node, (LSFNode, SlurmNode))
+
+    if isinstance(node, SlurmNode):
+      try:
+        s = node.exec_commands("bash -c 'env | grep CUDA'",
+                               allocation=proc.allocation)
+      except Exception:
+        s = ''
+
+      s = s.replace('\n', '').replace('\r', '')
+      if len(s):
+        # ex: CUDA_VISIBLE_DEVICES=2,3
+        s = s.split('CUDA_VISIBLE_DEVICES=')[-1].split(',')
+      else:
+        # no gpus to set.
+        return
+    else:
+      s = list(map(str, range(proc.allocation.ngpus)))
+
+    return proc.set_gpus(s)
+
+  def _filter_out_slurm_or_lsf_placements(self, wunits, all_nodes,
+                                          pl_constraints):
+    """Filter out the slurm, lsf nodes and the procs that go on to these nodes."""
+    # slurm or lsf nodes
+    nodes = []
     filtered_nodes = []
-    for node in nodes:
-      if isinstance(node, SlurmNode):
-        slurm_nodes.append(node)
+    for node in all_nodes:
+      if isinstance(node, (LSFNode, SlurmNode)):
+        nodes.append(node)
       else:
         filtered_nodes.append(node)
 
@@ -177,23 +205,18 @@ class LiaisonPlacer:
         for proc_regex, node_regex in pl_constraints:
           if re.search(proc_regex, proc.name):
             matches = []
-            # Find the slurm nodes that match the constraint
-            for node in slurm_nodes:
+            # Find the nodes that match the constraint
+            for node in nodes:
               if re.search(node_regex, node.name):
                 matches.append(node)
 
-            # if len(matches) == 0 then the constraint is irrelevant
-            # for slurm nodes and for this particular proc.
-
-            if len(matches) > 1:
-              # Not clear which slurm node should be used for this proc
-              # raise an exception to avoid this input.
-              raise Exception('Following slurm nodes match for proc %s: %s' %
-                              (proc.name, ' '.join(matches)))
-
+            if len(matches) == 0:
+              # The constraint is irrelevant
+              # for slurm nodes and for this particular proc.
+              continue
             elif len(matches) == 1:
               # if process already matched another constraint then
-              # raise exception.
+              # raise Exception.
               # TODO: It's okay when the previous constraint also matched to the
               # same slurm node. Don't raise exception in that case.
               if proc_matched:
@@ -203,17 +226,12 @@ class LiaisonPlacer:
               else:
                 proc_matched = True
                 self._set_placement(proc, matches[0])
-                try:
-                  s = node.exec_commands("bash -c 'env | grep CUDA'",
-                                         allocation=proc.allocation)
-                except Exception:
-                  s = ''
-
-                s = s.replace('\n', '').replace('\r', '')
-                if len(s):
-                  # ex: CUDA_VISIBLE_DEVICES=2,3
-                  s = s.split('CUDA_VISIBLE_DEVICES=')[-1].split(',')
-                  proc.set_gpus(s)
+                self._set_gpus_for_slurm_or_lsf_node(matches[0], proc)
+            elif len(matches) > 1:
+              # Not clear which node should be used for this proc
+              # raise an exception to avoid this input.
+              raise Exception('Following nodes match for proc %s: %s' %
+                              (proc.name, ' '.join(matches)))
 
         if proc_matched:
           # dont include it in filtered procs
@@ -224,4 +242,4 @@ class LiaisonPlacer:
       if filtered_wunit:
         filtered_wunits.append(filtered_wunit)
 
-    return filtered_wunits, slurm_nodes, filtered_nodes
+    return filtered_wunits, nodes, filtered_nodes

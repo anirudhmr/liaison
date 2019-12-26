@@ -73,7 +73,7 @@ def get_config():
   config.tensorplex.agent_bin_size = 64
 
   config.ps = ConfigDict()
-  config.ps.n_shards = 1
+  # config.ps.n_shards = 1
 
   config.irs = ConfigDict()
   config.irs.n_shards = 1

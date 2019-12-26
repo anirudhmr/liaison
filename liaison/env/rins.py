@@ -97,7 +97,7 @@ class Env(BaseEnv):
     if graph_seed < 0: graph_seed = seed
     self._setup_graph_random_state(graph_seed)
     self._dataset = dataset
-    self._dataset_type = self._dataset_type
+    self._dataset_type = dataset_type
     self._n_graphs = n_graphs
     self._graph_start_idx = graph_start_idx
 

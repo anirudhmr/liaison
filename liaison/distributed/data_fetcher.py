@@ -70,7 +70,7 @@ class LearnerDataPrefetcher(DataFetcher):
     while True:
       l = []
       while len(l) < self.batch_size:
-        l.extend(self.fetch_queue.get().data)
+        l.extend(self.fetch_queue.get())
       self._combine_prefetch_queue.put(self._combine_trajs(l))
 
   def get(self):

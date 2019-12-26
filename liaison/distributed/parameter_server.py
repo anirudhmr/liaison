@@ -5,13 +5,14 @@
 import os
 import sys
 import time
+from collections import namedtuple
 from multiprocessing import Process
 
 import liaison.utils as U
 from absl import logging
 from caraml.zmq import (ZmqClient, ZmqProxyThread, ZmqPub, ZmqServer, ZmqSub,
                         ZmqTimeoutError)
-from collections import namedtuple
+
 # type can be 'info' or 'parameters'
 # if hash is None, then force fetch
 # else, fetch only if hash has changed.
@@ -64,6 +65,7 @@ class ParameterPublisher(object):
         'variable_list': list(var_dict.keys()),
         'hash': U.pyobj_hash(var_dict),
     }
+    print('Publishing to the parameter server.')
     self._publisher.pub(topic='ps', data=(var_dict, info))
 
 
@@ -91,10 +93,10 @@ class ShardedParameterServer(object):
 
   def launch(self):
     """
-            Runs load balancing proxy thread
-                and self.shards ParameterServer processes
-            Returns after all threads and processes are running
-        """
+        Runs load balancing proxy thread
+            and self.shards ParameterServer processes
+        Returns after all threads and processes are running
+    """
     self.proxy = ZmqProxyThread(in_add=self.serving_frontend_add,
                                 out_add=self.serving_backend_add,
                                 pattern='router-dealer')

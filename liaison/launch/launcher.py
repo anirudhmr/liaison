@@ -12,7 +12,7 @@ from threading import Thread
 
 import liaison.utils as U
 from argon import to_nested_dicts
-from liaison.distributed import Evaluator, Learner, ShardedParameterServer
+from liaison.distributed import Evaluator, Learner, SimpleParameterServer
 from liaison.irs import IRSClient, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
                              KVStreamLogger, TensorplexLogger)
@@ -231,9 +231,10 @@ class Launcher:
         Lauches the parameter server process.
         Serves parameters to agents
     """
-    server = ShardedParameterServer(shards=self.sess_config.ps.n_shards)
-
-    server.launch()
+    server = SimpleParameterServer(
+        publish_port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
+        serving_port=os.environ['SYMPH_PS_SERVING_PORT'])
+    server.start()
     server.join()
 
   def run_replay(self):

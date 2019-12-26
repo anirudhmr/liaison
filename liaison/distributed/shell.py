@@ -129,8 +129,8 @@ class Shell:
   def _setup_ps_client(self):
     """Initialize self._ps_client and connect it to the ps."""
     self._ps_client = ParameterClient(
-        host=os.environ['SYMPH_PS_FRONTEND_HOST'],
-        port=os.environ['SYMPH_PS_FRONTEND_PORT'],
+        host=os.environ['SYMPH_PS_SERVING_HOST'],
+        port=os.environ['SYMPH_PS_SERVING_PORT'],
         agent_scope=self._agent_scope,
         timeout=self.config.ps_client_timeout,
         not_ready_sleep=self.config.ps_client_not_ready_sleep)
