@@ -1,8 +1,7 @@
 import functools
 
-import numpy as np
-
 import graph_nets as gn
+import numpy as np
 import tensorflow as tf
 from absl import logging
 from liaison.agents import BaseAgent, StepOutput, utils
@@ -173,10 +172,20 @@ class Agent(BaseAgent):
         # [T, B]
         target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
 
-        self.loss = VTraceLoss(step_types, actions, rewards, discounts,
-                               behavior_logits, target_logits, values,
+        if 'bootstrap_value' in observations:
+          bootstrap_value = observations['bootstrap_value'][-1]
+        else:
+          bootstrap_value = values[-1]
+        self.loss = VTraceLoss(step_types,
+                               actions,
+                               rewards,
+                               discounts,
+                               behavior_logits,
+                               target_logits,
+                               values,
                                config.discount_factor,
                                self._get_entropy_regularization_constant(),
+                               bootstrap_value=bootstrap_value,
                                **config.loss)
 
       with tf.variable_scope('optimize'):

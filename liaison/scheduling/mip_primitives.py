@@ -1,4 +1,5 @@
 import copy
+
 try:
   import cplex
 except ModuleNotFoundError:
@@ -42,26 +43,21 @@ class Constraint:
     """
       senses: "E", "LE", "GE"
     """
+    self.name = name
     self.sense = sense
     assert isinstance(rhs, float) or isinstance(rhs, int)
     self.rhs = rhs
-    self.var_names = []
-    self.coeffs = []
+    self.expr = Expression()
 
   def add_term(self, var_name, coeff):
-    assert isinstance(var_name, str)
-    self.var_names.append(var_name)
-    self.coeffs.append(coeff)
+    self.expr.add_term(var_name, coeff)
 
   def add_terms(self, var_names, coeffs):
-    assert isinstance(var_names[0], str)
-    self.var_names.extend(var_names)
-    self.coeffs.extend(coeffs)
+    self.expr.add_terms(var_names, coeffs)
 
   def add_expression(self, expr):
     assert expr.constant == 0
-    self.var_names.extend(expr.var_names)
-    self.coeffs.extend(expr.coeffs)
+    self.add_terms(expr.var_names, expr.coeffs)
 
   def add_to_ortools_solver(self, solver, varnames2vars):
     infinity = solver.infinity()
@@ -85,10 +81,23 @@ class Constraint:
     elif sense == 'GE':
       sense = 'G'
 
+    expr = self.expr.deduplicate()
+    assert expr.constant == 0
     solver.linear_constraints.add(
-        lin_expr=[cplex.SparsePair(ind=self.var_names, val=self.coeffs)],
+        lin_expr=[cplex.SparsePair(ind=expr.var_names, val=expr.coeffs)],
         senses=[sense],
         rhs=[self.rhs])
+
+  def __str__(self):
+    ret = ''
+    if self.name:
+      ret += f'Name of the constraint: {self.name}\n'
+    else:
+      ret += 'Unnamed constraint:\n'
+
+    ret += str(self.expr)
+    ret += f' {self.sense} {self.rhs}'
+    return ret
 
 
 class Expression:
@@ -136,6 +145,34 @@ class Expression:
 
   def copy(self):
     return copy.deepcopy(self)
+
+  def __len__(self):
+    assert len(self.var_names) == len(self.coeffs)
+    return len(self.var_names)
+
+  def __str__(self):
+    ret = ''
+    if self.constant > 0:
+      ret += f'{self.constant} + '
+
+    for i, (v, c) in enumerate(zip(self.var_names, self.coeffs)):
+      ret += f'{c} * {v}'
+      if i != len(self) - 1:
+        ret += ' + '
+    return ret
+
+  def deduplicate(self):
+    """Deduplicates the variable names."""
+    varname_to_coeff = {}
+    for v, c in zip(self.var_names, self.coeffs):
+      if v in varname_to_coeff:
+        varname_to_coeff[v] += c
+      else:
+        varname_to_coeff[v] = c
+
+    e = Expression(self.constant)
+    e.add_terms(list(varname_to_coeff.keys()), list(varname_to_coeff.values()))
+    return e
 
 
 class Objective:

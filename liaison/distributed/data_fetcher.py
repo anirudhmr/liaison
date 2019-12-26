@@ -1,10 +1,11 @@
 import os
 import queue
-from caraml.zmq import DataFetcher
-import liaison.utils as U
 from threading import Thread
 
-from .exp_serializer import get_serializer, get_deserializer
+import liaison.utils as U
+from caraml.zmq import DataFetcher
+
+from .exp_serializer import get_deserializer, get_serializer
 
 
 class LearnerDataPrefetcher(DataFetcher):
@@ -32,7 +33,7 @@ class LearnerDataPrefetcher(DataFetcher):
     assert batch_size % prefetch_batch_size == 0
     self.fetch_queue = queue.Queue(
         maxsize=max(1, max_prefetch_queue - batch_size // prefetch_batch_size))
-    self._combine_prefetch_queue = queue.Queue(maxsize=1)
+    self._combine_prefetch_queue = queue.Queue(maxsize=16)
     self.timer = U.TimeRecorder()
 
     self.sampler_host = os.environ['SYMPH_SAMPLER_FRONTEND_HOST']

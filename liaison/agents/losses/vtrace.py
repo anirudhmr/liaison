@@ -18,6 +18,7 @@ class Loss:
                discount_factor,
                entropy_coeff,
                vf_loss_coeff,
+               bootstrap_value,
                clip_rho_threshold=1.0,
                clip_pg_rho_threshold=1.0,
                **kwargs):
@@ -37,9 +38,6 @@ class Loss:
     """
     t_dim = infer_shape(step_types)[0] - 1
     bs_dim = infer_shape(step_types)[1]
-    # use the last value as the bootstrap value.
-    # [B]
-    bootstrap_value = tf.reshape(values[-1], [bs_dim])
     # [T, B]
     values = values[:-1]
 

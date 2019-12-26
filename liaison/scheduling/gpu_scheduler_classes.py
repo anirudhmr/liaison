@@ -1,7 +1,7 @@
-from .mip_primitives import (Constraint, Expression, Objective, Variable,
-                             MIPTracker, compute_min, compute_max,
-                             compute_relu)
 import copy
+
+from .mip_primitives import (Constraint, Expression, MIPTracker, Objective,
+                             Variable, compute_max, compute_min, compute_relu)
 
 
 class ResponseVariable:
@@ -55,6 +55,11 @@ class Process:
     self.gpu_mem_cost = gpu_mem_cost
     self.mem = mem
     self.reqs = []
+
+  def __str__(self):
+    ret = f'Process id: {self.id}\n'
+    ret += f'gpu_mem_cost: {self.gpu_mem_cost}, gpu_compute_cost: {self.gpu_compute_cost}\n'
+    return ret
 
   def send_requests(self, servers, mip, constraint=None):
     """
@@ -252,6 +257,12 @@ class Server:
 
     # [wid, pid] -> expr (indicating if (wid, pid) gets assigned to this server)
     self._expr_for_colocation_constraints = dict()
+
+  def __str__(self):
+    ret = f'Server id: {self.id}\n'
+    if self.gpu_mem:
+      ret += f'gpu_mem: {self.gpu_mem}. gpu_compute: {self.gpu_compute}'
+    return ret
 
   def handle_bundled_requests(self, reqs, proc_mem, wid, pid):
     combined_responses = []

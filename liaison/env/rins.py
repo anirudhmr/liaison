@@ -96,9 +96,21 @@ class Env(BaseEnv):
     self.set_seed(seed)
     if graph_seed < 0: graph_seed = seed
     self._setup_graph_random_state(graph_seed)
+    self._dataset = dataset
+    self._dataset_type = self._dataset_type
+    self._n_graphs = n_graphs
+    self._graph_start_idx = graph_start_idx
 
-    self.milps = self._load_graph(dataset, dataset_type, graph_start_idx,
-                                  n_graphs)
+    self.config.update(NORMALIZATION_CONSTANTS[dataset])
+    if n_graphs <= 10:
+      # simple heuristic to decide whether to load all the graphs
+      # or load greedily on-the-fly
+      self.milps = [
+          self._load_graph(i)
+          for i in range(graph_start_idx, graph_start_idx + n_graphs)
+      ]
+    else:
+      self.milps = None
 
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
@@ -109,24 +121,25 @@ class Env(BaseEnv):
     self._reset_next_step = True
     self.reset()
 
-  def _load_graph(self, dataset: str, dataset_type: str, graph_start_idx: int,
-                  n_graphs: int):
-    path = DATASET_PATH[dataset]
-    milps = []
-    for graph_idx in range(graph_start_idx, graph_start_idx + n_graphs):
-      with open(os.path.join(path, dataset_type, f'{graph_idx}.pkl'),
-                'rb') as f:
-        milp = pickle.load(f)
-        milps.append(milp)
-
-    self.config.update(NORMALIZATION_CONSTANTS[dataset])
-    return milps
+  def _load_graph(self, graph_idx):
+    with open(
+        os.path.join(DATASET_PATH[self._dataset], self._dataset_type,
+                     f'{graph_idx}.pkl'), 'rb') as f:
+      return pickle.load(f)
 
   def _sample(self, choice=None):
+    n_graphs = self._n_graphs
+    graph_start_idx = self._graph_start_idx
+
     if choice is None:
-      choice = np.random.choice(range(len(self.milps)))
+      choice = np.random.choice(
+          range(graph_start_idx, graph_start_idx + n_graphs))
+
     self._milp_choice = choice
-    return self.milps[choice]
+    if self.milps:
+      return self.milps[choice]
+    else:
+      self._load_graph(choice)
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])

@@ -58,9 +58,9 @@ class Trajectory(BaseTrajectory):
     # used to chop the trajectory into chunks.
 
     obs_spec2 = copy.deepcopy(obs_spec)
-    obs_spec2['value_bootstrap'] = ArraySpec(dtype=np.float32,
+    obs_spec2['bootstrap_value'] = ArraySpec(dtype=np.float32,
                                              shape=(None, ),
-                                             name='value_bootstrap_spec')
+                                             name='bootstrap_value_spec')
     self._chopping_trajs = [
         BaseTrajectory(obs_spec2, step_output_spec) for _ in range(batch_size)
     ]
@@ -104,14 +104,14 @@ class Trajectory(BaseTrajectory):
     value = 0.0
     vals = []
     for ts in reversed(traj):
-      value = ts['discount'] * ts['reward'] + self._discount_factor * value
+      value = ts['reward'] + ts['discount'] * self._discount_factor * value
       vals.append(value)
     vals = list(reversed(vals))
     # shift the vals by one to the left by removing head and appending 0
     vals.pop(0)
     vals.append(0)
     for ts, val in zip(traj, vals):
-      ts['observation']['value_bootstrap'] = val
+      ts['observation']['bootstrap_value'] = val
     self._finished_timesteps[i].extend(traj)
 
   def debatch_timestep(self, ts):

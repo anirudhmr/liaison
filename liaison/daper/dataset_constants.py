@@ -13,7 +13,7 @@ LENGTH_MAP = {
     'tsp-100': dict(train=1000, valid=100, test=100),
     'milp-facilities-3': dict(train=1000, valid=128, test=128),
     'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
-    'milp-cauction-10': dict(train=1000, valid=100, test=100),
+    'milp-cauction-10': dict(train=10000, valid=1000, test=1000),
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -30,7 +30,7 @@ NORMALIZATION_CONSTANTS = {
     'milp-cauction-10':
     dict(constraint_rhs_normalizer=1.0,
          constraint_coeff_normalizer=1.0,
-         obj_coeff_normalizer=250.7587110316864,
-         obj_normalizer=744.732499193794),
+         obj_coeff_normalizer=251.77,
+         obj_normalizer=748.822),
 }
 assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())
