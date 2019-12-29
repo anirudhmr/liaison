@@ -4,10 +4,11 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -283,6 +284,12 @@ class Env(BaseEnv):
                    avg_quality=np.float32(self._prev_avg_quality),
                    best_quality=np.float32(self._prev_best_quality),
                    final_quality=np.float32(self._prev_final_quality),
+               ),
+               curr_episode_log_values=dict(
+                   ep_return=np.float32(self._ep_return),
+                   avg_quality=np.float32(np.mean(self._qualities)),
+                   best_quality=np.float32(self._best_quality),
+                   final_quality=np.float32(self._final_quality),
                ))
     return obs
 
@@ -555,9 +562,9 @@ class Env(BaseEnv):
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
+      self._prev_avg_quality = np.mean(self._qualities)
       self._prev_best_quality = self._best_quality
       self._prev_final_quality = self._final_quality
-      self._prev_avg_quality = np.mean(self._qualities)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())
