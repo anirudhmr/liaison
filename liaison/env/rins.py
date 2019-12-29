@@ -425,6 +425,7 @@ class Env(BaseEnv):
   def _compute_reward(self, prev_obj, curr_obj):
     # old way of assigning reward -> change to incremental delta rewards.
     # rew = -1 * curr_obj / milp.optimal_objective
+    assert self.config.delta_reward != self.config.primal_gap_reward
     if self.config.delta_reward:
       rew = (prev_obj - curr_obj) / self.config.obj_normalizer
     elif self.config.primal_gap_reward:

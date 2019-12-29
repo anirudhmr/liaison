@@ -1,12 +1,13 @@
 """
-python liaison/daper/milp/.py --out_dir=/data/nms/tfp/datasets/milp/facilities/size-3/ --n_training_samples=100 --n_valid_samples=1 --n_test_samples=1 -- --problem_type=facilities --problem_size=3 | parallel --ungroup -j8
+python liaison/daper/milp/heuristics/run_dataset.py --dataset=milp-cauction-10 --n_training_samples=1 --n_valid_samples=1 --n_test_samples=1 --out_dir /tmp/heuristics --n_local_moves=10 --k=5
 """
 import argparse
 import os
 import sys
 from pathlib import Path
 
-from daper import ConfigDict
+import numpy as np
+from liaison.daper import ConfigDict
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 
@@ -26,7 +27,8 @@ parser.add_argument('--n_local_moves', type=int, required=True)
 parser.add_argument('--k', type=int, required=True)
 REMAINDER = ''
 
-N_TRIALS = 10
+SEED = 42
+N_TRIALS = 5
 
 
 def preprocess(argv):
@@ -61,7 +63,6 @@ def cmd_gen(seed, out_file, graph_path, random_seeds, n_local_moves, k,
 
 
 def main():
-  seed = 0
   cmds = []
   dataset_lengths = ConfigDict(LENGTH_MAP[args.dataset])
 
@@ -73,9 +74,12 @@ def main():
     dataset_lengths.test = args.n_test_samples
 
   random_seed = 0
+  seed = SEED
+  rng = np.random.RandomState(SEED)
   for mode in ['train', 'valid', 'test']:
-    size = dataset_lengths[mode]
-    for i in range(size):
+    for i in rng.choice(range(LENGTH_MAP[args.dataset][mode]),
+                        dataset_lengths[mode],
+                        replace=False):
       out_file = Path(args.out_dir, mode, f'{i}.pkl')
       graph_path = Path(DATASET_PATH[args.dataset], mode, f'{i}.pkl')
       random_seeds = list(range(random_seed, random_seed + N_TRIALS))
