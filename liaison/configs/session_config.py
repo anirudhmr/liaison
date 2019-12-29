@@ -6,12 +6,12 @@ def get_config():
 
   config.learner = ConfigDict()
   config.learner.publish_every = 1000
-  config.learner.checkpoint_every = 10000
+  config.learner.checkpoint_every = 1000000
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
   config.learner.batch_size = 8
   # max number of samples (not batches) that could be waiting in the prefetch queue
-  config.learner.max_prefetch_queue = 128
+  config.learner.max_prefetch_queue = 64
   # prefetch workers are spawned in a seperate process.
   config.learner.prefetch_processes = 1
   config.learner.prefetch_threads_per_process = 8
@@ -21,7 +21,7 @@ def get_config():
   config.learner.profile_step = 5
 
   config.actor = ConfigDict()
-  config.actor.class_path = 'liaison.distributed.actor'
+  config.actor.class_path = 'liaison.distributed.actor_full_episode'
   config.actor.class_name = 'Actor'
   config.actor.n_unrolls = None  # loop forever.
   config.actor.use_parallel_envs = True
@@ -77,7 +77,7 @@ def get_config():
 
   config.irs = ConfigDict()
   config.irs.n_shards = 1
-  config.irs.max_to_keep = 10
+  config.irs.max_to_keep = 20
   config.irs.keep_ckpt_every_n_hrs = 1
 
   return config

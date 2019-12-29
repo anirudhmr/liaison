@@ -115,9 +115,9 @@ class Env(BaseEnv):
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = np.nan
-    self._prev_avg_ep_return = np.nan
-    self._prev_best_ep_return = np.nan
-    self._prev_final_ep_return = np.nan
+    self._prev_avg_quality = np.nan
+    self._prev_best_quality = np.nan
+    self._prev_final_quality = np.nan
     self._reset_next_step = True
     self.reset()
 
@@ -137,9 +137,9 @@ class Env(BaseEnv):
 
     self._milp_choice = choice
     if self.milps:
-      return self.milps[choice]
+      return self.milps[choice - graph_start_idx]
     else:
-      self._load_graph(choice)
+      return self._load_graph(choice)
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
@@ -271,19 +271,19 @@ class Env(BaseEnv):
             self._var_type_mask,
             np.logical_or(self._constraint_type_mask, self._obj_type_mask)))
 
-    obs = dict(
-        **obs,
-        var_type_mask=self._pad_last_dim(self._var_type_mask, self._max_nodes),
-        constraint_type_mask=self._pad_last_dim(self._constraint_type_mask,
+    obs = dict(**obs,
+               var_type_mask=self._pad_last_dim(self._var_type_mask,
                                                 self._max_nodes),
-        obj_type_mask=self._pad_last_dim(self._obj_type_mask, self._max_nodes),
-        log_values=dict(
-            ep_return=np.float32(self._prev_ep_return),
-            avg_ep_return=np.float32(self._prev_avg_ep_return),
-            best_ep_return=np.float32(self._prev_best_ep_return),
-            final_ep_return=np.float32(self._prev_final_ep_return),
-        ),
-    )
+               constraint_type_mask=self._pad_last_dim(
+                   self._constraint_type_mask, self._max_nodes),
+               obj_type_mask=self._pad_last_dim(self._obj_type_mask,
+                                                self._max_nodes),
+               log_values=dict(
+                   ep_return=np.float32(self._prev_ep_return),
+                   avg_quality=np.float32(self._prev_avg_quality),
+                   best_quality=np.float32(self._prev_best_quality),
+                   final_quality=np.float32(self._prev_final_quality),
+               ))
     return obs
 
   def resample_and_reset(self, i):
@@ -298,11 +298,9 @@ class Env(BaseEnv):
     self._n_steps = 0
     self._n_local_moves = 0
     self._reset_next_step = False
-    self._best_ep_return = fabs(
-        (milp.feasible_objective - milp.optimal_objective) /
-        milp.optimal_objective)
-    self._final_ep_return = self._best_ep_return
-    self._obj_rel_gap = [self._best_ep_return]
+    self._best_quality = self._primal_gap(milp.feasible_objective)
+    self._final_quality = self._best_quality
+    self._qualities = [self._best_quality]
 
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
@@ -408,21 +406,32 @@ class Env(BaseEnv):
     ass = {var.name: solver.getVal(var) for var in solver.getVars()}
     return ass, obj
 
-  def _write_debug(self, local_search_case, fixed_assignment):
-    with open(f'/tmp/rins-{os.getpid()}.pkl', 'wb') as f:
-      pickle.dump(
-          dict(local_search_case=local_search_case,
-               curr_soln=self._curr_soln,
-               fixed_assignment=fixed_assignment,
-               unfixed_variables=self._unfixed_variables,
-               n_local_moves=self._n_local_moves,
-               milp_choice=self._milp_choice), f)
-
   def _reset_mask(self, variable_nodes):
     variable_nodes[:, Env.
                    VARIABLE_MASK_FIELD] = variable_nodes[:, Env.
                                                          VARIABLE_IS_INTEGER_FIELD]
     return variable_nodes
+
+  def _primal_gap(self, curr_obj):
+    optimal_obj = self.milp.optimal_objective
+    if curr_obj * optimal_obj == 0:
+      rew = 0.
+    elif np.sign(curr_obj) * np.sign(optimal_obj) < 0:
+      rew = 1.
+    else:
+      rew = fabs(optimal_obj - curr_obj) / max(optimal_obj, curr_obj)
+    return rew
+
+  def _compute_reward(self, prev_obj, curr_obj):
+    # old way of assigning reward -> change to incremental delta rewards.
+    # rew = -1 * curr_obj / milp.optimal_objective
+    if self.config.delta_reward:
+      rew = (prev_obj - curr_obj) / self.config.obj_normalizer
+    elif self.config.primal_gap_reward:
+      rew = self._primal_gap(curr_obj)
+    else:
+      raise Exception('Unspecified reward scheme.')
+    return rew
 
   def step(self, action):
     if self._reset_next_step:
@@ -456,7 +465,6 @@ class Env(BaseEnv):
     # populates curr_sol, local_search_case and curr_lp_sol fields before exiting
     ###################################################
     # {
-    # self._write_debug(globals_[Env.GLOBAL_UNFIX_LEFT] == 0, fixed_assignment)
     if globals_[Env.GLOBAL_UNFIX_LEFT] == 0:
       # run mip
       local_search_case = True
@@ -475,9 +483,9 @@ class Env(BaseEnv):
       # reset the current solution to the newly found one.
       self._curr_soln = curr_sol
       self._prev_obj = self._curr_obj
-      assert curr_obj <= self._curr_obj + 1e-4, (curr_obj, self._curr_obj,
-                                                 os.getpid())
       self._curr_obj = curr_obj
+      assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj,
+                                                 os.getpid())
       # reset fixed variables.
       self._unfixed_variables = [
           var for var in var_names
@@ -491,9 +499,13 @@ class Env(BaseEnv):
     else:
       # run lp
       local_search_case = False
-      mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=True)
-      ass, curr_lp_obj = self._scip_solve(mip)
-      curr_lp_sol = ass
+      if self.config.lp_features:
+        mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=True)
+        ass, curr_lp_obj = self._scip_solve(mip)
+        curr_lp_sol = ass
+      else:
+        curr_lp_sol = curr_sol
+        curr_lp_obj = curr_obj
       # for var, val in fixed_assignment.items():
       #   # ass should only contain unfixed variables.
       #   assert var not in ass
@@ -510,13 +522,10 @@ class Env(BaseEnv):
       if milp.is_optimal:
         assert curr_obj - milp.optimal_objective >= -1e-4, (
             curr_obj, milp.optimal_objective, os.getpid())
-      # old way of assigning reward change to incremental delta rewards.
-      # rew = -1 * curr_obj / milp.optimal_objective
-      rew = (self._prev_obj - curr_obj) / self.config.obj_normalizer
-      self._final_ep_return = fabs(
-          (curr_obj - milp.optimal_objective) / milp.optimal_objective)
-      self._best_ep_return = min(self._final_ep_return, self._best_ep_return)
-      self._obj_rel_gap.append(self._final_ep_return)
+      rew = self._compute_reward(self._prev_obj, curr_obj)
+      self._qualities.append(self._primal_gap(curr_obj))
+      self._final_quality = self._qualities[-1]
+      self._best_quality = min(self._final_quality, self._best_quality)
     else:
       rew = 0
     self._ep_return += rew
@@ -545,9 +554,9 @@ class Env(BaseEnv):
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
-      self._prev_best_ep_return = self._best_ep_return
-      self._prev_final_ep_return = self._final_ep_return
-      self._prev_avg_ep_return = np.mean(self._obj_rel_gap)
+      self._prev_best_quality = self._best_quality
+      self._prev_final_quality = self._final_quality
+      self._prev_avg_quality = np.mean(self._qualities)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())

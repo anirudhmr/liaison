@@ -1,0 +1,23 @@
+import numpy as np
+from liaison.daper import ConfigDict
+from liaison.env import StepType
+from liaison.env.rins import Env
+
+
+def run(n_local_moves, n_trials, seeds, env):
+  assert len(seeds) == n_trials
+
+  log_vals = []
+  for trial_i, seed in zip(range(n_trials), seeds):
+    rng = np.random.RandomState(seed)
+    ts = env.reset()
+    obs = ConfigDict(ts.observation)
+
+    while obs.graph_features.globals[Env.GLOBAL_N_LOCAL_MOVES] < n_local_moves:
+      act = rng.choice(len(obs.mask), 1, p=obs.mask / np.sum(obs.mask))
+      ts = env.step(act)
+      obs = ConfigDict(ts.observation)
+
+    assert ts.step_type == StepType.LAST
+    log_vals.append(obs['log_values'])
+  return log_vals

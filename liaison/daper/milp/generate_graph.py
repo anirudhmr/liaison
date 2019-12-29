@@ -312,7 +312,6 @@ def generate_capacited_facility_location(rng, n_customers, n_facilities,
 
 
 def generate_instance(problem, problem_size, seed):
-
   rng = np.random.RandomState(seed)
   if problem == 'cauction':
     number_of_items = problem_size

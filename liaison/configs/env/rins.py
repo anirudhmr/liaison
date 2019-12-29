@@ -31,4 +31,7 @@ def get_config():
   config.k = 5
   config.steps_per_episode = 60
 
+  config.lp_features = True
+  config.delta_reward = True
+  config.primal_gap_reward = False
   return config
