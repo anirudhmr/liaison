@@ -25,8 +25,8 @@ def write_sbatch_submit_script(n_cmds):
 #SBATCH --array=1-{min(256, n_cmds)}
 
 for i in {{1..{n_cmds}}}; do
-  if (( $i % $SLURM_ARRAY_TASK_ID == 0 )) && (( $i <= {n_cmds} )); then
-    srun $(head -n $i jobs.txt | tail -n 1) 2> /dev/null
+  if (( $i % $SLURM_ARRAY_TASK_ID == 0 )); then
+    srun $(head -n $i jobs.txt | tail -n 1)
     if [ $? -eq 0 ]; then true
     else
         >&2 echo FAIL
@@ -56,7 +56,7 @@ def main():
       else:
         os.system(cmd)
         print(
-            f'echo "{shlex.quote(json.dumps(params))}" > {args.out_dir}/{d}.json'
+            f'mkdir -p {args.out_dir} && echo "{shlex.quote(json.dumps(params))}" > {args.out_dir}/{d}.json'
         )
 
     if args.slurm_mode:

@@ -65,8 +65,9 @@ class Env(BaseEnv):
   # number of unfixes left before sub-mip is solved
   GLOBAL_UNFIX_LEFT = 1
   GLOBAL_N_LOCAL_MOVES = 2
+  GLOBAL_LOCAL_SEARCH_STEP = 3
 
-  N_GLOBAL_FIELDS = 3
+  N_GLOBAL_FIELDS = 4
 
   def __init__(self,
                id,
@@ -558,6 +559,7 @@ class Env(BaseEnv):
     globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(
         self._steps_per_episode)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
+    globals_[Env.GLOBAL_LOCAL_SEARCH_STEP] = local_search_case
 
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True
