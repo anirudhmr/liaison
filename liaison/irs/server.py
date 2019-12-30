@@ -1,15 +1,15 @@
 """Start IRS Server."""
 
-from __future__ import absolute_import, division, print_function
-
 import os
 import sys
 from multiprocessing import Process
+from pathlib import Path
 
 import liaison.utils as U
 from absl import logging
-from caraml.zmq import ZmqProxyThread
+from caraml.zmq import ZmqClient, ZmqProxyThread
 from liaison.irs import IRSWorker
+from liaison.launch.xmanager_client import get_xmanager_client
 from liaison.utils import ConfigDict
 
 
@@ -20,10 +20,10 @@ from liaison.utils import ConfigDict
 """
 
 
-class Server(object):
+class Server:
 
   def __init__(self, results_folder, agent_config, env_config, sess_config,
-               exp_name, exp_id, work_id, n_shards, **kwargs):
+               exp_name, exp_id, work_id, n_shards, hyper_params, **kwargs):
     """Results folder should be for the current work unit."""
     self.config = ConfigDict(**kwargs)
     self.n_shards = n_shards
@@ -44,8 +44,12 @@ class Server(object):
                            exp_id=exp_id,
                            work_id=work_id,
                            irs_n_shards=n_shards)
-    self._register_src()
     self._register_cmd()
+    if work_id == 0:
+      self._register_src()
+      U.f_mkdir(results_folder)
+      with open(f'{results_folder}/hyper_params.json', 'w') as f:
+        f.write(hyper_params)
 
   def launch(self):
     """
@@ -121,3 +125,14 @@ class Server(object):
     os.system('conda list > %s' %
               os.path.join(src_folder, 'conda_env_list.txt'))
     U.compress_tar('./liaison/', os.path.join(src_folder, 'liaison.tar.gz'))
+
+  def _register_xmanager_record(self, exp_id):
+    cli = get_xmanager_client(host=os.environ['XMANAGER_HOST'],
+                              port=int(os.environ['XMANAGER_PORT']),
+                              serializer='pyarrow',
+                              deserializer='pyarrow')
+    rec = cli.fetch_record(int(exp_id))
+    path = Path(self.config.xmanager_record_path)
+    path.parent.mkdir(parents=False, exist_ok=False)
+    U.pretty_dump(rec, path)
+    print('xmanager record received')

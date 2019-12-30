@@ -31,6 +31,7 @@ parser.add_argument('--experiment_id', type=int, required=True)
 parser.add_argument('--experiment_name', type=str, required=True)
 parser.add_argument('--work_id', type=int, required=True)
 parser.add_argument('--results_folder', type=str, required=True)
+parser.add_argument('--hyper_configs', type=str, required=True)
 
 
 class LauncherSetup(Launcher):
@@ -51,6 +52,7 @@ class LauncherSetup(Launcher):
     self.traj_length = args.traj_length
     self.seed = args.seed
     self.results_folder = args.results_folder
+    self.hyper_params = args.hyper_configs
 
     self.env_config = ConfigDict(to_nested_dicts(args.env_config))
     self.sess_config = ConfigDict(to_nested_dicts(args.sess_config))

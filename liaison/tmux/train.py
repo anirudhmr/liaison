@@ -2,6 +2,8 @@
 
 # python liaison/tmux/train.py --pdb_post_mortem -- create -r /tmp/ -e test --filter='.*os_mm.*' -- --agent_config_file=liaison/configs/agent/config.py --sess_config_file=liaison/configs/session_config.py --env_config_file=liaison/configs/env_config.py
 import argparse
+import json
+import shlex
 
 import argon
 from absl import app
@@ -28,7 +30,7 @@ parser.add_argument('--without_evaluators', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail'],
+    default=['os_csail', 'csail_swarm_1'],
     help=
     'These nodes are always selected irrespective of the filter_nodes_regex specified.'
 )
@@ -65,17 +67,18 @@ def train(argv):
 
   # Specify experiment specific flags here.
   exp_flags = []
+  hyper_configs = []
   exps = []
   for work_id, params in enumerate(
-      hyper.product(
-          hyper.zip(
-              hyper.discrete('env_config.k', [5, 5, 10, 10]),
-              hyper.discrete('env_config.steps_per_episode',
-                             [50, 100, 100, 200])),
-          hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
-          hyper.discrete('agent_config.model.n_prop_layers', [4, 8]),
-          hyper.discrete('agent_config.ent_dec_init', [.01]))):
-    # hyper.discrete('agent_config.lr_init', [2e-5]))):
+      # hyper.product(
+      # hyper.zip(
+      #     hyper.discrete('env_config.k', [5, 5, 10, 10]),
+      #     hyper.discrete('env_config.steps_per_episode',
+      #                    [50, 100, 100, 200])),
+      # hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
+      # hyper.discrete('agent_config.model.n_prop_layers', [4, 8]),
+      # hyper.discrete('agent_config.ent_dec_init', [.01]))):
+      hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first work unit.
@@ -86,9 +89,11 @@ def train(argv):
                   with_evaluators=(not args.without_evaluators))
 
     exp_flag = ['--work_id', str(work_id)]
+    exp_flag += ['--hyper_configs', str(shlex.quote(json.dumps(params)))]
     exp_flag += hyper.to_commandline(params)
     exps.append(exp)
     exp_flags.append(exp_flag)
+    hyper_configs.append(params)
 
   exp_procs = [[
       proc for pg in exp.list_process_groups() for proc in pg.list_processes()
@@ -113,7 +118,7 @@ def train(argv):
       cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
       cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff)
 
-  tp.launch(exps, exp_flags)
+  tp.launch(exps, exp_flags, hyper_configs)
 
 
 if __name__ == '__main__':

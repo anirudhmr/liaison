@@ -70,6 +70,10 @@ class TurrealParser(SymphonyParser):
     """Records the launch command with the irs."""
     self._xm_client.record_metadata(exp_id=exp_id, command=' '.join(sys.argv))
 
+  def _record_hyper_config(self, exp_id, hyper_configs):
+    """Records the launch command with the irs."""
+    self._xm_client.record_metadata(exp_id=exp_id, hyper_config=hyper_configs)
+
   def _register_commands_with_irs(self, commands, host, port):
     self._cli = ZmqClient(host=host,
                           port=port,
@@ -98,7 +102,7 @@ class TurrealParser(SymphonyParser):
     self.remainder_args = args.remainder
     self.exp_id = exp_id
 
-  def launch(self, experiments, exp_configs):
+  def launch(self, experiments, exp_configs, hyper_configs):
     """
     Tasks:
       1. Adds all the commands needed for processes, shells and experiments.
@@ -118,6 +122,7 @@ class TurrealParser(SymphonyParser):
     algorithm_args += ["--experiment_id", str(exp_id)]
     algorithm_args += ["--experiment_name", self.experiment_name]
     algorithm_args += ["--results_folder", self.results_folder]
+    self._record_hyper_config(exp_id, hyper_configs)
 
     commands = []
     for exp, exp_config in zip(experiments, exp_configs):

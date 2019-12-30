@@ -373,6 +373,9 @@ class Launcher:
                                 str(self.work_id)),
         kvstream_folder=os.path.join(self.results_folder, 'kvstream',
                                      str(self.work_id)),
+        hyper_param_config=os.path.join(self.results_folder,
+                                        'hyper_params.json'),
+        hyper_params=self.hyper_params,
         **self.sess_config.irs)
     self._irs_server.launch()
     self._irs_server.join()

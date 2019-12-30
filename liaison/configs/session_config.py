@@ -6,7 +6,7 @@ def get_config():
 
   config.learner = ConfigDict()
   config.learner.publish_every = 1000
-  config.learner.checkpoint_every = 1000000
+  config.learner.checkpoint_every = int(1e9)
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
   config.learner.batch_size = 8

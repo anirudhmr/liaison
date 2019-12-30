@@ -4,6 +4,8 @@ Does the following:
 """
 import itertools
 
+import liaison.utils as U
+
 
 def get_fuzzy_match(config, name):
   for k, v in config.items():
@@ -24,7 +26,7 @@ def build_program(exp,
   irs.set_hard_placement('os_csail')
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement('os_csail')
+    visualizers.set_hard_placement('csail_swarm_1')
   else:
     visualizers = None
   actor_pg = exp.new_process_group('actor-*')
@@ -60,14 +62,14 @@ def setup_network(*,
                   visualizers=None,
                   irs=None):
   """
-        Sets up the communication between surreal
-        components using symphony
+    Sets up the communication between surreal
+    components using symphony
 
-        Args:
-            actors, (list): list of symphony processes
-            ps, replay, learner, visualizers:
-                symphony processes
-    """
+    Args:
+        actors, (list): list of symphony processes
+        ps, replay, learner, visualizers:
+            symphony processes
+  """
   for proc in actors:
     proc.connects('ps-serving')
     proc.connects('collector-frontend')
