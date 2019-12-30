@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
 from liaison.daper import ConfigDict
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
@@ -52,8 +53,8 @@ def cmd_gen(seed, out_file, graph_path, random_seeds, n_local_moves, k,
                     --random_seeds {' '.join(map(str, random_seeds))}
                     --n_trials={len(random_seeds)}
                     --n_local_moves={n_local_moves}
+                    --k={k}
                     --env_config_file=liaison/configs/env/rins.py
-                    --env_config.k={k}
                     --env_config.dataset={dataset}
                     --env_config.dataset_type={dataset_type}
                     --env_config.graph_start_idx={graph_idx}

@@ -26,6 +26,9 @@ class Variable(ABC):
 
     return True
 
+  def is_integer(self):
+    return isinstance(self, IntegerVariable)
+
 
 class ContinuousVariable(Variable):
 

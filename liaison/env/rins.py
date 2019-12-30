@@ -17,7 +17,7 @@ from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.specs import ArraySpec, BoundedArraySpec
 from liaison.utils import ConfigDict
-from pyscipopt import Model, multidict, quicksum
+from pyscipopt import Model
 from tensorflow.contrib.framework import nest
 
 
@@ -480,11 +480,6 @@ class Env(BaseEnv):
       mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=False)
       ass, curr_obj = self._scip_solve(mip)
       curr_sol = ass
-      # for var, val in fixed_assignment.items():
-      #   # ass should only contain unfixed variables.
-      #   assert var not in ass
-      #   curr_sol[var] = val
-
       # # add back the newly found solutions for the sub-mip.
       # # this updates the current solution to the new local one.
       # curr_sol.update(ass)
