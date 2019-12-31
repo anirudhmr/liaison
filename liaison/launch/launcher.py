@@ -314,10 +314,10 @@ class Launcher:
 
   def _start_tensorplex(self):
     """
-            Launches a tensorplex process.
-            It receives data from multiple sources and
-            send them to tensorboard.
-        """
+        Launches a tensorplex process.
+        It receives data from multiple sources and
+        send them to tensorboard.
+    """
     folder1 = os.path.join(self.results_folder, 'tensorplex_metrics',
                            str(self.work_id))
     folder2 = os.path.join(self.results_folder, 'tensorplex_system_profiles',
@@ -346,7 +346,9 @@ class Launcher:
               100).register_indexed_group('ps', 100).register_indexed_group(
                   'evaluator', tensorplex_config.agent_bin_size)
 
-      thread = Thread(target=tensorplex.start_server, kwargs=dict(port=port))
+      thread = Thread(target=tensorplex.start_server,
+                      kwargs=dict(port=port,
+                                  use_pyarrow=tensorplex_config.use_pyarrow))
       thread.start()
       threads.append(thread)
 

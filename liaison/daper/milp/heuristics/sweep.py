@@ -56,7 +56,7 @@ def main():
       else:
         os.system(cmd)
         print(
-            f'mkdir -p {args.out_dir} && echo "{shlex.quote(json.dumps(params))}" > {args.out_dir}/{d}.json'
+            f'mkdir -p {args.out_dir} && echo {shlex.quote(json.dumps(params))} > {args.out_dir}/{d}.json'
         )
 
     if args.slurm_mode:

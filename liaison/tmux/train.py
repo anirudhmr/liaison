@@ -76,7 +76,6 @@ def train(argv):
               hyper.discrete('env_config.steps_per_episode',
                              [50, 100, 100, 200])),
           hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
-          hyper.discrete('agent_config.model.n_prop_layers', [4, 8]),
           hyper.discrete('agent_config.ent_dec_init', [.01]))):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),

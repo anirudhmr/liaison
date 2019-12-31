@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-
 from liaison.daper import ConfigDict
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
@@ -29,7 +28,7 @@ parser.add_argument('--k', type=int, required=True)
 REMAINDER = ''
 
 SEED = 42
-N_TRIALS = 5
+N_TRIALS = 1
 
 
 def preprocess(argv):

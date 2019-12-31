@@ -1,7 +1,6 @@
 from math import fabs
 
 import numpy as np
-
 from liaison.daper import ConfigDict
 from liaison.daper.milp.primitives import IntegerVariable
 from liaison.env import StepType
@@ -53,7 +52,7 @@ def run(least_integral, n_local_moves, k, n_trials, seeds, env):
     rng = np.random.RandomState(seed)
     ts = env.reset()
     obs = ConfigDict(ts.observation)
-    log_vals[trial_i].append(obs.log_values)
+    log_vals[trial_i].append(obs.curr_episode_log_values)
 
     while obs.graph_features.globals[Env.GLOBAL_N_LOCAL_MOVES] < n_local_moves:
       var_names = choose_act(env._curr_soln, env.milp.mip, rng, k,
@@ -64,8 +63,7 @@ def run(least_integral, n_local_moves, k, n_trials, seeds, env):
 
       obs = ConfigDict(ts.observation)
       assert obs.graph_features.globals[Env.GLOBAL_LOCAL_SEARCH_STEP]
-
-      log_vals[trial_i].append(obs.log_values)
+      log_vals[trial_i].append(obs.curr_episode_log_values)
 
     assert ts.step_type == StepType.LAST
   return log_vals

@@ -421,7 +421,7 @@ class Env(BaseEnv):
 
   def _primal_gap(self, curr_obj):
     optimal_obj = self.milp.optimal_objective
-    if curr_obj * optimal_obj == 0:
+    if curr_obj == 0 and optimal_obj == 0:
       rew = 0.
     elif np.sign(curr_obj) * np.sign(optimal_obj) < 0:
       rew = 1.
