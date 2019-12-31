@@ -6,8 +6,8 @@ import os
 import pickle
 import shutil
 import time
-from multiprocessing import Process
 from pathlib import Path
+from threading import Thread
 
 import liaison.utils as U
 from absl import logging
@@ -22,11 +22,11 @@ from liaison.utils import ConfigDict
 """
 
 
-class Worker(Process):
+class Worker(Thread):
 
   def __init__(self, serving_host, serving_port, checkpoint_folder,
                profile_folder, kvstream_folder, **kwargs):
-    Process.__init__(self)
+    Thread.__init__(self)
     self.config = ConfigDict(**kwargs)
     self.checkpoint_folder = checkpoint_folder
     self.profile_folder = profile_folder
@@ -42,7 +42,7 @@ class Worker(Process):
                              port=self.serving_port,
                              serializer=U.serialize,
                              deserializer=U.deserialize,
-                             bind=False)
+                             bind=True)
     self._server.start_loop(handler=self._handle_request, blocking=True)
 
   def _handle_request(self, req):

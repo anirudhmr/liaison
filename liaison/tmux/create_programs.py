@@ -26,7 +26,7 @@ def build_program(exp,
   irs.set_hard_placement('os_csail')
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement('csail_swarm_1')
+    visualizers.set_hard_placement('csail_vcuda')
   else:
     visualizers = None
   actor_pg = exp.new_process_group('actor-*')
@@ -91,17 +91,16 @@ def setup_network(*,
 
   irs.binds('tensorplex')
   irs.binds('tensorplex-system')
-  irs.binds('irs-frontend')
-  irs.binds('irs-backend')
+  irs.binds('irs')
 
   for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
     proc.connects('tensorplex-system')
-    proc.connects('irs-frontend')
+    proc.connects('irs')
 
   if evaluator:
     evaluator.connects('tensorplex')
-    evaluator.connects('irs-frontend')
+    evaluator.connects('irs')
     evaluator.connects('ps-serving')
 
   if visualizers:

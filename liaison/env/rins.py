@@ -4,11 +4,10 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -427,7 +426,8 @@ class Env(BaseEnv):
     elif np.sign(curr_obj) * np.sign(optimal_obj) < 0:
       rew = 1.
     else:
-      rew = fabs(optimal_obj - curr_obj) / max(optimal_obj, curr_obj)
+      rew = fabs(optimal_obj - curr_obj) / max(fabs(optimal_obj),
+                                               fabs(curr_obj))
     return rew
 
   def _compute_reward(self, prev_obj, curr_obj):
@@ -437,7 +437,7 @@ class Env(BaseEnv):
     if self.config.delta_reward:
       rew = (prev_obj - curr_obj) / self.config.obj_normalizer
     elif self.config.primal_gap_reward:
-      rew = self._primal_gap(curr_obj)
+      rew = -1.0 * self._primal_gap(curr_obj)
     else:
       raise Exception('Unspecified reward scheme.')
     return rew
@@ -529,7 +529,7 @@ class Env(BaseEnv):
       rew = self._compute_reward(self._prev_obj, curr_obj)
       self._qualities.append(self._primal_gap(curr_obj))
       self._final_quality = self._qualities[-1]
-      self._best_quality = min(self._final_quality, self._best_quality)
+      self._best_quality = min(self._qualities)
     else:
       rew = 0
     self._ep_return += rew

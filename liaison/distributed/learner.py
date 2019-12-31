@@ -6,8 +6,8 @@ Requires env variables:
   SYMPH_PS_SERVING_PORT
   SYMPH_SPEC_HOST
   SYMPH_SPEC_PORT
-  SYMPH_IRS_FRONTEND_HOST
-  SYMPH_IRS_FRONTEND_PORT
+  SYMPH_IRS_HOST
+  SYMPH_IRS_PORT
 """
 
 from __future__ import absolute_import, division, print_function
@@ -223,8 +223,8 @@ class Learner(object):
       self._ps_publisher.publish(*data)
 
   def _get_file_uploader(self):
-    return ZmqFileUploader(host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
-                           port=os.environ['SYMPH_IRS_FRONTEND_PORT'],
+    return ZmqFileUploader(host=os.environ['SYMPH_IRS_HOST'],
+                           port=os.environ['SYMPH_IRS_PORT'],
                            serializer='pyarrow',
                            deserializer='pyarrow')
 

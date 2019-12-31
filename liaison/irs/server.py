@@ -7,7 +7,6 @@ from pathlib import Path
 
 import liaison.utils as U
 from absl import logging
-from caraml.zmq import ZmqClient, ZmqProxyThread
 from liaison.irs import IRSWorker
 from liaison.launch.xmanager_client import get_xmanager_client
 from liaison.utils import ConfigDict
@@ -29,13 +28,7 @@ class Server:
     self.n_shards = n_shards
 
     # Serving parameter to agents
-    self.frontend_port = os.environ['SYMPH_IRS_FRONTEND_PORT']
-    self.backend_port = os.environ['SYMPH_IRS_BACKEND_PORT']
-    self.serving_frontend_add = "tcp://*:{}".format(self.frontend_port)
-    self.serving_backend_add = "tcp://*:{}".format(self.backend_port)
-
-    self.proxy = None
-    self.workers = []
+    self.port = os.environ['SYMPH_IRS_PORT']
     self._register_configs(agent_config,
                            env_config,
                            sess_config,
@@ -53,36 +46,27 @@ class Server:
 
   def launch(self):
     """
-            Runs load balancing proxy thread
-                and self.shards ParameterServer processes
-            Returns after all threads and processes are running
-        """
-    self.proxy = ZmqProxyThread(in_add=self.serving_frontend_add,
-                                out_add=self.serving_backend_add,
-                                pattern='router-dealer')
-    self.proxy.start()
-
-    self.workers = []
-    for i in range(self.n_shards):
-      worker = IRSWorker(serving_host='localhost',
-                         serving_port=self.backend_port,
-                         **self.config)
-      worker.start()
-      self.workers.append(worker)
+        Runs load balancing proxy thread
+            and self.shards ParameterServer processes
+        Returns after all threads and processes are running
+    """
+    self.worker = IRSWorker(serving_host='*',
+                            serving_port=self.port,
+                            **self.config)
+    self.worker.start()
 
   def join(self):
     """
-        Wait for all workers to exit
-            (Currently this means they crashed)
-        Note that proxy is a daemon thread and doesn't need waiting
-      """
-    for i, worker in enumerate(self.workers):
-      worker.join()
-      U.report_exitcode(worker.exitcode, 'ps-{}'.format(i))
+      Wait for worker to exit
+          (Currently this means they crashed)
+      Note that proxy is a daemon thread and doesn't need waiting
+    """
+    worker = self.worker
+    worker.join()
+    U.report_exitcode(worker.exitcode, 'ps-{}'.format(i))
 
   def quit(self):
-    for worker in self.workers:
-      worker.terminate()
+    self.worker.terminate()
 
   def _register_configs(self, agent_config, env_config, sess_config, **kwargs):
     config_folder = self.config.configs_folder

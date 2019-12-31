@@ -7,8 +7,8 @@ from caraml.zmq import ZmqClient, ZmqTimeoutError
 class Client:
 
   def __init__(self,
-               host=os.environ['SYMPH_IRS_FRONTEND_HOST'],
-               port=os.environ['SYMPH_IRS_FRONTEND_PORT'],
+               host=os.environ['SYMPH_IRS_HOST'],
+               port=os.environ['SYMPH_IRS_PORT'],
                timeout=2):
     self._cli = ZmqClient(host=host,
                           port=port,
