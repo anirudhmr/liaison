@@ -145,7 +145,13 @@ class Launcher:
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
     loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
-    loggers.append(AvgPipeLogger(TensorplexLogger(client_id='evaluator/0')))
+    loggers.append(
+        AvgPipeLogger(
+            TensorplexLogger(
+                client_id='evaluator/0',
+                serializer=self.sess_config.tensorplex.serializer,
+                deserializer=self.sess_config.tensorplex.deserializer,
+            )))
     loggers.append(
         KVStreamLogger(stream_id=f'{evaluator_name}',
                        client=IRSClient(timeout=20)))
@@ -196,16 +202,25 @@ class Launcher:
   def _setup_learner_loggers(self):
     loggers = []
     loggers.append(ConsoleLogger(print_every=5))
-    loggers.append(TensorplexLogger(client_id='learner/learner'))
+    loggers.append(
+        TensorplexLogger(
+            client_id='learner/learner',
+            serializer=self.sess_config.tensorplex.serializer,
+            deserializer=self.sess_config.tensorplex.deserializer,
+        ))
     return loggers
 
   def _setup_learner_system_loggers(self):
     loggers = []
     # loggers.append(ConsoleLogger(name='system'))
     loggers.append(
-        TensorplexLogger(client_id='learner/learner',
-                         host=os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST'],
-                         port=os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']))
+        TensorplexLogger(
+            client_id='learner/learner',
+            host=os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST'],
+            port=os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT'],
+            serializer=self.sess_config.tensorplex.serializer,
+            deserializer=self.sess_config.tensorplex.deserializer,
+        ))
     return loggers
 
   def run_learner(self, iterations=None):
@@ -273,6 +288,7 @@ class Launcher:
 
     replay = replay_class(seed=self.seed,
                           index=replay_id,
+                          tensorplex_config=self.sess_config.tensorplex,
                           **self.sess_config.replay)
     replay.start_threads()
     replay.join()
@@ -348,7 +364,8 @@ class Launcher:
 
       thread = Thread(target=tensorplex.start_server,
                       kwargs=dict(port=port,
-                                  use_pyarrow=tensorplex_config.use_pyarrow))
+                                  serializer=tensorplex_config.serializer,
+                                  deserializer=tensorplex_config.deserializer))
       thread.start()
       threads.append(thread)
 

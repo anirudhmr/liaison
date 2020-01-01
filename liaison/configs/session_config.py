@@ -71,7 +71,8 @@ def get_config():
   ]
   config.tensorplex.max_processes = 1
   config.tensorplex.agent_bin_size = 64
-  config.tensorplex.use_pyarrow = True
+  config.tensorplex.serializer = 'pickle'
+  config.tensorplex.deserializer = 'pickle'
 
   config.ps = ConfigDict()
   # config.ps.n_shards = 1

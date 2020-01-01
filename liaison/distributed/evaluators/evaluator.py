@@ -6,9 +6,11 @@ import sys
 import time
 
 import numpy as np
+
 import tree as nest
 from liaison.env import StepType
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
+from liaison.env.rins import Env
 
 
 class Evaluator:
@@ -86,33 +88,40 @@ class Evaluator:
         env_mask = np.ones(self.batch_size, dtype=bool)
 
         ts = self._env.reset()
-        ep_rew = ts.reward
-        log_values = [None] * len(env_mask)
+        log_values = [[] for _ in range(len(env_mask))]
         while np.any(env_mask):
+
+          for i, mask in enumerate(env_mask):
+            obs = ts.observation
+            if 'graph_features' in obs:
+              globals_ = obs['graph_features'].globals
+            else:
+              globals_ = obs['globals']
+
+            if mask and globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP]:
+              d = nest.map_structure(lambda v: v[i],
+                                     obs['curr_episode_log_values'])
+              d.update(rew=ts.reward[i])
+              log_values[i].append(d)
+
           for i, mask in enumerate(env_mask):
             if mask and ts.step_type[i] == StepType.LAST:
               env_mask[i] = False
-              log_values[i] = dict(ep_reward=ep_rew[i])
-              if 'log_values' in ts.observation:
-                # just use the last timestep's log_values.
-                for k, v in ts.observation['log_values'].items():
-                  log_values[i].update({f'log_values/{k}': v[i]})
 
           step_output = self._shell.step(step_type=ts.step_type,
                                          reward=ts.reward,
                                          observation=ts.observation)
           ts = self._env.step(step_output.action)
-          ep_rew += (ts.reward * env_mask)
-        eval_log_values.append(log_values)
+
+        for i in range(len(log_values)):
+          log_values[i] = nest.map_structure(lambda *l: np.stack(l),
+                                             *log_values[i])
+        eval_log_values.append(
+            nest.map_structure(lambda *l: np.stack(l), *log_values))
 
       # log_values[i] -> For the ith environment log values where each value
-      # has a dimension (n_trials,) + added at its forefront.
+      # has a dimension (n_trials, n_envs) + added at its forefront.
       log_values = nest.map_structure(lambda *l: np.stack(l), *eval_log_values)
-
-      # log_values -> Dict[k, v] where v has dimension (n_trials, n_envs, ...)
-      log_values = nest.map_structure(
-          lambda *l: np.swapaxes(np.stack(l), 0, 1), *log_values)
-
       for logger in self._loggers:
         logger.write(log_values)
 

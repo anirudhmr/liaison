@@ -162,7 +162,7 @@ class Env(BaseEnv):
 
       features = np.hstack((features, constraint_features.flatten()))
 
-    obs = dict(features=features, mask=mask)
+    obs = dict(features=features, mask=mask, globals=self._globals)
     return obs
 
   def _observation_self_attention(self, nodes):
@@ -182,7 +182,8 @@ class Env(BaseEnv):
 
     obs = dict(mask=mask,
                var_nodes=np.float32(self._variable_nodes),
-               var_embeddings=var_embeddings)
+               var_embeddings=var_embeddings,
+               globals=self._globals)
     return obs
 
   def _observation_graphnet_inductive(self, nodes):

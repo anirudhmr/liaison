@@ -1,7 +1,8 @@
 import os
 
-import liaison.utils as U
 import numpy as np
+
+import liaison.utils as U
 import tree as nest
 from liaison.loggers import BaseLogger
 from tensorplex import LoggerplexClient, TensorplexClient
@@ -11,6 +12,8 @@ class Logger(BaseLogger):
 
   def __init__(self,
                client_id,
+               serializer,
+               deserializer,
                host=os.environ.get('SYMPH_TENSORPLEX_HOST', None),
                port=os.environ.get('SYMPH_TENSORPLEX_PORT', None)):
     super(Logger, self).__init__()
@@ -18,7 +21,8 @@ class Logger(BaseLogger):
     self._client = TensorplexClient(client_id,
                                     host=host,
                                     port=port,
-                                    use_pyarrow=True)
+                                    serializer=serializer,
+                                    deserializer=deserializer)
 
   def write(self, dict_values, step=None):
     if step is None:

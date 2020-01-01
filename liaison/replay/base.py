@@ -5,10 +5,9 @@ import liaison.utils as U
 from absl import logging
 from caraml.zmq import ZmqServer
 from liaison.distributed import ExperienceCollectorServer
+from liaison.distributed.exp_serializer import get_deserializer, get_serializer
 from liaison.utils import ConfigDict
 from tensorplex import LoggerplexClient, TensorplexClient
-
-from liaison.distributed.exp_serializer import get_deserializer, get_serializer
 
 
 class ReplayUnderFlowException(Exception):
@@ -157,7 +156,12 @@ class Replay:
   def _get_tensorplex_client(self, client_id):
     host = os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST']
     port = os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']
-    return TensorplexClient(client_id, host=host, port=port)
+    return TensorplexClient(
+        client_id,
+        host=host,
+        port=port,
+        serializer=self.config.tensorplex_config.serializer,
+        deserializer=self.config.tensorplex_config.deserializer)
 
   def _setup_logging(self):
     # self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),

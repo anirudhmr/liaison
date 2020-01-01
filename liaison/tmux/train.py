@@ -27,6 +27,7 @@ parser.add_argument('--cpu_load_balancing_obj_coeff', type=int, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=int, default=10)
 parser.add_argument('--filter_nodes_regex', type=str, default='.*')
 parser.add_argument('--without_evaluators', action='store_true')
+parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
@@ -70,21 +71,22 @@ def train(argv):
   hyper_configs = []
   exps = []
   for work_id, params in enumerate(
-      hyper.product(
-          hyper.zip(
-              hyper.discrete('env_config.k', [5, 5, 10, 10]),
-              hyper.discrete('env_config.steps_per_episode',
-                             [50, 100, 100, 200])),
-          hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
-          hyper.discrete('agent_config.ent_dec_init', [.01]))):
-    # hyper.discrete('agent_config.lr_init', [2e-5])):
+      # hyper.product(
+      #     hyper.zip(
+      #         hyper.discrete('env_config.k', [5, 5, 10, 10]),
+      #         hyper.discrete('env_config.steps_per_episode',
+      #                        [50, 100, 100, 200])),
+      #     hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
+      #     hyper.discrete('agent_config.ent_dec_init', [.01]))):
+      hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first work unit.
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
-                  with_visualizers=(work_id == 0),
+                  with_visualizers=(work_id == 0)
+                  and (not args.without_visualizers),
                   with_evaluators=(not args.without_evaluators))
 
     exp_flag = ['--work_id', str(work_id)]

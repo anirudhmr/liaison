@@ -2,8 +2,7 @@ from collections import namedtuple
 from typing import Dict, List, Tuple
 
 import numpy as np
-
-from daper import ConfigDict
+from liaison.daper import ConfigDict
 from liaison.daper.milp.primitives import MIPInstance
 
 MILP = lambda: ConfigDict(
