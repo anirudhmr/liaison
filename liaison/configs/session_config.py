@@ -14,7 +14,7 @@ def get_config():
   config.learner.max_prefetch_queue = 64
   # prefetch workers are spawned in a seperate process.
   config.learner.prefetch_processes = 1
-  config.learner.prefetch_threads_per_process = 12
+  config.learner.prefetch_threads_per_process = 16
   config.learner.inmem_tmp_dir = '/tmp/caraml/'
   # first sess.run is not profiled.
   # generates a profile after every this many steps.

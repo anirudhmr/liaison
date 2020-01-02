@@ -12,7 +12,7 @@ from threading import Thread
 
 import liaison.utils as U
 from argon import to_nested_dicts
-from liaison.distributed import Evaluator, Learner, SimpleParameterServer
+from liaison.distributed import Learner, SimpleParameterServer
 from liaison.irs import IRSClient, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
                              KVStreamLogger, TensorplexLogger)
@@ -179,6 +179,7 @@ class Launcher:
           eval_config.dataset_type_field: id,
           'graph_start_idx': i,
           'n_graphs': 1,
+          **eval_config.env_config
       })
       env_configs.append(env_config)
 
@@ -190,6 +191,7 @@ class Launcher:
                             loggers=self._setup_evaluator_loggers(id),
                             seed=self.seed,
                             **eval_config)
+    from liaison.distributed import Evaluator
     Evaluator(**evaluator_config)
 
   def run_evaluators(self):
@@ -392,8 +394,9 @@ class Launcher:
                                 str(self.work_id)),
         kvstream_folder=os.path.join(self.results_folder, 'kvstream',
                                      str(self.work_id)),
-        hyper_param_config=os.path.join(self.results_folder,
-                                        'hyper_params.json'),
+        hyper_param_config_file=os.path.join(self.results_folder,
+                                             'hyper_params', str(self.work_id),
+                                             'hyper_params.json'),
         hyper_params=self.hyper_params,
         **self.sess_config.irs)
     self._irs_server.launch()

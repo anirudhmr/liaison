@@ -94,7 +94,7 @@ class Evaluator:
           for i, mask in enumerate(env_mask):
             obs = ts.observation
             if 'graph_features' in obs:
-              globals_ = obs['graph_features'].globals
+              globals_ = obs['graph_features']['globals']
             else:
               globals_ = obs['globals']
 

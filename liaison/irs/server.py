@@ -22,7 +22,8 @@ from liaison.utils import ConfigDict
 class Server:
 
   def __init__(self, results_folder, agent_config, env_config, sess_config,
-               exp_name, exp_id, work_id, n_shards, hyper_params, **kwargs):
+               exp_name, exp_id, work_id, n_shards, hyper_params,
+               hyper_param_config_file, **kwargs):
     """Results folder should be for the current work unit."""
     self.config = ConfigDict(**kwargs)
     self.n_shards = n_shards
@@ -38,11 +39,9 @@ class Server:
                            work_id=work_id,
                            irs_n_shards=n_shards)
     self._register_cmd()
+    self._register_hyper_params(hyper_param_config_file, hyper_params)
     if work_id == 0:
       self._register_src()
-      U.f_mkdir(results_folder)
-      with open(f'{results_folder}/hyper_params.json', 'w') as f:
-        f.write(hyper_params)
 
   def launch(self):
     """
@@ -117,6 +116,11 @@ class Server:
                               deserializer='pyarrow')
     rec = cli.fetch_record(int(exp_id))
     path = Path(self.config.xmanager_record_path)
-    path.parent.mkdir(parents=False, exist_ok=False)
+    path.parent.mkdir(parents=True, exist_ok=True)
     U.pretty_dump(rec, path)
-    print('xmanager record received')
+
+  def _register_hyper_params(self, hyper_param_config_file, hyper_params):
+    path = Path(hyper_param_config_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'w') as f:
+      f.write(hyper_params)
