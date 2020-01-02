@@ -29,7 +29,7 @@ def get_config():
   config.max_edges = -1
 
   config.k = 5
-  config.steps_per_episode = 60
+  config.n_local_moves = 10
 
   config.lp_features = True
   config.delta_reward = False

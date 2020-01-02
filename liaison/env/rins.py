@@ -4,10 +4,11 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -77,7 +78,7 @@ class Env(BaseEnv):
                dataset='milp-facilities-3',
                dataset_type='train',
                k=5,
-               steps_per_episode=60,
+               n_local_moves=10,
                max_nodes=-1,
                max_edges=-1,
                **env_config):
@@ -90,7 +91,7 @@ class Env(BaseEnv):
     self.config = ConfigDict(env_config)
     self.id = id
     self.k = k
-    self._steps_per_episode = steps_per_episode
+    self._steps_per_episode = k * n_local_moves
     self.seed = seed
     self._max_nodes = max_nodes
     self._max_edges = max_edges
@@ -187,7 +188,6 @@ class Env(BaseEnv):
     return obs
 
   def _observation_graphnet_inductive(self, nodes):
-
     graph_features = dict(nodes=nodes,
                           edges=self._edges,
                           globals=self._globals,
@@ -366,8 +366,8 @@ class Env(BaseEnv):
 
     # now duplicate the edges to make them directed.
     edges = np.vstack((edges, edges))
-    senders = np.hstack((senders, receivers))
-    receivers = np.hstack((receivers, senders))
+    senders, receivers = np.hstack((senders, receivers)), np.hstack(
+        (receivers, senders))
 
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
     globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps

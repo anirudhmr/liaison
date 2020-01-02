@@ -32,7 +32,7 @@ def make_env():
   env_config = ConfigDict(to_nested_dicts(args.env_config))
   env_config.lp_features = False
   env_config.k = args.k
-  env_config.steps_per_episode = args.k * args.n_local_moves
+  env_config.n_local_moves = args.n_local_moves
   env_config.primal_gap_reward = True
   env_config.delta_reward = False
   assert env_config.n_graphs == 1

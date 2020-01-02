@@ -18,7 +18,7 @@ def get_config():
   config.lr_dec_val = .1
   config.lr_dec_approach = 'linear'
 
-  config.ent_dec_init = 1.0
+  config.ent_dec_init = 1e-2
   config.ent_dec_min = 0.0
   config.ent_dec_steps = 1000
   config.ent_start_dec_step = 1000
