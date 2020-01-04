@@ -4,7 +4,7 @@ from liaison.env import StepType
 from liaison.env.rins import Env
 
 
-def run(n_local_moves, n_trials, seeds, env):
+def run(n_trials, seeds, env):
   assert len(seeds) == n_trials
 
   log_vals = [[] for _ in range(n_trials)]
@@ -14,11 +14,10 @@ def run(n_local_moves, n_trials, seeds, env):
     obs = ConfigDict(ts.observation)
     log_vals[trial_i].append(obs.curr_episode_log_values)
 
-    while obs.graph_features.globals[Env.GLOBAL_N_LOCAL_MOVES] < n_local_moves:
+    while ts.step_type != StepType.LAST:
       act = rng.choice(len(obs.mask), 1, p=obs.mask / np.sum(obs.mask))
       ts = env.step(act)
       obs = ConfigDict(ts.observation)
       if obs.graph_features.globals[Env.GLOBAL_LOCAL_SEARCH_STEP]:
         log_vals[trial_i].append(obs.curr_episode_log_values)
-    assert ts.step_type == StepType.LAST
   return log_vals

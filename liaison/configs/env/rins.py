@@ -32,6 +32,9 @@ def get_config():
   config.n_local_moves = 10
 
   config.lp_features = True
+
   config.delta_reward = False
   config.primal_gap_reward = True
+  config.primal_integral_reward = False
+
   return config

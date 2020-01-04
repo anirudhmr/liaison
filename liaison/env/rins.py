@@ -4,11 +4,10 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -120,6 +119,7 @@ class Env(BaseEnv):
     self._prev_avg_quality = np.nan
     self._prev_best_quality = np.nan
     self._prev_final_quality = np.nan
+    self._prev_mean_work = np.nan
     self._reset_next_step = True
     self.reset()
 
@@ -285,12 +285,14 @@ class Env(BaseEnv):
                    avg_quality=np.float32(self._prev_avg_quality),
                    best_quality=np.float32(self._prev_best_quality),
                    final_quality=np.float32(self._prev_final_quality),
+                   mean_work=np.float32(self._prev_mean_work),
                ),
                curr_episode_log_values=dict(
                    ep_return=np.float32(self._ep_return),
                    avg_quality=np.float32(np.mean(self._qualities)),
                    best_quality=np.float32(self._best_quality),
                    final_quality=np.float32(self._final_quality),
+                   mip_work=np.float32(self._mip_work),
                ))
     return obs
 
@@ -309,6 +311,8 @@ class Env(BaseEnv):
     self._best_quality = self._primal_gap(milp.feasible_objective)
     self._final_quality = self._best_quality
     self._qualities = [self._best_quality]
+    self._mip_work = 0
+    self._mip_works = []
 
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     # first construct variable nodes
@@ -402,8 +406,7 @@ class Env(BaseEnv):
     self._prev_obj = milp.feasible_objective
     return restart(self._observation())
 
-  def _scip_solve(self, mip: MIPInstance
-                  ) -> Tuple[Dict[str, Union[int, float]], Union[int, float]]:
+  def _scip_solve(self, mip: MIPInstance):
     """Solves a mip/lp using scip"""
     solver = Model()
     solver.hideOutput()
@@ -412,7 +415,7 @@ class Env(BaseEnv):
     assert solver.getStatus() == 'optimal', solver.getStatus()
     obj = float(solver.getObjVal())
     ass = {var.name: solver.getVal(var) for var in solver.getVars()}
-    return ass, obj
+    return ass, obj, solver.getNNodes()
 
   def _reset_mask(self, variable_nodes):
     variable_nodes[:, Env.
@@ -431,7 +434,7 @@ class Env(BaseEnv):
                                                fabs(curr_obj))
     return rew
 
-  def _compute_reward(self, prev_obj, curr_obj):
+  def _compute_reward(self, prev_obj, curr_obj, n_nodes):
     # old way of assigning reward -> change to incremental delta rewards.
     # rew = -1 * curr_obj / milp.optimal_objective
     assert self.config.delta_reward != self.config.primal_gap_reward
@@ -439,6 +442,8 @@ class Env(BaseEnv):
       rew = (prev_obj - curr_obj) / self.config.obj_normalizer
     elif self.config.primal_gap_reward:
       rew = -1.0 * self._primal_gap(curr_obj)
+    elif self.config.primal_integral_reward:
+      raise Exception('Unspecified reward scheme.')
     else:
       raise Exception('Unspecified reward scheme.')
     return rew
@@ -479,7 +484,7 @@ class Env(BaseEnv):
       # run mip
       local_search_case = True
       mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=False)
-      ass, curr_obj = self._scip_solve(mip)
+      ass, curr_obj, self._mip_work = self._scip_solve(mip)
       curr_sol = ass
       # # add back the newly found solutions for the sub-mip.
       # # this updates the current solution to the new local one.
@@ -506,7 +511,7 @@ class Env(BaseEnv):
       local_search_case = False
       if self.config.lp_features:
         mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=True)
-        ass, curr_lp_obj = self._scip_solve(mip)
+        ass, curr_lp_obj, _ = self._scip_solve(mip)
         curr_lp_sol = ass
       else:
         curr_lp_sol = curr_sol
@@ -527,10 +532,11 @@ class Env(BaseEnv):
       if milp.is_optimal:
         assert curr_obj - milp.optimal_objective >= -1e-4, (
             curr_obj, milp.optimal_objective, os.getpid())
-      rew = self._compute_reward(self._prev_obj, curr_obj)
+      rew = self._compute_reward(self._prev_obj, curr_obj, self._mip_work)
       self._qualities.append(self._primal_gap(curr_obj))
       self._final_quality = self._qualities[-1]
       self._best_quality = min(self._qualities)
+      self._mip_works.append(self._mip_work)
     else:
       rew = 0
     self._ep_return += rew
@@ -563,6 +569,7 @@ class Env(BaseEnv):
       self._prev_avg_quality = np.mean(self._qualities)
       self._prev_best_quality = self._best_quality
       self._prev_final_quality = self._final_quality
+      self._prev_mean_work = np.mean(self._mip_works)
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())

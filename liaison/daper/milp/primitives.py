@@ -458,3 +458,17 @@ class MIPInstance:
     for k, v in solution.items():
       assert self.varname2var[k].validate(v)
     return True
+
+
+def relax_integral_constraints(mip):
+  m = MIPInstance()
+  if m.name:
+    m.name = f'{m.name}_integral_relaxed'
+  m.constraints = copy.deepcopy(mip.constraints)
+
+  for vname, var in mip.varname2var.items():
+    m.add_variable(var.integral_relax())
+
+  m.obj = copy.deepcopy(m.obj)
+  m.validate()
+  return m

@@ -22,10 +22,10 @@ MILPHeuristic = lambda: ConfigDict(
         k=int,
         results=List[List[Dict]],
     ),
-    # rins=ConfigDict(
-    #     seeds=List[int],
-    #     n_local_moves=int,
-    #     k=int,
-    #     results=List[List[Dict]],
-    # ),
+    rins=ConfigDict(
+        seeds=List[int],
+        n_local_moves=int,
+        k=int,
+        results=List[List[Dict]],
+    ),
 )

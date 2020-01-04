@@ -25,6 +25,7 @@ parser.add_argument('--n_test_samples', type=int, default=None)
 parser.add_argument('--out_dir', type=str, required=True)
 parser.add_argument('--n_local_moves', type=int, required=True)
 parser.add_argument('--k', type=int, required=True)
+parser.add_argument('--run_random_only', action='store_true')
 REMAINDER = ''
 
 SEED = 42
@@ -58,6 +59,7 @@ def cmd_gen(seed, out_file, graph_path, random_seeds, n_local_moves, k,
                     --env_config.dataset_type={dataset_type}
                     --env_config.graph_start_idx={graph_idx}
                     --env_config.n_graphs=1
+                    {'--run_random_only' if args.run_random_only else ''}
                     {REMAINDER}"""
   return ' '.join(cmd.replace('\n', ' ').split())
 

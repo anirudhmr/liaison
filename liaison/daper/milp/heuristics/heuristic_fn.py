@@ -1,8 +1,10 @@
+import functools
 from math import fabs
 
 import numpy as np
 from liaison.daper import ConfigDict
-from liaison.daper.milp.primitives import IntegerVariable
+from liaison.daper.milp.primitives import (IntegerVariable,
+                                           relax_integral_constraints)
 from liaison.env import StepType
 from liaison.env.rins import Env
 from pyscipopt import Model
@@ -19,7 +21,7 @@ def scip_solve(mip):
   return ass
 
 
-def choose_act(curr_sol, mip, rng, k, least_integral=True):
+def integral(curr_sol, mip, rng, k, least_integral=True):
   errs = []
   for var_name, var in mip.varname2var.items():
     if isinstance(var, IntegerVariable):
@@ -44,9 +46,37 @@ def choose_act(curr_sol, mip, rng, k, least_integral=True):
   return rng.choice(var_names, size=k, replace=False)
 
 
-def run(least_integral, n_local_moves, k, n_trials, seeds, env):
+def rins(curr_sol, mip, rng, k):
+  continuous_sol = scip_solve(relax_integral_constraints(mip))
+  errs = []
+  for var, val in curr_sol.items():
+    err = fabs(val - continuous_sol[var])
+    errs.append((err, var))
+
+  errs = sorted(errs, reverse=True)
+  var_names = [var for err, var in errs[0:k]]
+  for err, var_name in errs:
+    if err == errs[k - 1][0]:
+      if var_name not in var_names:
+        var_names.append(var_name)
+  return rng.choice(var_names, size=k, replace=False)
+
+
+def choose_heuristic(heuristic):
+  if heuristic == 'rins':
+    return rins
+  elif heuristic == 'least_integral':
+    return functools.partial(integral, least_integral=True)
+  elif heuristic == 'most_integral':
+    return functools.partial(integral, least_integral=False)
+  else:
+    raise Exception(f'Unknown heuristic: {heuristic}')
+
+
+def run(heuristic, k, n_trials, seeds, env):
   assert len(seeds) == n_trials
 
+  heuristic_fn = choose_heuristic(heuristic)
   log_vals = [[] for _ in range(n_trials)]
   for trial_i, seed in zip(range(n_trials), seeds):
     rng = np.random.RandomState(seed)
@@ -54,16 +84,14 @@ def run(least_integral, n_local_moves, k, n_trials, seeds, env):
     obs = ConfigDict(ts.observation)
     log_vals[trial_i].append(obs.curr_episode_log_values)
 
-    while obs.graph_features.globals[Env.GLOBAL_N_LOCAL_MOVES] < n_local_moves:
-      var_names = choose_act(env._curr_soln, env.milp.mip, rng, k,
-                             least_integral)
-      for var_name in var_names:
+    while ts.step_type != StepType.LAST:
+      var_names = heuristic_fn(env._curr_soln, env.milp.mip, rng, k)
+      for i, var_name in enumerate(var_names):
         act = env._var_names.index(var_name)
         ts = env.step(act)
-
+        if i != len(var_names) - 1:
+          assert ts.step_type != StepType.LAST
       obs = ConfigDict(ts.observation)
       assert obs.graph_features.globals[Env.GLOBAL_LOCAL_SEARCH_STEP]
       log_vals[trial_i].append(obs.curr_episode_log_values)
-
-    assert ts.step_type == StepType.LAST
   return log_vals

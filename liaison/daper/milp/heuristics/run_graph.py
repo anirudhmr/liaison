@@ -3,12 +3,12 @@ import pickle
 import sys
 from pathlib import Path
 
+import tree as nest
 from absl import app
 from argon import ArgumentParser, to_nested_dicts
 from liaison import utils as U
 from liaison.daper import ConfigDict
-from liaison.daper.milp.heuristics.integral_heuristic import \
-    run as run_integral_heuristic
+from liaison.daper.milp.heuristics.heuristic_fn import run as run_heuristic
 from liaison.daper.milp.heuristics.random_heuristic import \
     run as run_random_heuristic
 from liaison.daper.milp.heuristics.spec import MILPHeuristic
@@ -25,6 +25,7 @@ parser.add_config_file(name='env', required=True)
 # random heuristic
 parser.add_argument('--n_trials', type=int, required=True)
 parser.add_argument('--random_seeds', type=int, nargs='+', required=True)
+parser.add_argument('--run_random_only', action='store_true')
 global args
 
 
@@ -47,26 +48,39 @@ def main(argv):
   args = parser.parse_args(argv[1:])
   heuristic = MILPHeuristic()
 
-  res = run_random_heuristic(args.n_local_moves, args.n_trials,
-                             args.random_seeds, make_env())
+  for k in heuristic.keys():
+    for key in heuristic[k].keys():
+      heuristic[k][key] = None
+
+  res = run_random_heuristic(args.n_trials, args.random_seeds, make_env())
   heuristic.random.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
                           k=args.k,
                           results=res)
 
-  res = run_integral_heuristic(True, args.n_local_moves, args.k, args.n_trials,
-                               args.random_seeds, make_env())
-  heuristic.least_integral.update(seeds=args.random_seeds,
-                                  n_local_moves=args.n_local_moves,
-                                  k=args.k,
-                                  results=res)
+  if not args.run_random_only:
+    # integral heuristics too slow...
+    # disable temporarily
+    # res = run_heuristic('least_integral', args.k, args.n_trials,
+    #                     args.random_seeds, make_env())
+    # heuristic.least_integral.update(seeds=args.random_seeds,
+    #                                 n_local_moves=args.n_local_moves,
+    #                                 k=args.k,
+    #                                 results=res)
 
-  res = run_integral_heuristic(False, args.n_local_moves, args.k,
-                               args.n_trials, args.random_seeds, make_env())
-  heuristic.most_integral.update(seeds=args.random_seeds,
-                                 n_local_moves=args.n_local_moves,
-                                 k=args.k,
-                                 results=res)
+    # res = run_heuristic('most_integral', args.k, args.n_trials,
+    #                     args.random_seeds, make_env())
+    # heuristic.most_integral.update(seeds=args.random_seeds,
+    #                                n_local_moves=args.n_local_moves,
+    #                                k=args.k,
+    #                                results=res)
+
+    res = run_heuristic('rins', args.k, args.n_trials, args.random_seeds,
+                        make_env())
+    heuristic.rins.update(seeds=args.random_seeds,
+                          n_local_moves=args.n_local_moves,
+                          k=args.k,
+                          results=res)
 
   path = Path(args.out_file)
   path.parent.mkdir(parents=True, exist_ok=True)
