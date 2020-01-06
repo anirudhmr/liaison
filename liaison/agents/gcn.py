@@ -81,63 +81,57 @@ class Agent(BaseAgent):
 
     self._validate_observations(observations)
     config = self.config
+    behavior_logits = step_outputs.logits  # [T, B]
+    actions = step_outputs.action  # [T, B]
+
     with tf.variable_scope(self._name):
-      # flatten graph features for policy network
-      with tf.variable_scope('flatten_graphs_for_logits'):
-        # time dimension T + 1 => T
-        observations_minus_1 = nest.map_structure(lambda k: k[:-1],
-                                                  observations)
+      t_dim = infer_shape(step_types)[0] - 1
+      bs_dim = infer_shape(step_types)[1]
+
+      # flatten graph features for graph embeddings.
+      with tf.variable_scope('flatten_graphs'):
         # merge time and batch dimensions
-        observations_minus_1 = nest.map_structure(merge_first_two_dims,
-                                                  observations_minus_1)
-        graph_features = gn.graphs.GraphsTuple(
-            **observations_minus_1['graph_features'])
+        flattened_observations = nest.map_structure(merge_first_two_dims,
+                                                    observations)
         # flatten by merging the batch and node, edge dimensions
-        graph_features = flatten_graphs(graph_features)
-        observations_minus_1['graph_features'] = graph_features
+        flattened_observations['graph_features'] = flatten_graphs(
+            gn.graphs.GraphsTuple(**flattened_observations['graph_features']))
+
+      with tf.variable_scope('graph_embeddings'):
+        graph_embedings = self.model.compute_graph_embeddings(
+            flattened_observations)
 
       with tf.variable_scope('target_logits'):
         # get logits
-        # logits -> [T* B, ...]
-        target_logits, _, logits_logged_vals = self._model.get_logits_and_next_state(
-            *nest.map_structure(merge_first_two_dims,
-                                [step_types[:-1], rewards[:-1]]),
-            observations_minus_1,
-            *nest.map_structure(merge_first_two_dims, [prev_states[:-1]]))
-
-      with tf.variable_scope('flatten_graphs_for_value_func'):
-        # flatten graphs for value network
-        # merge time and batch dimensions
-        observations['graph_features'] = nest.map_structure(
-            merge_first_two_dims, observations['graph_features'])
-        graph_features = gn.graphs.GraphsTuple(
-            **observations['graph_features'])
-        # flatten by merging the batch and node, edge dimensions
-        graph_features = flatten_graphs(graph_features)
-        observations['graph_features'] = graph_features
+        # target_logits -> [(T + 1)* B, ...]
+        target_logits, logits_logged_vals = self._model.get_logits(
+            graph_embeddings, flattened_observations['node_mask'])
+        # reshape to [T + 1, B ...]
+        target_logits = tf.reshape(target_logits, [t_dim + 1, bs_dim] +
+                                   tf.shape(behavior_logits)[2:])
+        # reshape to [T, B ...]
+        target_logits = target_logits[:-1]
 
       with tf.variable_scope('value'):
         # get value.
         # [(T+1)* B]
-        values = self._model.get_value(
-            *nest.map_structure(merge_first_two_dims, [step_types, rewards]),
-            observations,
-            *nest.map_structure(merge_first_two_dims, [prev_states]))
+        values = self._model.get_value(graph_embeddings)
+
+      with tf.variable_scope('auxiliary_supervised_loss'):
+        # preds -> [(T + 1)* B]
+        preds = self.model.get_node_predictions(
+            graph_features, flattened_observations['node_mask'])
+        auxiliary_loss = tf.reduce_mean(
+            (flattened_observations['optimal_solution'] - preds)**2)
 
       with tf.variable_scope('loss'):
-        t_dim = infer_shape(step_types)[0] - 1
-        bs_dim = infer_shape(step_types)[1]
         values = tf.reshape(values, [t_dim + 1, bs_dim])
-
-        actions = step_outputs.action  # [T, B]
-        behavior_logits = step_outputs.logits  # [T, B]
-        # [T, B]
-        target_logits = tf.reshape(target_logits, infer_shape(behavior_logits))
 
         if 'bootstrap_value' in observations:
           bootstrap_value = observations['bootstrap_value'][-1]
         else:
           bootstrap_value = values[-1]
+
         self.loss = VTraceLoss(step_types,
                                actions,
                                rewards,
@@ -149,9 +143,16 @@ class Agent(BaseAgent):
                                self._get_entropy_regularization_constant(),
                                bootstrap_value=bootstrap_value,
                                **config.loss)
+        loss = self.loss.loss
+        if config.loss.auxiliary_loss_coeff != 0:
+          loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
+          self.loss.logged_values.update({
+              'loss/auxiliary_loss': auxiliary_loss,
+              'loss/total_loss': loss,
+          })
 
       with tf.variable_scope('optimize'):
-        opt_vals = self._optimize(self.loss.loss)
+        opt_vals = self._optimize(loss)
 
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)

@@ -8,16 +8,17 @@ import graph_nets as gn
 import networkx as nx
 import numpy as np
 import scipy
+import tree as nest
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
                                            MIPInstance)
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
+from liaison.env.utils.rins import *
 from liaison.specs import ArraySpec, BoundedArraySpec
 from liaison.utils import ConfigDict
 from pyscipopt import Model
-from tensorflow.contrib.framework import nest
 
 
 class Env(BaseEnv):
@@ -38,9 +39,11 @@ class Env(BaseEnv):
   # If the variable is constrainted to be an integer
   # as opposed to continuous variables.
   VARIABLE_IS_INTEGER_FIELD = 3
+  # optimal lp solution (for the continuous relaxation)
+  VARIABLE_OPTIMAL_LP_SOLN_FIELD = 4
   # TODO: Add variable lower and upper bound vals.
 
-  N_VARIABLE_FIELDS = 4
+  N_VARIABLE_FIELDS = 5
 
   # constant used in the constraints.
   CONSTRAINT_CONSTANT_FIELD = 0
@@ -103,16 +106,6 @@ class Env(BaseEnv):
     self._graph_start_idx = graph_start_idx
 
     self.config.update(NORMALIZATION_CONSTANTS[dataset])
-    if n_graphs <= 10:
-      # simple heuristic to decide whether to load all the graphs
-      # or load greedily on-the-fly
-      self.milps = [
-          self._load_graph(i)
-          for i in range(graph_start_idx, graph_start_idx + n_graphs)
-      ]
-    else:
-      self.milps = None
-
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = np.nan
@@ -123,12 +116,6 @@ class Env(BaseEnv):
     self._reset_next_step = True
     self.reset()
 
-  def _load_graph(self, graph_idx):
-    with open(
-        os.path.join(DATASET_PATH[self._dataset], self._dataset_type,
-                     f'{graph_idx}.pkl'), 'rb') as f:
-      return pickle.load(f)
-
   def _sample(self, choice=None):
     n_graphs = self._n_graphs
     graph_start_idx = self._graph_start_idx
@@ -138,10 +125,7 @@ class Env(BaseEnv):
           range(graph_start_idx, graph_start_idx + n_graphs))
 
     self._milp_choice = choice
-    if self.milps:
-      return self.milps[choice - graph_start_idx]
-    else:
-      return self._load_graph(choice)
+    return get_sample(self._dataset, self._dataset_type, choice)
 
   def _observation_mlp(self, nodes):
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
@@ -207,33 +191,6 @@ class Env(BaseEnv):
                mask=node_mask)
     return obs
 
-  def _pad_first_dim(self, features: np.ndarray, pad_to_len):
-    """pads first dim to `pad_to_len`."""
-    if pad_to_len < 0:
-      return features
-    assert features.shape[0] <= pad_to_len, (features.shape, pad_to_len)
-    return np.pad(features, [(0, pad_to_len - features.shape[0])] + [(0, 0)] *
-                  (features.ndim - 1))
-
-  def _pad_last_dim(self, features: np.ndarray, pad_to_len):
-    """pads last dim to `pad_to_len`."""
-    if pad_to_len < 0:
-      return features
-
-    assert features.shape[-1] <= pad_to_len, (features.shape, pad_to_len)
-    return np.pad(features, [(0, 0)] * (features.ndim - 1) +
-                  [(0, pad_to_len - features.shape[-1])])
-
-  def _pad_graph_features(self, features: dict):
-    features = ConfigDict(**features)
-    features.update(nodes=self._pad_first_dim(features.nodes, self._max_nodes),
-                    edges=self._pad_first_dim(features.edges, self._max_edges),
-                    senders=self._pad_first_dim(features.senders,
-                                                self._max_edges),
-                    receivers=self._pad_first_dim(features.receivers,
-                                                  self._max_edges))
-    return dict(**features)
-
   def _observation(self):
     variable_nodes = self._variable_nodes
     constraint_nodes = self._constraint_nodes
@@ -294,16 +251,14 @@ class Env(BaseEnv):
                    final_quality=np.float32(self._final_quality),
                    mip_work=np.float32(self._mip_work),
                ))
+    # optimal solution can be used for supervised auxiliary tasks.
+    obs['optimal_solution'] = self._pad_last_dim(
+        [self.milp.optimal_solution[v] for v in self._var_names],
+        self._max_nodes)
     return obs
 
-  def resample_and_reset(self, i):
-    self.milp = self._sample(i)
-    return self.reset(resample=False)
-
-  def reset(self, resample=True):
-    if resample:
-      self.milp = self._sample()
-    milp = self.milp
+  def reset(self):
+    milp = self.milp = self._sample()
     self._ep_return = 0
     self._n_steps = 0
     self._n_local_moves = 0
@@ -325,6 +280,9 @@ class Env(BaseEnv):
     variable_nodes[:, Env.VARIABLE_IS_INTEGER_FIELD] = [
         isinstance(milp.mip.varname2var[var_name], IntegerVariable)
         for var_name in var_names
+    ]
+    variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD] = [
+        milp.optimal_lp_sol[v] for v in var_names
     ]
     variable_nodes = self._reset_mask(variable_nodes)
 
@@ -593,6 +551,15 @@ class Env(BaseEnv):
                             minimum=0,
                             maximum=len(self._variable_nodes) - 1,
                             name='action_spec')
+
+  def _pad_graph_features(self, features: dict):
+    features = ConfigDict(**features)
+    features.update(nodes=pad_first_dim(features.nodes, self._max_nodes),
+                    edges=pad_first_dim(features.edges, self._max_edges),
+                    senders=pad_first_dim(features.senders, self._max_edges),
+                    receivers=pad_first_dim(features.receivers,
+                                            self._max_edges))
+    return dict(**features)
 
   def set_seed(self, seed):
     np.random.seed(seed + self.id)

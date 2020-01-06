@@ -22,4 +22,12 @@ def get_config():
   config.loss = ConfigDict()
   config.loss.vf_loss_coeff = 1.0
 
+  config.al_coeff = ConfigDict()
+  config.al_coeff.init_val = 0.
+  config.al_coeff.min_val = 0.
+  config.al_coeff.start_dec_step = 1000
+  config.al_coeff.decay_steps = 1000
+  config.al_coeff.dec_val = .1
+  config.al_coeff.dec_approach = 'linear'
+
   return config

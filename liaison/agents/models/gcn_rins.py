@@ -104,6 +104,7 @@ class Model:
             node_model_fn=lambda: node_model,
             global_model_fn=lambda: lambda x:
             x,  # Don't summarize nodes/edges to the globals.
+            # if this is modified, add residual connections for globals as well.
             node_block_opt=NODE_BLOCK_OPT,
             edge_block_opt=EDGE_BLOCK_OPT,
             global_block_opt=GLOBAL_BLOCK_OPT,
@@ -174,7 +175,9 @@ class Model:
         graph_features = graph_features.replace(
             nodes=new_graph_features.nodes + graph_features.nodes,
             edges=new_graph_features.edges + graph_features.edges,
-            globals=new_graph_features.globals + graph_features.globals)
+            # residual connection not needed, since current choice is identity
+            # for globals.
+            globals=new_graph_features.globals)
 
     return graph_features
 
@@ -207,21 +210,26 @@ class Model:
             edges=new_graph_features.edges + graph_features.edges,
             globals=new_graph_features.globals + graph_features.globals)
 
-  def get_logits_and_next_state(self, step_type, _, obs, __):
+  def compute_graph_embeddings(self, obs):
     self._validate_observations(obs)
-    graph_features = obs['graph_features']
-    assert isinstance(graph_features, gn.graphs.GraphsTuple)
     # Run multiple rounds of graph convolutions
     graph_features = self._convolve(
-        self._encode(graph_features, obs['var_type_mask'],
+        self._encode(obs['graph_features'], obs['var_type_mask'],
                      obs['constraint_type_mask'], obs['obj_type_mask']))
+    return graph_features
+
+  def get_logits(self, graph_features: gn.graphs.GraphsTuple, node_mask):
+    """
+      graph_embeddings: Message propagated graph embeddings.
+                        Use self.compute_graph_embeddings to compute and cache
+                        these to use with different network heads for value, policy etc.
+    """
     # broadcast globals and attach them to node features
     graph_features = graph_features.replace(nodes=tf.concat([
         graph_features.nodes,
         gn.blocks.broadcast_globals_to_nodes(graph_features)
     ],
                                                             axis=-1))
-
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
     # remove the final singleton dimension
@@ -232,30 +240,23 @@ class Model:
 
     if 'node_mask' in obs:
       indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-      mask = obs['node_mask']
-      logits = tf.scatter_nd(indices, logits, tf.shape(mask))
+      logits = tf.scatter_nd(indices, logits, tf.shape(node_mask))
       logits = tf.where(tf.equal(mask, 1), logits,
-                        tf.fill(tf.shape(mask), -INF))
-    return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
+                        tf.fill(tf.shape(node_mask), -INF))
+    return logits, log_vals
 
-  def get_node_predictions(self, obs):
+  def get_node_predictions(self, graph_features: gn.graph.GraphsTuple,
+                           node_mask):
     """
       Returns a prediction for each node.
       This is useful for supervised node labelling/prediction tasks.
     """
-    self._validate_observations(obs)
-    graph_features = obs['graph_features']
-    # Run multiple rounds of graph convolutions
-    graph_features = self._convolve(
-        self._encode(graph_features, obs['var_type_mask'],
-                     obs['constraint_type_mask'], obs['obj_type_mask']))
     # broadcast globals and attach them to node features
     graph_features = graph_features.replace(nodes=tf.concat([
         graph_features.nodes,
         gn.blocks.broadcast_globals_to_nodes(graph_features)
     ],
                                                             axis=-1))
-
     # get logits over nodes
     logits = self.supervised_prediction_torso(graph_features.nodes)
     # remove the final singleton dimension
@@ -264,18 +265,17 @@ class Model:
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
-    if 'node_mask' in obs:
-      indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-      mask = obs['node_mask']
-      logits = tf.scatter_nd(indices, logits, tf.shape(mask))
-    return logits, log_vals
+    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
+    preds = tf.scatter_nd(indices, logits, tf.shape(node_mask))
+    return preds, log_vals
 
-  def get_value(self, _, __, obs, ___):
-    self._validate_observations(obs)
+  def get_value(self, graph_features: gn.graphs.GraphsTuple):
+    """
+      graph_embeddings: Message propagated graph embeddings.
+                        Use self.compute_graph_embeddings to compute and cache
+                        these to use with different network heads for value, policy etc.
+    """
     with tf.variable_scope('value_network'):
-      graph_features = self._convolve(
-          self._encode(obs['graph_features'], obs['var_type_mask'],
-                       obs['constraint_type_mask'], obs['obj_type_mask']))
       value = gn.blocks.NodesToGlobalsAggregator(
           tf.unsorted_segment_mean)(graph_features)
       value = tf.concat([value, graph_features.globals], axis=-1)

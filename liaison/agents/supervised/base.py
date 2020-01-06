@@ -62,26 +62,31 @@ class Agent(object):
       cli_grads = grads
     clipped_grads_and_vars = list(zip(cli_grads, variables))
 
-    relative_norm = 0
-    n_grads = 0
-    for grad, var in clipped_grads_and_vars:
-      if grad is not None:
-        x = tf.linalg.norm(grad, name='grad_norm') / tf.linalg.norm(
-            var, name='var_norm')
-        x = tf.where(tf.is_nan(x), tf.zeros_like(x), x)
-        relative_norm += x
-        n_grads += 1
+    # remove to stop large overhead
+    # relative_norm = 0
+    # n_grads = 0
+    # for grad, var in clipped_grads_and_vars:
+    #   if grad is not None:
+    #     x = tf.linalg.norm(grad, name='grad_norm') / tf.linalg.norm(
+    #         var, name='var_norm')
+    #     x = tf.where(tf.is_nan(x), tf.zeros_like(x), x)
+    #     relative_norm += x
+    #     n_grads += 1
 
-      if n_grads: relative_norm /= n_grads
+    #   if n_grads: relative_norm /= n_grads
 
     self._train_op = optimizer.apply_gradients(clipped_grads_and_vars,
                                                global_step=self.global_step)
     return {  # optimization related
-        'opt/pre_clipped_grad_norm': global_norm,
-        'opt/clipped_grad_norm': tf.linalg.global_norm(cli_grads, name='clipped_grad_norm'),
-        'opt/lr': lr,
-        'opt/weight_norm': tf.linalg.global_norm(variables, name='variable_norm'),
-        'opt/relative_gradient_norm': relative_norm,
+        'opt/pre_clipped_grad_norm':
+        global_norm,
+        'opt/clipped_grad_norm':
+        tf.linalg.global_norm(cli_grads, name='clipped_grad_norm'),
+        'opt/lr':
+        lr,
+        'opt/weight_norm':
+        tf.linalg.global_norm(variables, name='variable_norm'),
+        # 'opt/relative_gradient_norm': relative_norm,
     }
 
   def _extract_logged_values(self, obs):
