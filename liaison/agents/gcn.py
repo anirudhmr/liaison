@@ -25,44 +25,6 @@ class Agent(BaseAgent):
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
 
-  def _flatten_graphs(self, graph_features):
-    """
-      Flatten graphs. Remove padding.
-      Args:
-        graph_features: gn.graphs.GraphsTuple.
-        B is batch size
-        M_N is the max # of node (graphs with < M_N nodes use padding)
-        M_E max # of edges.
-        graph_features.nodes    => [B, M_N, ...]
-        graph_features.edges    => [B, M_E, ...]
-        graph_features.senders  => [B, M_E]
-        graph_features.receivers=> [B, M_E]
-        graph_features.n_node   => [B]
-        graph_features.n_edge   => [B]
-        graph_features.globals  => [B, ...]
-      Returns:
-        graph_features: gn.graphs.GraphsTuple
-        Let S_N = sum(graph_features.n_node)
-        Let S_E = sum(graph_features.n_edge)
-        graph_features.nodes    => [S_N, ...]
-        graph_features.edges    => [S_E, ...]
-        graph_features.senders  => [S_E]
-        graph_features.receivers=> [S_E]
-        graph_features.n_node   => [B]
-        graph_features.n_edge   => [B]
-        graph_features.globals  => [B, ...]
-    """
-    node_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-    edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
-    graph_features = graph_features.replace(
-        nodes=tf.gather_nd(params=graph_features.nodes, indices=node_indices),
-        edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
-        senders=tf.gather_nd(params=graph_features.senders,
-                             indices=edge_indices),
-        receivers=tf.gather_nd(params=graph_features.receivers,
-                               indices=edge_indices))
-    return gn.utils_tf.stop_gradient(graph_features)
-
   def step(self, step_type, reward, obs, prev_state):
     """Step through and return an action.
     This function will only be called once for graph creation and
@@ -86,7 +48,7 @@ class Agent(BaseAgent):
       # flatten graph features for the policy network
       # convert dict to graphstuple
       graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
-      obs['graph_features'] = self._flatten_graphs(graph_features)
+      obs['graph_features'] = flatten_graphs(graph_features)
 
       logits, next_state, _ = self._model.get_logits_and_next_state(
           step_type, reward, obs, prev_state)
@@ -131,7 +93,7 @@ class Agent(BaseAgent):
         graph_features = gn.graphs.GraphsTuple(
             **observations_minus_1['graph_features'])
         # flatten by merging the batch and node, edge dimensions
-        graph_features = self._flatten_graphs(graph_features)
+        graph_features = flatten_graphs(graph_features)
         observations_minus_1['graph_features'] = graph_features
 
       with tf.variable_scope('target_logits'):
@@ -151,7 +113,7 @@ class Agent(BaseAgent):
         graph_features = gn.graphs.GraphsTuple(
             **observations['graph_features'])
         # flatten by merging the batch and node, edge dimensions
-        graph_features = self._flatten_graphs(graph_features)
+        graph_features = flatten_graphs(graph_features)
         observations['graph_features'] = graph_features
 
       with tf.variable_scope('value'):

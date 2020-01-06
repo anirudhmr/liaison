@@ -1,8 +1,5 @@
 """Python RL Agent API."""
 
-from __future__ import absolute_import, division, print_function
-
-import abc
 import collections
 import random  # set seed
 
@@ -195,16 +192,6 @@ class Agent(object):
                                            step_types, rewards, observations,
                                            discounts)
     return step_outputs, prev_states, step_types, rewards, observations, discounts
-
-  def update(self, sess, feed_dict):
-    raise NotImplementedError("Agent update function is not implemented.")
-
-  def set_seed(self, seed):
-    self.seed = seed
-    tf.set_random_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-    return args
 
   def update(self, sess, feed_dict):
     raise NotImplementedError("Agent update function is not implemented.")

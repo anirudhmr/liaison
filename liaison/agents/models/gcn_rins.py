@@ -60,6 +60,7 @@ class Model:
                edge_hidden_layer_sizes=[64, 64],
                policy_torso_hidden_layer_sizes=[64, 64],
                value_torso_hidden_layer_sizes=[64, 64],
+               supervised_prediction_torso_hidden_layer_sizes=[64, 64],
                action_spec=None,
                sum_aggregation=True):
     self.activation = activation
@@ -116,6 +117,15 @@ class Model:
                             b=initializers.init_ops.Constant(0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation))
+
+    with tf.variable_scope('supervised_prediction_torso'):
+      self.supervised_prediction_torso = snt.nets.MLP(
+          supervised_prediction_torso_hidden_layer_sizes + [1],
+          initializers=dict(w=glorot_uniform(seed),
+                            b=initializers.init_ops.Constant(0)),
+          activate_final=False,
+          activation=get_activation_from_str(self.activation),
+      )
 
     with tf.variable_scope('value_torso'):
       self.value_torso = snt.nets.MLP(
@@ -220,13 +230,45 @@ class Model:
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
-    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     if 'node_mask' in obs:
+      indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
       mask = obs['node_mask']
       logits = tf.scatter_nd(indices, logits, tf.shape(mask))
       logits = tf.where(tf.equal(mask, 1), logits,
                         tf.fill(tf.shape(mask), -INF))
     return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
+
+  def get_node_predictions(self, obs):
+    """
+      Returns a prediction for each node.
+      This is useful for supervised node labelling/prediction tasks.
+    """
+    self._validate_observations(obs)
+    graph_features = obs['graph_features']
+    # Run multiple rounds of graph convolutions
+    graph_features = self._convolve(
+        self._encode(graph_features, obs['var_type_mask'],
+                     obs['constraint_type_mask'], obs['obj_type_mask']))
+    # broadcast globals and attach them to node features
+    graph_features = graph_features.replace(nodes=tf.concat([
+        graph_features.nodes,
+        gn.blocks.broadcast_globals_to_nodes(graph_features)
+    ],
+                                                            axis=-1))
+
+    # get logits over nodes
+    logits = self.supervised_prediction_torso(graph_features.nodes)
+    # remove the final singleton dimension
+    logits = tf.squeeze(logits, axis=-1)
+    log_vals = {}
+    # record norm *before* adding -INF to invalid spots
+    log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
+
+    if 'node_mask' in obs:
+      indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
+      mask = obs['node_mask']
+      logits = tf.scatter_nd(indices, logits, tf.shape(mask))
+    return logits, log_vals
 
   def get_value(self, _, __, obs, ___):
     self._validate_observations(obs)

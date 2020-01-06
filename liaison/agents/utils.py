@@ -1,3 +1,4 @@
+import graph_nets as gn
 import tensorflow as tf
 
 
@@ -93,3 +94,42 @@ def get_decay_ops(init_val,
 
   op = tf.cond(tf.less(global_step, start_decay_step), f1, f2)
   return tf.maximum(op, min_val)
+
+
+def flatten_graphs(graph_features):
+  """
+    Flatten graphs. Remove padding.
+    Args:
+      graph_features: gn.graphs.GraphsTuple.
+      B is batch size
+      M_N is the max # of node (graphs with < M_N nodes use padding)
+      M_E max # of edges.
+      graph_features.nodes    => [B, M_N, ...]
+      graph_features.edges    => [B, M_E, ...]
+      graph_features.senders  => [B, M_E]
+      graph_features.receivers=> [B, M_E]
+      graph_features.n_node   => [B]
+      graph_features.n_edge   => [B]
+      graph_features.globals  => [B, ...]
+    Returns:
+      graph_features: gn.graphs.GraphsTuple
+      Let S_N = sum(graph_features.n_node)
+      Let S_E = sum(graph_features.n_edge)
+      graph_features.nodes    => [S_N, ...]
+      graph_features.edges    => [S_E, ...]
+      graph_features.senders  => [S_E]
+      graph_features.receivers=> [S_E]
+      graph_features.n_node   => [B]
+      graph_features.n_edge   => [B]
+      graph_features.globals  => [B, ...]
+  """
+  node_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
+  edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
+  graph_features = graph_features.replace(
+      nodes=tf.gather_nd(params=graph_features.nodes, indices=node_indices),
+      edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
+      senders=tf.gather_nd(params=graph_features.senders,
+                           indices=edge_indices),
+      receivers=tf.gather_nd(params=graph_features.receivers,
+                             indices=edge_indices))
+  return gn.utils_tf.stop_gradient(graph_features)
