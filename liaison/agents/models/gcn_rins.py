@@ -100,8 +100,8 @@ class Model:
                                 layer_norm=True)
         # global(node(edge))
         self._graphnet_models[i] = gn.modules.GraphNetwork(
-            edge_model_fn=lambda: edge_model,
-            node_model_fn=lambda: node_model,
+            edge_model_fn=lambda fn=edge_model: fn,
+            node_model_fn=lambda fn=node_model: fn,
             global_model_fn=lambda: lambda x:
             x,  # Don't summarize nodes/edges to the globals.
             # if this is modified, add residual connections for globals as well.
@@ -191,7 +191,7 @@ class Model:
       with tf.variable_scope('attention'):
         nodes = graph_features.nodes
         qkv_size = 2 * key_size + value_size
-        total_size = qkv_size * num_heads  # denote as F
+        # total_size = qkv_size * num_heads  # denote as F
 
         # [total_num_nodes, d] => [total_num_nodes, F]
         qkv_flat = self._attention_dense_layers[i](nodes)
@@ -238,14 +238,13 @@ class Model:
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
-    if 'node_mask' in obs:
-      indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-      logits = tf.scatter_nd(indices, logits, tf.shape(node_mask))
-      logits = tf.where(tf.equal(mask, 1), logits,
-                        tf.fill(tf.shape(node_mask), -INF))
+    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
+    logits = tf.scatter_nd(indices, logits, tf.shape(node_mask))
+    logits = tf.where(tf.equal(node_mask, 1), logits,
+                      tf.fill(tf.shape(node_mask), -INF))
     return logits, log_vals
 
-  def get_node_predictions(self, graph_features: gn.graph.GraphsTuple,
+  def get_node_predictions(self, graph_features: gn.graphs.GraphsTuple,
                            node_mask):
     """
       Returns a prediction for each node.
@@ -261,13 +260,9 @@ class Model:
     logits = self.supervised_prediction_torso(graph_features.nodes)
     # remove the final singleton dimension
     logits = tf.squeeze(logits, axis=-1)
-    log_vals = {}
-    # record norm *before* adding -INF to invalid spots
-    log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
-
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     preds = tf.scatter_nd(indices, logits, tf.shape(node_mask))
-    return preds, log_vals
+    return preds
 
   def get_value(self, graph_features: gn.graphs.GraphsTuple):
     """
@@ -281,8 +276,8 @@ class Model:
       value = tf.concat([value, graph_features.globals], axis=-1)
       return tf.squeeze(self.value_torso(value), axis=-1)
 
-  def _dummy_state(self, bs):
+  def dummy_state(self, bs):
     return tf.fill(tf.expand_dims(bs, 0), 0)
 
   def get_initial_state(self, bs):
-    return self._dummy_state(bs)
+    return self.dummy_state(bs)

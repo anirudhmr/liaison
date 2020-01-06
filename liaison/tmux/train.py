@@ -72,10 +72,10 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          hyper.zip(
-              hyper.discrete('env_config.k', [50] * 4),
-              hyper.discrete('env_config.n_local_moves', [10, 20, 30, 40])),
-          hyper.discrete('agent_config.lr_init', [5e-4, 1e-3]),
+          hyper.zip(hyper.discrete('env_config.k', [5]),
+                    hyper.discrete('env_config.n_local_moves', [50])),
+          hyper.discrete('agent_config.lr_init', [1e-4, 5e-4, 1e-3]),
+          hyper.discrete('agent_config.loss.al_coeff.init_val', [.1, 1., 10.]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),

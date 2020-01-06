@@ -22,12 +22,13 @@ def get_config():
   config.loss = ConfigDict()
   config.loss.vf_loss_coeff = 1.0
 
-  config.al_coeff = ConfigDict()
-  config.al_coeff.init_val = 0.
-  config.al_coeff.min_val = 0.
-  config.al_coeff.start_dec_step = 1000
-  config.al_coeff.decay_steps = 1000
-  config.al_coeff.dec_val = .1
-  config.al_coeff.dec_approach = 'linear'
+  config.loss.al_coeff = ConfigDict()
+  config.loss.al_coeff.init_val = 0.
+  config.loss.al_coeff.min_val = 0.
+  config.loss.al_coeff.start_decay_step = 5000
+  config.loss.al_coeff.decay_steps = 5000
+  # dec_val not used for linear scheme
+  config.loss.al_coeff.dec_val = .1
+  config.loss.al_coeff.dec_approach = 'linear'
 
   return config

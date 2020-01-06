@@ -1,15 +1,11 @@
-import functools
-
 import graph_nets as gn
-import numpy as np
 import tensorflow as tf
-from absl import logging
-from liaison.agents import BaseAgent, StepOutput, utils
+import tree as nest
+from liaison.agents import BaseAgent, StepOutput
 from liaison.agents.losses.vtrace import Loss as VTraceLoss
 from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict
-from tensorflow.contrib.framework import nest
 
 
 class Agent(BaseAgent):
@@ -50,11 +46,12 @@ class Agent(BaseAgent):
       graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
       obs['graph_features'] = flatten_graphs(graph_features)
 
-      logits, next_state, _ = self._model.get_logits_and_next_state(
-          step_type, reward, obs, prev_state)
+      logits, _ = self._model.get_logits(
+          self._model.compute_graph_embeddings(obs), obs['node_mask'])
 
       action = sample_from_logits(logits, self.seed)
-      return StepOutput(action, logits, next_state)
+      return StepOutput(action, logits,
+                        self._model.dummy_state(infer_shape(step_type)[0]))
 
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
@@ -98,7 +95,7 @@ class Agent(BaseAgent):
             gn.graphs.GraphsTuple(**flattened_observations['graph_features']))
 
       with tf.variable_scope('graph_embeddings'):
-        graph_embedings = self.model.compute_graph_embeddings(
+        graph_embeddings = self._model.compute_graph_embeddings(
             flattened_observations)
 
       with tf.variable_scope('target_logits'):
@@ -108,7 +105,7 @@ class Agent(BaseAgent):
             graph_embeddings, flattened_observations['node_mask'])
         # reshape to [T + 1, B ...]
         target_logits = tf.reshape(target_logits, [t_dim + 1, bs_dim] +
-                                   tf.shape(behavior_logits)[2:])
+                                   infer_shape(behavior_logits)[2:])
         # reshape to [T, B ...]
         target_logits = target_logits[:-1]
 
@@ -119,8 +116,8 @@ class Agent(BaseAgent):
 
       with tf.variable_scope('auxiliary_supervised_loss'):
         # preds -> [(T + 1)* B]
-        preds = self.model.get_node_predictions(
-            graph_features, flattened_observations['node_mask'])
+        preds = self._model.get_node_predictions(
+            graph_embeddings, flattened_observations['node_mask'])
         auxiliary_loss = tf.reduce_mean(
             (flattened_observations['optimal_solution'] - preds)**2)
 
@@ -144,12 +141,11 @@ class Agent(BaseAgent):
                                bootstrap_value=bootstrap_value,
                                **config.loss)
         loss = self.loss.loss
-        if config.loss.auxiliary_loss_coeff != 0:
-          loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
-          self.loss.logged_values.update({
-              'loss/auxiliary_loss': auxiliary_loss,
-              'loss/total_loss': loss,
-          })
+        loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
+        self.loss.logged_values.update({
+            'loss/auxiliary_loss': auxiliary_loss,
+            'loss/total_loss': loss,
+        })
 
       with tf.variable_scope('optimize'):
         opt_vals = self._optimize(loss)
@@ -187,7 +183,7 @@ class Agent(BaseAgent):
             **opt_vals,
             **logits_logged_vals,
             **self._extract_logged_values(
-                tf.nest.map_structure(lambda k: k[:-1], observations), f),
+                nest.map_structure(lambda k: k[:-1], observations), f),
             **self.loss.logged_values
         }
 

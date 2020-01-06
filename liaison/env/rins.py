@@ -184,7 +184,7 @@ class Env(BaseEnv):
     node_mask[0:len(self._variable_nodes
                     )] = self._variable_nodes[:, Env.VARIABLE_MASK_FIELD]
 
-    node_mask = self._pad_last_dim(node_mask, self._max_nodes)
+    node_mask = pad_last_dim(node_mask, self._max_nodes)
     graph_features = self._pad_graph_features(graph_features)
     obs = dict(graph_features=graph_features,
                node_mask=node_mask,
@@ -231,12 +231,12 @@ class Env(BaseEnv):
             np.logical_or(self._constraint_type_mask, self._obj_type_mask)))
 
     obs = dict(**obs,
-               var_type_mask=self._pad_last_dim(self._var_type_mask,
-                                                self._max_nodes),
-               constraint_type_mask=self._pad_last_dim(
-                   self._constraint_type_mask, self._max_nodes),
-               obj_type_mask=self._pad_last_dim(self._obj_type_mask,
-                                                self._max_nodes),
+               var_type_mask=pad_last_dim(self._var_type_mask,
+                                          self._max_nodes),
+               constraint_type_mask=pad_last_dim(self._constraint_type_mask,
+                                                 self._max_nodes),
+               obj_type_mask=pad_last_dim(self._obj_type_mask,
+                                          self._max_nodes),
                log_values=dict(
                    ep_return=np.float32(self._prev_ep_return),
                    avg_quality=np.float32(self._prev_avg_quality),
@@ -252,8 +252,8 @@ class Env(BaseEnv):
                    mip_work=np.float32(self._mip_work),
                ))
     # optimal solution can be used for supervised auxiliary tasks.
-    obs['optimal_solution'] = self._pad_last_dim(
-        [self.milp.optimal_solution[v] for v in self._var_names],
+    obs['optimal_solution'] = pad_last_dim(
+        np.float32([self.milp.optimal_solution[v] for v in self._var_names]),
         self._max_nodes)
     return obs
 
@@ -543,7 +543,7 @@ class Env(BaseEnv):
                        np_arr.dtype,
                        name='_'.join(path_tuple) + '_spec')
 
-    return nest.map_structure_with_tuple_paths(mk_spec, obs)
+    return nest.map_structure_with_path(mk_spec, obs)
 
   def action_spec(self):
     return BoundedArraySpec((),

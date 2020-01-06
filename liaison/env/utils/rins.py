@@ -4,6 +4,7 @@ import pickle
 
 import numpy as np
 from liaison.daper.dataset_constants import DATASET_PATH
+from liaison.daper.milp.primitives import relax_integral_constraints
 from liaison.utils import ConfigDict
 from pyscipopt import Model
 
@@ -36,7 +37,7 @@ def get_sample(dataset, dataset_type, graph_idx):
 
   solver = Model()
   solver.hideOutput()
-  milp.mip.add_to_scip_solver(solver, relax_integral_constraints=True)
+  relax_integral_constraints(milp.mip).add_to_scip_solver(solver)
   solver.optimize()
   assert solver.getStatus() == 'optimal', solver.getStatus()
   ass = {var.name: solver.getVal(var) for var in solver.getVars()}

@@ -22,6 +22,7 @@ def get_config():
   config.ent_dec_min = 0.0
   config.ent_dec_steps = 1000
   config.ent_start_dec_step = 1000
+  # dec_val not used for linear scheme
   config.ent_dec_val = .1
   config.ent_dec_approach = 'linear'
 
