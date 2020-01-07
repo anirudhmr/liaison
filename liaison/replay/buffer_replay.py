@@ -2,8 +2,6 @@ import random
 import threading
 from collections import deque
 
-import liaison.utils as U
-from absl import logging
 from liaison.replay.base import Replay as BaseReplay
 from liaison.replay.base import ReplayUnderFlowException
 
@@ -28,13 +26,7 @@ class Replay(BaseReplay):
     with self.lock:
       if len(self._memory) < batch_size:
         raise ReplayUnderFlowException()
-
-      indices = [
-          random.randint(0,
-                         len(self._memory) - 1) for _ in range(batch_size)
-      ]
-      response = [self._memory[i] for i in indices]
-      return response
+      return [self._memory.popleft() for _ in range(batch_size)]
 
   def evict(self):
     raise NotImplementedError('no support for eviction in uniform replay mode')

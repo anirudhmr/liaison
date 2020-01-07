@@ -332,7 +332,8 @@ class Env(BaseEnv):
         (receivers, senders))
 
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(
+        self._steps_per_episode)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
 

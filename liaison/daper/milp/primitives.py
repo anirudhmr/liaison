@@ -328,7 +328,9 @@ class MIPInstance:
       all_var_names += c.expr.var_names
     all_var_names += self.obj.expr.var_names
 
-    assert set(all_var_names) == set(list(self.varname2var.keys()))
+    assert set(all_var_names) == set(list(
+        self.varname2var.keys())), (set(all_var_names),
+                                    set(list(self.varname2var.keys())))
 
   def old_fix(self,
               fixed_ass: Dict[str, float],

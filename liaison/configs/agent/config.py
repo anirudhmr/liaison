@@ -30,4 +30,12 @@ def get_config():
   config.grad_clip = 1.0
   config.discount_factor = 0.99
 
+  config.optimizer = ConfigDict()
+  # Options: Adam or RMSProp.
+  config.optimizer.name = 'Adam'
+  # hyperparams for RMSProp
+  config.optimizer.decay = .9
+  config.optimizer.momentum = 0.0
+  config.optimizer.epsilon = 1e-7
+
   return config

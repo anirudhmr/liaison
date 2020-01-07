@@ -51,7 +51,17 @@ class Agent(object):
                          config.ent_dec_val, config.ent_dec_approach)
 
   def _init_optimizer(self, lr_op):
-    return tf.train.AdamOptimizer(lr_op)
+    config = self.config
+    if config.optimizer.name.lower() == 'adam':
+      optimizer = tf.train.AdamOptimizer(learning_rate=lr_op)
+    elif config.optimizer.name.lower() == 'rmsprop':
+      optimizer = tf.train.RMSPropOptimizer(learning_rate=lr_op,
+                                            decay=config.optimizer.decay,
+                                            momentum=config.optimizer.momentum,
+                                            epsilon=config.optimizer.epsilon)
+    else:
+      raise Exception(f'Unknown optimizer specified {config.optimizer.name}')
+    return optimizer
 
   def _optimize(self, loss):
     config = self.config

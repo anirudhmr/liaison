@@ -141,7 +141,8 @@ class Agent(BaseAgent):
                                bootstrap_value=bootstrap_value,
                                **config.loss)
         loss = self.loss.loss
-        loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
+        coeff = get_decay_ops(**config.loss.al_coeff)
+        loss += auxiliary_loss * coeff
         self.loss.logged_values.update({
             'loss/auxiliary_loss': auxiliary_loss,
             'loss/total_loss': loss,

@@ -4,7 +4,7 @@ from liaison.utils import ConfigDict
 def get_config():
   config = ConfigDict()
 
-  config.n_trials = 3
+  config.n_trials = 1
   config.eval_sleep_time = 30 * 60  # (in seconds)
   config.batch_size = 32
 

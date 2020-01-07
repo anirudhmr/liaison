@@ -226,7 +226,7 @@ def from_importance_weights(log_rhos,
                                                  dtype=tf.float32)
 
   # Make sure tensor ranks are consistent.
-  rho_rank = log_rhos.shape.ndims  # Usually 2.
+  rho_rank = log_rhos.shape.ndims  # Usually 2
   values.shape.assert_has_rank(rho_rank)
   bootstrap_value.shape.assert_has_rank(rho_rank - 1)
   discounts.shape.assert_has_rank(rho_rank)

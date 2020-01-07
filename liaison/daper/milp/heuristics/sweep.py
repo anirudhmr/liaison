@@ -1,5 +1,5 @@
 """
-python liaison/daper/milp/heuristics/sweep.py --dataset=milp-cauction-10 --out_dir /tmp/heuristics --n_local_moves=10 --k=5 --n_training_samples=1 --n_valid_samples=1 --n_test_samples=1
+python liaison/daper/milp/heuristics/sweep.py --dataset=milp-cauction-10 --out_dir /tmp/heuristics --n_local_moves=10 --n_training_samples=1 --n_valid_samples=1 --n_test_samples=1
 """
 import argparse
 import json
@@ -43,7 +43,7 @@ def main():
   os.system('echo -n "" > jobs.txt')
   try:
     for work_id, params in enumerate(
-        hyper.product(hyper.discrete('k', [10, 50, 100]), )):
+        hyper.product(hyper.discrete('k', [5, 10, 20]), )):
       params = ConfigDict(params)
       d = '_'.join([f'{k}:{v}' for k, v in sorted(params.items())])
       cmd = f'python liaison/daper/milp/heuristics/run_dataset.py --out_dir={args.out_dir}/{d} --k={params.k} {" ".join(remainder)}'

@@ -79,7 +79,8 @@ class BatchedEnv(BaseBatchedEnv):
 
     results = []
     for r_q in self._recv_queues:
-      results.append(r_q.get()[0])
+      msg = r_q.get()
+      results.append(msg[0])
     return results
 
   def _setup_obs_spec(self):
