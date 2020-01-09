@@ -134,7 +134,7 @@ class Launcher:
                         env_class=env_class,
                         env_configs=[self.env_config] * self.batch_size,
                         traj_length=self.traj_length,
-                        seed=self.seed,
+                        seed=self.seed + actor_id * self.batch_size,
                         batch_size=self.batch_size,
                         **self.sess_config.actor)
 

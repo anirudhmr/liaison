@@ -19,14 +19,14 @@ def get_config():
   config.actor = ConfigDict()
   config.actor.cpu = 1
   config.actor.mem = 0
-  config.actor.gpu_compute = []
-  config.actor.gpu_mem = []
+  config.actor.gpu_compute = [1]
+  config.actor.gpu_mem = [2]
 
   config.evaluator = ConfigDict()
   config.evaluator.cpu = 1
   config.evaluator.mem = 0
-  config.evaluator.gpu_compute = []
-  config.evaluator.gpu_mem = []
+  config.evaluator.gpu_compute = [1]
+  config.evaluator.gpu_mem = [2]
 
   config.replay = ConfigDict()
   config.replay.cpu = 0

@@ -43,7 +43,7 @@ def main():
   os.system('echo -n "" > jobs.txt')
   try:
     for work_id, params in enumerate(
-        hyper.product(hyper.discrete('k', [5, 10, 20]), )):
+        hyper.product(hyper.discrete('k', [50, 100, 200]), )):
       params = ConfigDict(params)
       d = '_'.join([f'{k}:{v}' for k, v in sorted(params.items())])
       cmd = f'python liaison/daper/milp/heuristics/run_dataset.py --out_dir={args.out_dir}/{d} --k={params.k} {" ".join(remainder)}'

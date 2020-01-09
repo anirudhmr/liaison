@@ -15,5 +15,6 @@ def get_config():
   config.dataset_type_field = 'dataset_type'
   config.env_config = ConfigDict()
   config.env_config.n_local_moves = 10
+  config.env_config.lp_features = True
 
   return config

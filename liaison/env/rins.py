@@ -242,7 +242,7 @@ class Env(BaseEnv):
                    avg_quality=np.float32(self._prev_avg_quality),
                    best_quality=np.float32(self._prev_best_quality),
                    final_quality=np.float32(self._prev_final_quality),
-                   mean_work=np.float32(self._prev_mean_work),
+                   mip_work=np.float32(self._prev_mean_work),
                ),
                curr_episode_log_values=dict(
                    ep_return=np.float32(self._ep_return),

@@ -3,6 +3,7 @@ python liaison/daper/milp/sample_dataset.py --out_dir=/data/nms/tfp/datasets/mil
 """
 import argparse
 import os
+import shlex
 import sys
 
 parser = argparse.ArgumentParser()
@@ -10,6 +11,7 @@ parser.add_argument('--out_dir', type=str, required=True)
 parser.add_argument('--n_training_samples', type=int, default=1000)
 parser.add_argument('--n_valid_samples', type=int, default=100)
 parser.add_argument('--n_test_samples', type=int, default=100)
+parser.add_argument('--slurm_mode', action='store_true')
 REMAINDER = ''
 
 
@@ -43,8 +45,18 @@ def main():
       cmds += [cmd_gen(seed, out_file)]
       seed += 1
 
-  for cmd in cmds:
-    print(cmd)
+  if args.slurm_mode:
+    for i in range(len(cmds) // 2):
+      if 2 * i + 1 < len(cmds):
+        cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1]
+      else:
+        cmd = cmds[2 * i]
+      print(
+          f'srun --overcommit --hint=compute_bound --cpus-per-task=1 --mem=1000M bash -c {shlex.quote(cmd)}'
+      )
+  else:
+    for cmd in cmds:
+      print(cmd)
 
 
 if __name__ == '__main__':

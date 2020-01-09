@@ -11,9 +11,10 @@ MILP = lambda: ConfigDict(
     # Optimal objective achieved.
     optimal_objective=float,
     optimal_solution=Dict[str, int],
+    optimal_sol_metadata=ConfigDict(n_nodes=int),
     # whether the solution is actually optimal
     # as opposed to the best within timelimit.
     is_optimal=bool,
     feasible_objective=float,
     feasible_solution=Dict[str, int],
-    seed=int)
+)

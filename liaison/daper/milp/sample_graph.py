@@ -3,6 +3,7 @@ import functools
 import os
 import pickle
 
+import numpy as np
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
 
@@ -15,6 +16,7 @@ parser.add_argument('--problem_type',
 parser.add_argument('--problem_size', type=int, required=True)
 parser.add_argument('--time_limit', type=int, default=None)
 parser.add_argument('--seed', type=int, required=True)
+parser.add_argument('--n_nodes_threshold', type=int, required=True)
 parser.add_argument('--use_cplex', action='store_true')
 args = parser.parse_args()
 
@@ -75,6 +77,7 @@ def scip(mip, milp):
       for var in model.getVars()
   }
   milp.is_optimal = (model.getStatus() == 'optimal')
+  milp.optimal_sol_metadata.n_nodes = model.getNNodes()
 
   feasible_sol = model.getSols()[-1]
   milp.feasible_objective = model.getSolObjVal(feasible_sol)
@@ -86,19 +89,28 @@ def scip(mip, milp):
 
 def main():
 
-  milp = MILP()
-  milp.seed = args.seed
-  milp.problem_type = args.problem_type
-  mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
-                                     args.seed)
+  optimal_milp = None
+  n_nodes = 0
+  rng = np.random.RandomState(args.seed)
 
-  if args.use_cplex:
-    cplex(mip, milp)
-  else:
-    scip(mip, milp)
+  while n_nodes <= args.n_nodes_threshold:
+    for i in range(50):
+      milp = MILP()
+      milp.problem_type = args.problem_type
+      mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
+                                         rng)
+      if args.use_cplex:
+        cplex(mip, milp)
+      else:
+        scip(mip, milp)
+
+      if n_nodes < milp.optimal_sol_metadata.n_nodes:
+        n_nodes = milp.optimal_sol_metadata.n_nodes
+        optimal_milp = milp
+
   os.makedirs(os.path.dirname(args.out_file), exist_ok=True)
   with open(args.out_file, 'wb') as f:
-    pickle.dump(milp, f)
+    pickle.dump(optimal_milp, f)
 
 
 if __name__ == '__main__':

@@ -576,8 +576,7 @@ def generate_setcover(rng, nrows, ncols, density, max_coef=100):
   return m
 
 
-def generate_instance(problem, problem_size, seed):
-  rng = np.random.RandomState(seed)
+def generate_instance(problem, problem_size, rng):
   if problem == 'cauction':
     number_of_items = problem_size
     number_of_bids = 5 * problem_size

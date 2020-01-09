@@ -29,7 +29,7 @@ def get_config():
   config.max_edges = -1
 
   config.k = 5
-  config.n_local_moves = 10
+  config.n_local_moves = 100
 
   config.lp_features = True
 
