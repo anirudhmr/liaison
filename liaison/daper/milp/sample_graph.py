@@ -87,26 +87,34 @@ def scip(mip, milp):
   }
 
 
+def sample_mip(rng):
+  milp = MILP()
+  milp.problem_type = args.problem_type
+  mip = milp.mip = generate_instance(args.problem_type, args.problem_size, rng)
+  if args.use_cplex:
+    cplex(mip, milp)
+  else:
+    scip(mip, milp)
+  return milp
+
+
 def main():
 
   optimal_milp = None
   n_nodes = 0
   rng = np.random.RandomState(args.seed)
 
-  while n_nodes <= args.n_nodes_threshold:
-    for i in range(50):
-      milp = MILP()
-      milp.problem_type = args.problem_type
-      mip = milp.mip = generate_instance(args.problem_type, args.problem_size,
-                                         rng)
-      if args.use_cplex:
-        cplex(mip, milp)
-      else:
-        scip(mip, milp)
-
-      if n_nodes < milp.optimal_sol_metadata.n_nodes:
-        n_nodes = milp.optimal_sol_metadata.n_nodes
-        optimal_milp = milp
+  if args.n_nodes_threshold > 0:
+    while n_nodes < args.n_nodes_threshold:
+      for i in range(50):
+        milp = sample_mip(rng)
+        if n_nodes < milp.optimal_sol_metadata.n_nodes:
+          n_nodes = milp.optimal_sol_metadata.n_nodes
+          optimal_milp = milp
+      # print(n_nodes)
+  else:
+    # if negative or zero threshold given then just sample single mip.
+    optimal_milp = sample_mip(rng)
 
   os.makedirs(os.path.dirname(args.out_file), exist_ok=True)
   with open(args.out_file, 'wb') as f:

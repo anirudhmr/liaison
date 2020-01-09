@@ -3,56 +3,18 @@
 import graph_nets as gn
 import numpy as np
 import sonnet as snt
+from liaison.agents.models.gcn_rins import INF
+from liaison.agents.models.gcn_rins import Model as GCNRinsModel
+from liaison.agents.models.gcn_rins import make_mlp
 from liaison.agents.models.utils import *
 from sonnet.python.ops import initializers
 
-INF = np.float32(1e9)
 
-EDGE_BLOCK_OPT = {
-    "use_edges": True,
-    "use_receiver_nodes": False,
-    "use_sender_nodes": True,
-    "use_globals": True
-}
-
-NODE_BLOCK_OPT = {
-    "use_received_edges": True,
-    "use_sent_edges": False,
-    "use_nodes": True,
-    "use_globals": True,
-}
-
-GLOBAL_BLOCK_OPT = {
-    "use_edges": False,
-    "use_nodes": False,
-    "use_globals": True,
-}
-
-
-def make_mlp(layer_sizes,
-             activation,
-             activate_final,
-             seed,
-             layer_norm=False,
-             **kwargs):
-  mlp = snt.nets.MLP(layer_sizes,
-                     initializers=dict(w=glorot_uniform(seed),
-                                       b=initializers.init_ops.Constant(0)),
-                     activate_final=activate_final,
-                     activation=get_activation_from_str(activation),
-                     **kwargs)
-  if layer_norm:
-    return snt.Sequential([mlp, snt.LayerNorm()])
-  else:
-    return mlp
-
-
-class Model:
+class Model(GCNRinsModel):
 
   def __init__(self,
                seed,
                activation='relu',
-               n_prop_layers=8,
                edge_embed_dim=32,
                node_embed_dim=32,
                global_embed_dim=8,
@@ -73,18 +35,35 @@ class Model:
     self.global_embed_dim = global_embed_dim
 
     with tf.variable_scope('encode'):
-      self._var_encode_net = snt.Linear(node_embed_dim, name='var_encode_net')
-      self._constraint_encode_net = snt.Linear(node_embed_dim,
-                                               name='constraint_encode_net')
-      self._obj_encode_net = snt.Linear(node_embed_dim, name='obj_encode_net')
+
+      def f(embed_dim, name):
+        return make_mlp([embed_dim] * 2,
+                        activation,
+                        activate_final=True,
+                        seed=seed,
+                        layer_norm=False,
+                        name=name)
+
+      self._var_encode_net = f(node_embed_dim, 'var_encode_net')
+      self._constraint_encode_net = f(node_embed_dim, 'constraint_encode_net')
+      self._obj_encode_net = f(node_embed_dim, 'obj_encode_net')
+
       self._encode_net = gn.modules.GraphIndependent(
-          edge_model_fn=lambda: snt.Linear(edge_embed_dim, name='edge_encode'),
-          global_model_fn=lambda: snt.Linear(global_embed_dim,
-                                             name='global_encode'),
+          edge_model_fn=lambda: f(edge_embed_dim, 'edge_encode'),
+          global_model_fn=lambda: f(global_embed_dim, 'global_encode'),
           node_model_fn=None)
 
-    self._graphnet_models = [None for _ in range(n_prop_layers)]
-    for i in range(n_prop_layers):
+      # GRAPH CONVOLUTIONS
+      # TODO: Handle the case where edge_embed_dim is different from node_embed_dim
+      self.conv_v_to_c = BipartiteGraphConvolution(self.node_embed_dim,
+                                                   activation,
+                                                   self.initializer,
+                                                   right_to_left=True,
+                                                   sum_aggregation)
+      self.conv_c_to_v = BipartiteGraphConvolution(self.emb_size, activation,
+                                                   self.initializer,
+                                                   sum_aggregation)
+
       with tf.variable_scope('graphnet_model_%d' % i):
         with tf.variable_scope('edge_model'):
           edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],

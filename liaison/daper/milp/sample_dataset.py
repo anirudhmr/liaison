@@ -48,12 +48,10 @@ def main():
   if args.slurm_mode:
     for i in range(len(cmds) // 2):
       if 2 * i + 1 < len(cmds):
-        cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1]
+        cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1] + '; wait'
       else:
         cmd = cmds[2 * i]
-      print(
-          f'srun --overcommit --hint=compute_bound --cpus-per-task=1 --mem=1000M bash -c {shlex.quote(cmd)}'
-      )
+      print(f'srun --overcommit --mem=2G bash -c {shlex.quote(cmd)}')
   else:
     for cmd in cmds:
       print(cmd)

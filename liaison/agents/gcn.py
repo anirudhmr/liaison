@@ -115,11 +115,8 @@ class Agent(BaseAgent):
         values = self._model.get_value(graph_embeddings)
 
       with tf.variable_scope('auxiliary_supervised_loss'):
-        # preds -> [(T + 1)* B]
-        preds = self._model.get_node_predictions(
-            graph_embeddings, flattened_observations['node_mask'])
-        auxiliary_loss = tf.reduce_mean(
-            (flattened_observations['optimal_solution'] - preds)**2)
+        auxiliary_loss = self._model.get_auxiliary_loss(
+            graph_embeddings, flattened_observations)
 
       with tf.variable_scope('loss'):
         values = tf.reshape(values, [t_dim + 1, bs_dim])

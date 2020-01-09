@@ -1,5 +1,4 @@
 import numpy as np
-
 import tensorflow as tf
 import tensorflow.keras as K
 
@@ -14,7 +13,7 @@ class BipartiteGraphConvolution(K.Model):
                activation,
                initializer,
                right_to_left=False,
-               memory_hack=False):
+               memory_hack=False, sum_aggregation=True):
     """
       For memory_hack see issue https://github.com/ds4dm/learn2branch/issues/4
     """
@@ -63,6 +62,7 @@ class BipartiteGraphConvolution(K.Model):
                        activation=None,
                        kernel_initializer=self.initializer),
     ])
+    self.sum_aggregation = sum_aggregation
 
   def call(self, inputs):
     """
@@ -109,7 +109,16 @@ class BipartiteGraphConvolution(K.Model):
                                 indices=tf.expand_dims(
                                     edge_indices[scatter_dim], axis=1),
                                 shape=[scatter_out_size, self.emb_size])
-    conv_output = self.post_conv_module(conv_output)
+    # mean convolution
+    neighbour_count = tf.scatter_nd(
+        updates=tf.ones(shape=[tf.shape(edge_indices)[1], 1],
+                        dtype=tf.float32),
+        indices=tf.expand_dims(edge_indices[scatter_dim], axis=1),
+        shape=[scatter_out_size, 1])
+    neighbour_count = tf.where(tf.equal(neighbour_count, 0),
+                               tf.ones_like(neighbour_count),
+                               neighbour_count)  # NaN safety trick
+    conv_output = conv_output / neighbour_count
 
     # apply final module
     output = self.output_module(
@@ -222,5 +231,5 @@ class Model(K.Model):
     output = tf.reshape(output, [1, -1])
     return output
 
-  def call(self, inputs):
-    return self.get_logits_and_next_state(*inputs)
+  def call(self, *args, **kwargs):
+    return self.get_logits_and_next_state(*args, **kwargs)
