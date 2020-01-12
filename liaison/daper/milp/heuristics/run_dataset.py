@@ -23,26 +23,16 @@ parser.add_argument(
 parser.add_argument('--n_valid_samples', type=int, default=None)
 parser.add_argument('--n_test_samples', type=int, default=None)
 parser.add_argument('--out_dir', type=str, required=True)
+parser.add_argument('--samples',
+                    type=int,
+                    nargs='+',
+                    help='Samples from the training dataset.')
 parser.add_argument('--n_local_moves', type=int, required=True)
 parser.add_argument('--k', type=int, required=True)
-parser.add_argument('--run_random_only', action='store_true')
-REMAINDER = ''
-
 SEED = 42
 N_TRIALS = 1
 
-
-def preprocess(argv):
-  if '--' in sys.argv:
-    global REMAINDER
-    idx = sys.argv.index('--')
-    REMAINDER = ' '.join(sys.argv[idx + 1:])
-  else:
-    idx = len(sys.argv)
-  return sys.argv[1:idx]
-
-
-args = parser.parse_args(preprocess(sys.argv))
+args, REMAINDER = parser.parse_known_args()
 
 
 def cmd_gen(seed, out_file, graph_path, random_seeds, n_local_moves, k,
@@ -59,8 +49,7 @@ def cmd_gen(seed, out_file, graph_path, random_seeds, n_local_moves, k,
                     --env_config.dataset_type={dataset_type}
                     --env_config.graph_start_idx={graph_idx}
                     --env_config.n_graphs=1
-                    {'--run_random_only' if args.run_random_only else ''}
-                    {REMAINDER}"""
+                    {' '.join(REMAINDER)}"""
   return ' '.join(cmd.replace('\n', ' ').split())
 
 
@@ -78,10 +67,10 @@ def main():
   random_seed = 0
   seed = SEED
   rng = np.random.RandomState(SEED)
-  for mode in ['train', 'valid', 'test']:
-    for i in rng.choice(range(LENGTH_MAP[args.dataset][mode]),
-                        dataset_lengths[mode],
-                        replace=False):
+
+  def create_cmds(samples, seed, mode, random_seed, cmds):
+    for i in samples:
+      i = int(i.rstrip('.pkl'))
       out_file = Path(args.out_dir, mode, f'{i}.pkl')
       graph_path = Path(DATASET_PATH[args.dataset], mode, f'{i}.pkl')
       random_seeds = list(range(random_seed, random_seed + N_TRIALS))
@@ -91,6 +80,17 @@ def main():
                   args.k, args.dataset, mode, i)
       ]
       seed += 1
+    return seed, random_seed
+
+  if args.samples:
+    samples = list(map(lambda k: f'{k}.pkl', args.samples))
+    seed, random_seed = create_cmds(samples, seed, 'train', random_seed, cmds)
+  else:
+    for mode in ['train', 'valid', 'test']:
+      files = list(os.listdir(os.path.join(DATASET_PATH[args.dataset], mode)))
+      samples = rng.choice(files, dataset_lengths[mode], replace=False)
+      seed, random_seed = create_cmds(samples, seed, 'train', random_seed,
+                                      cmds)
 
   for cmd in cmds:
     print(cmd)

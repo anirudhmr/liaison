@@ -10,7 +10,7 @@ INF = np.float32(1e9)
 
 EDGE_BLOCK_OPT = {
     "use_edges": True,
-    "use_receiver_nodes": False,
+    "use_receiver_nodes": True,
     "use_sender_nodes": True,
     "use_globals": True
 }
@@ -49,20 +49,21 @@ def make_mlp(layer_sizes,
 
 class Model:
 
-  def __init__(self,
-               seed,
-               activation='relu',
-               n_prop_layers=8,
-               edge_embed_dim=32,
-               node_embed_dim=32,
-               global_embed_dim=8,
-               node_hidden_layer_sizes=[64, 64],
-               edge_hidden_layer_sizes=[64, 64],
-               policy_torso_hidden_layer_sizes=[64, 64],
-               value_torso_hidden_layer_sizes=[64, 64],
-               supervised_prediction_torso_hidden_layer_sizes=[64, 64],
-               action_spec=None,
-               sum_aggregation=True):
+  def __init__(
+      self,
+      seed,
+      activation='relu',
+      n_prop_layers=4,
+      edge_embed_dim=32,
+      node_embed_dim=32,
+      global_embed_dim=8,
+      node_hidden_layer_sizes=[64],
+      edge_hidden_layer_sizes=[32],  # if num edges is high keep this light.
+      policy_torso_hidden_layer_sizes=[64, 64],
+      value_torso_hidden_layer_sizes=[64, 64],
+      supervised_prediction_torso_hidden_layer_sizes=[64, 64],
+      action_spec=None,
+      sum_aggregation=True):
     self.activation = activation
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -73,14 +74,22 @@ class Model:
     self.global_embed_dim = global_embed_dim
 
     with tf.variable_scope('encode'):
-      self._var_encode_net = snt.Linear(node_embed_dim, name='var_encode_net')
-      self._constraint_encode_net = snt.Linear(node_embed_dim,
-                                               name='constraint_encode_net')
-      self._obj_encode_net = snt.Linear(node_embed_dim, name='obj_encode_net')
+
+      def f(embed_dim, name):
+        return make_mlp([embed_dim] * 2,
+                        activation,
+                        activate_final=True,
+                        seed=seed,
+                        layer_norm=False,
+                        name=name)
+
+      self._var_encode_net = f(node_embed_dim, 'var_encode_net')
+      self._constraint_encode_net = f(node_embed_dim, 'constraint_encode_net')
+      self._obj_encode_net = f(node_embed_dim, 'obj_encode_net')
+
       self._encode_net = gn.modules.GraphIndependent(
-          edge_model_fn=lambda: snt.Linear(edge_embed_dim, name='edge_encode'),
-          global_model_fn=lambda: snt.Linear(global_embed_dim,
-                                             name='global_encode'),
+          edge_model_fn=lambda: f(edge_embed_dim, 'edge_encode'),
+          global_model_fn=lambda: f(global_embed_dim, 'global_encode'),
           node_model_fn=None)
 
     self._graphnet_models = [None for _ in range(n_prop_layers)]

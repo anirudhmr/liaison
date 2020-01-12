@@ -6,6 +6,8 @@ import json
 import os
 import pprint
 import re
+import shlex
+import subprocess
 import sys
 import time
 from contextlib import contextmanager
@@ -750,3 +752,27 @@ def relu(x):
   if x < 0:
     return type(x)(0)
   return x
+
+
+def run_cmd(cmd):
+  result = subprocess.Popen(shlex.split(cmd),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+
+  out_lines = []
+  if result.stdout is not None:
+    for l in result.stdout:
+      out_lines.append(l)
+
+  result.wait()
+
+  if result.stderr and result.returncode != 0:
+    raise Exception(
+        'exception encountered when executing command "{cmd}" locally: {err}'.
+        format(cmd=cmd,
+               err=''.join(map(lambda k: k.decode('utf-8'), result.stderr))))
+
+  if result.stdout is None:
+    return ''
+  else:
+    return ''.join(map(lambda k: k.decode('utf-8'), out_lines))

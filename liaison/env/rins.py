@@ -5,6 +5,7 @@ from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
 import graph_nets as gn
+import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
@@ -77,7 +78,7 @@ class Env(BaseEnv):
                graph_seed=-1,
                graph_start_idx=0,
                n_graphs=1,
-               dataset='milp-facilities-3',
+               dataset='',
                dataset_type='train',
                k=5,
                n_local_moves=10,
@@ -142,8 +143,8 @@ class Env(BaseEnv):
       for cid, c in enumerate(milp.mip.constraints):
         c = c.cast_sense_to_le()
         for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
-          constraint_features[cid, var_names.index(
-              var_name)] = coeff / self.config.obj_coeff_normalizer
+          constraint_features[cid, self._varnames2varidx[
+              var_name]] = coeff / self.config.obj_coeff_normalizer
 
       features = np.hstack((features, constraint_features.flatten()))
 
@@ -159,7 +160,7 @@ class Env(BaseEnv):
       c = c.cast_sense_to_le()
       y = np.zeros(len(self._var_names), dtype=np.int32)
       for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
-        y[self._var_names.index(var_name)] = coeff
+        y[self._varnames2varidx[var_name]] = coeff
       cv.append(y)
 
     # var_embeddings[i][j] = c => ith variable uses jth constraint with coefficient c
@@ -230,31 +231,26 @@ class Env(BaseEnv):
             self._var_type_mask,
             np.logical_or(self._constraint_type_mask, self._obj_type_mask)))
 
-    obs = dict(**obs,
-               var_type_mask=pad_last_dim(self._var_type_mask,
+    obs = dict(
+        **obs,
+        optimal_solution=pad_last_dim(self._optimal_soln, self._max_nodes),
+        var_type_mask=pad_last_dim(self._var_type_mask, self._max_nodes),
+        constraint_type_mask=pad_last_dim(self._constraint_type_mask,
                                           self._max_nodes),
-               constraint_type_mask=pad_last_dim(self._constraint_type_mask,
-                                                 self._max_nodes),
-               obj_type_mask=pad_last_dim(self._obj_type_mask,
-                                          self._max_nodes),
-               log_values=dict(
-                   ep_return=np.float32(self._prev_ep_return),
-                   avg_quality=np.float32(self._prev_avg_quality),
-                   best_quality=np.float32(self._prev_best_quality),
-                   final_quality=np.float32(self._prev_final_quality),
-                   mip_work=np.float32(self._prev_mean_work),
-               ),
-               curr_episode_log_values=dict(
-                   ep_return=np.float32(self._ep_return),
-                   avg_quality=np.float32(np.mean(self._qualities)),
-                   best_quality=np.float32(self._best_quality),
-                   final_quality=np.float32(self._final_quality),
-                   mip_work=np.float32(self._mip_work),
-               ))
-    # optimal solution can be used for supervised auxiliary tasks.
-    obs['optimal_solution'] = pad_last_dim(
-        np.float32([self.milp.optimal_solution[v] for v in self._var_names]),
-        self._max_nodes)
+        obj_type_mask=pad_last_dim(self._obj_type_mask, self._max_nodes),
+        log_values=dict(  # useful for tensorboard.
+            ep_return=np.float32(self._prev_ep_return),
+            avg_quality=np.float32(self._prev_avg_quality),
+            best_quality=np.float32(self._prev_best_quality),
+            final_quality=np.float32(self._prev_final_quality),
+            mip_work=np.float32(self._prev_mean_work),
+        ),
+        curr_episode_log_values=dict(
+            ep_return=np.float32(self._ep_return),
+            avg_quality=np.float32(np.mean(self._qualities)),
+            best_quality=np.float32(self._best_quality),
+            final_quality=np.float32(self._final_quality),
+            **nest.map_structure(np.float32, dict(self._mip_stats))))
     return obs
 
   def reset(self):
@@ -266,10 +262,21 @@ class Env(BaseEnv):
     self._best_quality = self._primal_gap(milp.feasible_objective)
     self._final_quality = self._best_quality
     self._qualities = [self._best_quality]
-    self._mip_work = 0
     self._mip_works = []
+    # mip stats for the current step
+    self._mip_stats = ConfigDict(mip_work=0,
+                                 n_cuts=0,
+                                 n_cuts_applied=0,
+                                 n_lps=0)
 
     self._var_names = var_names = list(milp.mip.varname2var.keys())
+    self._varnames2varidx = {}
+    for i, var_name in enumerate(var_names):
+      self._varnames2varidx[var_name] = i
+
+    # optimal solution can be used for supervised auxiliary tasks.
+    self._optimal_soln = np.float32(
+        [milp.optimal_solution[v] for v in var_names])
     # first construct variable nodes
     variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS),
                               dtype=np.float32)
@@ -306,6 +313,7 @@ class Env(BaseEnv):
     edges = np.zeros((n_edges, Env.N_EDGE_FIELDS), dtype=np.float32)
     senders = np.zeros((n_edges), dtype=np.int32)
     receivers = np.zeros((n_edges), dtype=np.int32)
+
     i = 0
     for cid, c in enumerate(milp.mip.constraints):
       c = c.cast_sense_to_le()
@@ -314,7 +322,7 @@ class Env(BaseEnv):
             i, Env.
             EDGE_WEIGHT_FIELD] = coeff / self.config.constraint_coeff_normalizer
         # sender is the variable
-        senders[i] = var_names.index(var_name)
+        senders[i] = self._varnames2varidx[var_name]
         # receiver is the constraint.
         receivers[i] = len(variable_nodes) + cid
         i += 1
@@ -323,7 +331,7 @@ class Env(BaseEnv):
         zip(milp.mip.obj.expr.var_names, milp.mip.obj.expr.coeffs)):
       edges[i + j, Env.
             EDGE_WEIGHT_FIELD] = coeff / self.config.obj_coeff_normalizer
-      senders[i + j] = var_names.index(var_name)
+      senders[i + j] = self._varnames2varidx[var_name]
       receivers[i + j] = len(variable_nodes) + len(constraint_nodes)
 
     # now duplicate the edges to make them directed.
@@ -356,10 +364,10 @@ class Env(BaseEnv):
     self._obj_type_mask[len(variable_nodes) +
                         len(constraint_nodes):len(variable_nodes) +
                         len(constraint_nodes) + len(objective_nodes)] = 1
-    self._unfixed_variables = [
+    self._unfixed_variables = set([
         var for var in var_names
         if isinstance(milp.mip.varname2var[var], ContinuousVariable)
-    ]
+    ])
     self._curr_soln = copy.deepcopy(milp.feasible_solution)
     self._curr_obj = milp.feasible_objective
     self._prev_obj = milp.feasible_objective
@@ -369,12 +377,27 @@ class Env(BaseEnv):
     """Solves a mip/lp using scip"""
     solver = Model()
     solver.hideOutput()
+    if self.config.disable_maxcuts:
+      for param in [
+          'separating/maxcuts', 'separating/maxcutsroot',
+          'propagating/maxrounds', 'propagating/maxroundsroot',
+          'presolving/maxrounds'
+      ]:
+        solver.setIntParam(param, 0)
     mip.add_to_scip_solver(solver)
-    solver.optimize()
+    with U.Timer() as timer:
+      solver.optimize()
     assert solver.getStatus() == 'optimal', solver.getStatus()
     obj = float(solver.getObjVal())
     ass = {var.name: solver.getVal(var) for var in solver.getVars()}
-    return ass, obj, solver.getNNodes()
+    mip_stats = ConfigDict(mip_work=solver.getNNodes(),
+                           n_cuts=solver.getNCuts(),
+                           n_cuts_applied=solver.getNCutsApplied(),
+                           n_lps=solver.getNLPs(),
+                           solving_time=solver.getSolvingTime(),
+                           pre_solving_time=solver.getPresolvingTime(),
+                           time_elapsed=timer.to_seconds())
+    return ass, obj, mip_stats
 
   def _reset_mask(self, variable_nodes):
     variable_nodes[:, Env.
@@ -393,7 +416,7 @@ class Env(BaseEnv):
                                                fabs(curr_obj))
     return rew
 
-  def _compute_reward(self, prev_obj, curr_obj, n_nodes):
+  def _compute_reward(self, prev_obj, curr_obj, mip_stats):
     # old way of assigning reward -> change to incremental delta rewards.
     # rew = -1 * curr_obj / milp.optimal_objective
     assert self.config.delta_reward != self.config.primal_gap_reward
@@ -427,7 +450,7 @@ class Env(BaseEnv):
     assert mask[action], mask
 
     globals_[Env.GLOBAL_UNFIX_LEFT] -= 1
-    self._unfixed_variables.append(var_names[action])
+    self._unfixed_variables.add(var_names[action])
 
     fixed_assignment = {
         var: curr_sol[var]
@@ -443,7 +466,7 @@ class Env(BaseEnv):
       # run mip
       local_search_case = True
       mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=False)
-      ass, curr_obj, self._mip_work = self._scip_solve(mip)
+      ass, curr_obj, mip_stats = self._scip_solve(mip)
       curr_sol = ass
       # # add back the newly found solutions for the sub-mip.
       # # this updates the current solution to the new local one.
@@ -456,10 +479,10 @@ class Env(BaseEnv):
       assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj,
                                                  os.getpid())
       # reset fixed variables.
-      self._unfixed_variables = [
+      self._unfixed_variables = set([
           var for var in var_names
           if isinstance(milp.mip.varname2var[var], ContinuousVariable)
-      ]
+      ])
       # restock the limit for unfixes in this episode.
       globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
       curr_lp_sol = curr_sol
@@ -491,11 +514,12 @@ class Env(BaseEnv):
       if milp.is_optimal:
         assert curr_obj - milp.optimal_objective >= -1e-4, (
             curr_obj, milp.optimal_objective, os.getpid())
-      rew = self._compute_reward(self._prev_obj, curr_obj, self._mip_work)
+      rew = self._compute_reward(self._prev_obj, curr_obj, mip_stats)
       self._qualities.append(self._primal_gap(curr_obj))
       self._final_quality = self._qualities[-1]
       self._best_quality = min(self._qualities)
-      self._mip_works.append(self._mip_work)
+      self._mip_stats = mip_stats
+      self._mip_works.append(mip_stats.mip_work)
     else:
       rew = 0
     self._ep_return += rew
@@ -504,7 +528,8 @@ class Env(BaseEnv):
     variable_nodes = self._reset_mask(variable_nodes)
     if not local_search_case:
       for node in self._unfixed_variables:
-        variable_nodes[var_names.index(node), Env.VARIABLE_MASK_FIELD] = 0
+        variable_nodes[self._varnames2varidx[node], Env.
+                       VARIABLE_MASK_FIELD] = 0
 
     variable_nodes[:, Env.VARIABLE_CURR_ASSIGNMENT_FIELD] = [
         curr_sol[k] for k in var_names

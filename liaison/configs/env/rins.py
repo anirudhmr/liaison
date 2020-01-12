@@ -20,7 +20,9 @@ def get_config():
   """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 
-  config.dataset = 'milp-facilities-3'
+  # specify dataset by dataset_path or dataset
+  config.dataset_path = ''
+  config.dataset = ''
   config.dataset_type = 'train'
   config.graph_start_idx = 0
   config.n_graphs = 1
@@ -36,5 +38,7 @@ def get_config():
   config.delta_reward = False
   config.primal_gap_reward = True
   config.primal_integral_reward = False
+
+  config.disable_maxcuts = False
 
   return config

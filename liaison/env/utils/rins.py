@@ -30,9 +30,10 @@ def pad_last_dim(features: np.ndarray, pad_to_len):
 
 @functools.lru_cache(maxsize=100)
 def get_sample(dataset, dataset_type, graph_idx):
-  with open(
-      os.path.join(DATASET_PATH[dataset], dataset_type, f'{graph_idx}.pkl'),
-      'rb') as f:
+  dataset_path = DATASET_PATH[dataset]
+
+  with open(os.path.join(dataset_path, dataset_type, f'{graph_idx}.pkl'),
+            'rb') as f:
     milp = pickle.load(f)
 
   solver = Model()

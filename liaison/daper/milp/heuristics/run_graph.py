@@ -26,6 +26,7 @@ parser.add_config_file(name='env', required=True)
 parser.add_argument('--n_trials', type=int, required=True)
 parser.add_argument('--random_seeds', type=int, nargs='+', required=True)
 parser.add_argument('--run_random_only', action='store_true')
+parser.add_argument('--disable_maxcuts', action='store_true')
 global args
 
 
@@ -36,7 +37,8 @@ def make_env():
   env_config.n_local_moves = args.n_local_moves
   env_config.primal_gap_reward = True
   env_config.delta_reward = False
-  assert env_config.n_graphs == 1
+  env_config.disable_maxcuts = args.disable_maxcuts
+  assert env_config.n_graphs == True
 
   env_class = U.import_obj(env_config.class_name, env_config.class_path)
   env = env_class(id=0, seed=args.seed, **env_config)
