@@ -111,7 +111,6 @@ def main():
         if n_nodes < milp.optimal_sol_metadata.n_nodes:
           n_nodes = milp.optimal_sol_metadata.n_nodes
           optimal_milp = milp
-      # print(n_nodes)
   else:
     # if negative or zero threshold given then just sample single mip.
     optimal_milp = sample_mip(rng)

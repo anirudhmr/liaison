@@ -19,7 +19,7 @@ from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.rins import *
 from liaison.specs import ArraySpec, BoundedArraySpec
 from liaison.utils import ConfigDict
-from pyscipopt import Model
+from pyscipopt import SCIP_PARAMSETTING, Model
 
 
 class Env(BaseEnv):
@@ -381,9 +381,17 @@ class Env(BaseEnv):
       for param in [
           'separating/maxcuts', 'separating/maxcutsroot',
           'propagating/maxrounds', 'propagating/maxroundsroot',
-          'presolving/maxrounds'
+          'presolving/maxroundsroot'
       ]:
         solver.setIntParam(param, 0)
+
+      model.setBoolParam('conflict/enable', False)
+    model.setPresolve(SCIP_PARAMSETTING.OFF)
+    model.setBoolParam('randomization/permutevars', True)
+    # seed is set to 0 permanently.
+    model.setIntParam('randomization/permutationseed', 0)
+    model.setIntParam('randomization/randomseedshift', 0)
+
     mip.add_to_scip_solver(solver)
     with U.Timer() as timer:
       solver.optimize()
