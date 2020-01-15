@@ -12,7 +12,7 @@ from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True)
+parser.add_argument('-d', '--dataset', required=True)
 parser.add_argument(
     '--n_training_samples',
     type=int,
@@ -29,7 +29,7 @@ parser.add_argument('--samples',
                     help='Samples from the training dataset.')
 parser.add_argument('--n_local_moves', type=int, required=True)
 parser.add_argument('--k', type=int, required=True)
-SEED = 42
+SEED = 0
 N_TRIALS = 1
 
 args, REMAINDER = parser.parse_known_args()
@@ -87,10 +87,12 @@ def main():
     seed, random_seed = create_cmds(samples, seed, 'train', random_seed, cmds)
   else:
     for mode in ['train', 'valid', 'test']:
-      files = list(os.listdir(os.path.join(DATASET_PATH[args.dataset], mode)))
-      samples = rng.choice(files, dataset_lengths[mode], replace=False)
-      seed, random_seed = create_cmds(samples, seed, 'train', random_seed,
-                                      cmds)
+      if dataset_lengths[mode]:
+        files = list(os.listdir(os.path.join(DATASET_PATH[args.dataset],
+                                             mode)))
+        samples = rng.choice(files, dataset_lengths[mode], replace=False)
+        seed, random_seed = create_cmds(samples, seed, 'train', random_seed,
+                                        cmds)
 
   for cmd in cmds:
     print(cmd)

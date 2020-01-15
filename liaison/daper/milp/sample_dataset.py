@@ -2,6 +2,7 @@
 python liaison/daper/milp/sample_dataset.py --out_dir=/data/nms/tfp/datasets/milp/facilities/size-3/ --n_training_samples=100 --n_valid_samples=1 --n_test_samples=1 -- --problem_type=facilities --problem_size=3 | parallel --ungroup -j8
 """
 import argparse
+import math
 import os
 import shlex
 import sys
@@ -43,10 +44,10 @@ def main():
     for i in range(size):
       out_file = os.path.join(args.out_dir, mode, '%d.pkl' % i)
       cmds += [cmd_gen(seed, out_file)]
-      seed += 1
+      seed += int(1e5)
 
   if args.slurm_mode:
-    for i in range(len(cmds) // 2):
+    for i in range(math.ceil(len(cmds) / 2)):
       if 2 * i + 1 < len(cmds):
         cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1] + '; wait'
       else:

@@ -6,14 +6,18 @@ DATASET_PATH = {
     'milp-facilities-10': '/data/nms/tfp/datasets/milp/facilities/size-10',
     'milp-cauction-10': '/data/nms/tfp/datasets/milp/cauction/size-10',
     'milp-cauction-100': '/data/nms/tfp/datasets/milp/cauction/size-100',
-    'milp-cauction-100-debug':
-    '/data/nms/tfp/datasets/milp/cauction/debug/size-100',
+    'milp-cauction-100-filtered':
+    '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
     'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',
     'milp-cauction-300': '/data/nms/tfp/datasets/milp/cauction/size-300',
     'milp-setcover-10': '/data/nms/tfp/datasets/milp/setcover/size-10',
     'milp-setcover-100': '/data/nms/tfp/datasets/milp/setcover/size-100',
     'milp-indset-10': '/data/nms/tfp/datasets/milp/indset/size-10',
     'milp-indset-100': '/data/nms/tfp/datasets/milp/indset/size-100',
+    'milp-bcol':
+    '/data/nms/tfp/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
+    'milp-corlat': '/data/nms/tfp/datasets/milp/corlat',
+    'milp-regions': '/data/nms/tfp/datasets/milp/mip_datasets/Regions200-mps'
 }
 
 LENGTH_MAP = {
@@ -23,14 +27,15 @@ LENGTH_MAP = {
     'milp-facilities-3': dict(train=1000, valid=128, test=128),
     'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-10': dict(train=10000, valid=1000, test=1000),
-    'milp-cauction-100': dict(train=100, valid=10, test=10),
-    'milp-cauction-100-debug': dict(train=1000, valid=100, test=100),
+    'milp-cauction-100': dict(train=1000, valid=100, test=100),
+    'milp-cauction-100-filtered': dict(train=64, valid=0, test=0),
     'milp-cauction-200': dict(train=1000, valid=100, test=100),
     'milp-cauction-300': dict(train=512, valid=16, test=16),
     'milp-setcover-10': dict(train=10000, valid=1000, test=1000),
     'milp-setcover-100': dict(train=1000, valid=100, test=100),
     'milp-indset-10': dict(train=10000, valid=1000, test=1000),
     'milp-indset-100': dict(train=1000, valid=100, test=100),
+    'milp-corlat': dict(train=100, valid=0, test=0),
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -86,5 +91,25 @@ NORMALIZATION_CONSTANTS = {
         max_nodes=231,
         max_edges=824,
     ),
+    # these are dummy values, need to be recomputed.
+    # use only for debugging.
+    'milp-cauction-100-filtered':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=1.5,
+        obj_normalizer=21.14,
+        max_nodes=231,
+        max_edges=824,
+    ),
+    'milp-corlat':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=1.5,
+        obj_normalizer=21.14,
+        max_nodes=10000,
+        max_edges=10000,
+    ),
 }
-assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())
+# assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())

@@ -13,16 +13,16 @@ from liaison.daper import ConfigDict
 from liaison.launch import hyper
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--out_dir', type=str, required=True)
+parser.add_argument('-o', '--out_dir', type=str, required=True)
 # turns on slurm mode.
-parser.add_argument('--slurm_mode', action='store_true')
+parser.add_argument('-s', '--slurm_mode', action='store_true')
 
 
 def main():
   args, remainder = parser.parse_known_args(sys.argv[1:])
   try:
     for work_id, params in enumerate(
-        hyper.product(hyper.discrete('k', [25, 50, 100, 500, 1000]), )):
+        hyper.product(hyper.discrete('k', [5, 10, 25, 50]), )):
       params = ConfigDict(params)
       d = '_'.join([f'{k}:{v}' for k, v in sorted(params.items())])
       cmd = f'python liaison/daper/milp/heuristics/run_dataset.py --out_dir={args.out_dir}/{d} --k={params.k} {" ".join(remainder)}'

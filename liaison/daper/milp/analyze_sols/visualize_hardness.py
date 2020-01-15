@@ -56,6 +56,7 @@ def scip_solve(mip, optimal_val):
     solver.setParam("limits/time", args.timelimit)
 
   solver.optimize()
+  assert solver.getStatus() == 'optimal', solver.getStatus()
   obj = float(solver.getObjVal())
   return heur.log, obj
 
@@ -65,7 +66,7 @@ def testRelax(idx, milp):
   p = Path('/tmp') / f'server/results/{idx}.png'
   p.parent.mkdir(exist_ok=True, parents=True)
   fig, ax = plt.subplots()
-  ax.plot(log_vals, label=f'Best objective {obj}')
+  ax.plot(log_vals[1:], label=f'Best objective {obj}')
   ax.legend()
   fig.savefig(p)
 

@@ -50,8 +50,9 @@ def rins(curr_sol, mip, rng, k):
   continuous_sol = scip_solve(relax_integral_constraints(mip))
   errs = []
   for var, val in curr_sol.items():
-    err = fabs(val - continuous_sol[var])
-    errs.append((err, var))
+    if isinstance(var, IntegerVariable):
+      err = fabs(val - continuous_sol[var])
+      errs.append((err, var))
 
   errs = sorted(errs, reverse=True)
   var_names = [var for err, var in errs[0:k]]

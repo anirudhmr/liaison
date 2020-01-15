@@ -12,6 +12,7 @@ from liaison.daper.milp.heuristics.heuristic_fn import run as run_heuristic
 from liaison.daper.milp.heuristics.random_heuristic import \
     run as run_random_heuristic
 from liaison.daper.milp.heuristics.spec import MILPHeuristic
+from liaison.daper.milp.primitives import IntegerVariable
 
 parser = ArgumentParser()
 parser.add_argument('--out_file', required=True)
@@ -30,10 +31,10 @@ parser.add_argument('--disable_maxcuts', action='store_true')
 global args
 
 
-def make_env():
+def make_env(k_val):
   env_config = ConfigDict(to_nested_dicts(args.env_config))
   env_config.lp_features = False
-  env_config.k = args.k
+  env_config.k = k_val
   env_config.n_local_moves = args.n_local_moves
   env_config.primal_gap_reward = True
   env_config.delta_reward = False
@@ -54,34 +55,39 @@ def main(argv):
     for key in heuristic[k].keys():
       heuristic[k][key] = None
 
-  res = run_random_heuristic(args.n_trials, args.random_seeds, make_env())
+  # determine the max allowed k value.
+  env = make_env(args.k)
+  k_val = sum([
+      isinstance(var, IntegerVariable)
+      for var in env.milp.mip.varname2var.values()
+  ])
+  res = run_random_heuristic(args.n_trials, args.random_seeds, make_env(k_val))
   heuristic.random.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
-                          k=args.k,
+                          k=k_val,
                           results=res)
 
   if not args.run_random_only:
     # integral heuristics too slow...
     # disable temporarily
-    # res = run_heuristic('least_integral', args.k, args.n_trials,
-    #                     args.random_seeds, make_env())
+    # res = run_heuristic('least_integral', k_val, args.n_trials,
+    #                     args.random_seeds, make_env(k_val))
     # heuristic.least_integral.update(seeds=args.random_seeds,
     #                                 n_local_moves=args.n_local_moves,
-    #                                 k=args.k,
+    #                                 k=k_val,
     #                                 results=res)
 
-    # res = run_heuristic('most_integral', args.k, args.n_trials,
-    #                     args.random_seeds, make_env())
+    # res = run_heuristic('most_integral', k_val, args.n_trials,
+    #                     args.random_seeds, make_env(k_val))
     # heuristic.most_integral.update(seeds=args.random_seeds,
     #                                n_local_moves=args.n_local_moves,
-    #                                k=args.k,
+    #                                k=k_val,
     #                                results=res)
-
-    res = run_heuristic('rins', args.k, args.n_trials, args.random_seeds,
-                        make_env())
+    res = run_heuristic('rins', k_val, args.n_trials, args.random_seeds,
+                        make_env(k_val))
     heuristic.rins.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
-                          k=args.k,
+                          k=k_val,
                           results=res)
 
   path = Path(args.out_file)

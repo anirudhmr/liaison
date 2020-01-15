@@ -3,6 +3,7 @@ import os
 from abc import ABC
 from typing import Any, Dict, Text, Tuple, Union
 
+import pyscipopt
 from pyscipopt import Model, multidict, quicksum
 
 
@@ -332,49 +333,6 @@ class MIPInstance:
         self.varname2var.keys())), (set(all_var_names),
                                     set(list(self.varname2var.keys())))
 
-  def old_fix(self,
-              fixed_ass: Dict[str, float],
-              relax_integral_constraints=False):
-    """
-      Args:
-        fixed_vars_to_values: variables to fix and their values to fix to.
-        integral_relax: If true return an lp with all integral constraints on
-                        all variables relaxed.
-      Returns:
-        Leaves the current mipinstance unchanged (immutable call).
-        Returns a new mipinstance with fixes and relaxations made.
-    """
-    for name, val in fixed_vars_to_values.items():
-      # assert variables are defined.
-      assert name in self.varname2var
-      self.varname2var[name].validate(val)
-
-    if self.name:
-      m = MIPInstance(self.name + '-relaxed')
-    else:
-      m = MIPInstance()
-
-    for c in self.constraints:
-      new_constraint = c.relax(fixed_vars_to_values)
-      if new_constraint:
-        m.constraints.append(new_constraint)
-
-    for vname, var in self.varname2var.items():
-      if vname in fixed_vars_to_values:
-        # ignore this variable since it is fixed
-        # and eliminated in the sub-MIP
-        pass
-      else:
-        if integral_relax:
-          m.add_variable(var.integral_relax())
-        else:
-          m.add_variable(copy.deepcopy(var))
-
-    m.obj = self.obj.relax(fixed_vars_to_values)
-    assert m.obj is not None
-    m.validate()
-    return m
-
   def fix(self, fixed_ass: Dict[str, float], relax_integral_constraints=False):
     """
       Args:
@@ -462,15 +420,55 @@ class MIPInstance:
     return True
 
 
-def relax_integral_constraints(mip):
+def relax_integral_constraints(input_mip):
   m = MIPInstance()
-  if m.name:
-    m.name = f'{m.name}_integral_relaxed'
-  m.constraints = copy.deepcopy(mip.constraints)
+  if input_mip.name:
+    m.name = f'{input_mip.name}_integral_relaxed'
+  m.constraints = copy.deepcopy(input_mip.constraints)
 
-  for vname, var in mip.varname2var.items():
+  for vname, var in input_mip.varname2var.items():
     m.add_variable(var.integral_relax())
 
-  m.obj = copy.deepcopy(m.obj)
+  m.obj = copy.deepcopy(input_mip.obj)
+  m.validate()
+  return m
+
+
+def scip_to_milps(model):
+  # converts SCIP model to a MIPInstance
+  m = MIPInstance(model.getProbName())
+  obj = m.get_objective()
+  for term, coeff in model.getObjective().terms.items():
+    for var in term.vartuple:
+      assert isinstance(var, pyscipopt.scip.Variable)
+      obj.add_term(str(var), coeff)
+
+  if model.getObjectiveSense() == 'maximize':
+    obj.expr = obj.expr.negate()
+
+  for c in model.getConss():
+    assert c.isLinear()
+    e = Expression()
+    for var, coeff in model.getValsLinear(c).items():
+      e.add_term(str(var), coeff)
+
+    if model.getLhs(c) > -1 * model.infinity():
+      c2 = m.new_constraint('GE', model.getLhs(c), c.name + '-LHS')
+      c2.expr = copy.deepcopy(e)
+
+    if model.getRhs(c) < model.infinity():
+      c2 = m.new_constraint('LE', model.getRhs(c), c.name + '-RHS')
+      c2.expr = copy.deepcopy(e)
+
+  for var in model.getVars():
+    t = var.vtype()
+    if t == 'BINARY':
+      v = BinaryVariable(var.name)
+    elif t == 'INTEGER':
+      v = IntegerVariable(var.name, var.getLbOriginal(), var.getUbOriginal())
+    else:
+      v = ContinuousVariable(var.name, var.getLbOriginal(),
+                             var.getUbOriginal())
+    m.add_variable(v)
   m.validate()
   return m
