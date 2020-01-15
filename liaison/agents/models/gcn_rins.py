@@ -253,7 +253,7 @@ class Model:
                       tf.fill(tf.shape(node_mask), -INF))
     return logits, log_vals
 
-  def get_node_predictions(self, graph_features: gn.graphs.GraphsTuple, obs):
+  def get_auxiliary_loss(self, graph_features: gn.graphs.GraphsTuple, obs):
     """
       Returns a prediction for each node.
       This is useful for supervised node labelling/prediction tasks.
@@ -265,7 +265,6 @@ class Model:
         gn.blocks.broadcast_globals_to_nodes(graph_features)
     ],
                                                             axis=-1))
-    var_nodes = tf.gather_nd()
     # get logits over nodes
     logits = self.supervised_prediction_torso(graph_features.nodes)
     # remove the final singleton dimension
@@ -273,14 +272,9 @@ class Model:
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     preds = tf.scatter_nd(indices, logits, tf.shape(node_mask))
 
-    nodes = graph_features.nodes
     var_type_mask = obs['var_type_mask']
-    var_type_mask = tf.reshape(var_type_mask,
-                               [-1, tf.shape(var_type_mask)[-1]])
-    node_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
-    var_type_mask = tf.gather_nd(params=var_type_mask, indices=node_indices)
     auxiliary_loss = tf.reduce_mean(
-        tf.boolean_mask((nodes - obs['optimal_solution'])**2,
+        tf.boolean_mask((preds - obs['optimal_solution'])**2,
                         tf.cast(var_type_mask, tf.bool)))
     return auxiliary_loss
 

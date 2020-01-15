@@ -13,20 +13,20 @@ def get_config():
   config.learner.mem = 0
   config.learner.gpu_compute = []
   config.learner.gpu_mem = []
-  config.learner.gpu_compute = [1]
-  config.learner.gpu_mem = [10]
+  # config.learner.gpu_compute = [1]
+  # config.learner.gpu_mem = [10]
 
   config.actor = ConfigDict()
   config.actor.cpu = 1
   config.actor.mem = 0
-  config.actor.gpu_compute = [1]
-  config.actor.gpu_mem = [2]
+  config.actor.gpu_compute = []
+  config.actor.gpu_mem = []
 
   config.evaluator = ConfigDict()
   config.evaluator.cpu = 1
   config.evaluator.mem = 0
-  config.evaluator.gpu_compute = [1]
-  config.evaluator.gpu_mem = [2]
+  config.evaluator.gpu_compute = []
+  config.evaluator.gpu_mem = []
 
   config.replay = ConfigDict()
   config.replay.cpu = 0

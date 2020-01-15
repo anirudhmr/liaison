@@ -97,10 +97,10 @@ NORMALIZATION_CONSTANTS = {
     dict(
         constraint_rhs_normalizer=1.0,
         constraint_coeff_normalizer=1.0,
-        obj_coeff_normalizer=1.5,
-        obj_normalizer=21.14,
-        max_nodes=231,
-        max_edges=824,
+        obj_coeff_normalizer=355.88,
+        obj_normalizer=7332.56,
+        max_nodes=703,
+        max_edges=8062,
     ),
     'milp-corlat':
     dict(

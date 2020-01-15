@@ -267,7 +267,10 @@ class Env(BaseEnv):
     self._mip_stats = ConfigDict(mip_work=0,
                                  n_cuts=0,
                                  n_cuts_applied=0,
-                                 n_lps=0)
+                                 n_lps=0,
+                                 solving_time=0.,
+                                 pre_solving_time=0.,
+                                 time_elapsed=0.)
 
     self._var_names = var_names = list(milp.mip.varname2var.keys())
     self._varnames2varidx = {}
@@ -373,8 +376,8 @@ class Env(BaseEnv):
     self._prev_obj = milp.feasible_objective
     return restart(self._observation())
 
-  def _scip_solve(self, mip: MIPInstance):
-    """Solves a mip/lp using scip"""
+  def _scip_solve(self, mip):
+    """solves a mip/lp using scip"""
     solver = Model()
     solver.hideOutput()
     if self.config.disable_maxcuts:
@@ -434,9 +437,9 @@ class Env(BaseEnv):
     elif self.config.primal_gap_reward:
       rew = -1.0 * self._primal_gap(curr_obj)
     elif self.config.primal_integral_reward:
-      raise Exception('Unspecified reward scheme.')
+      raise Exception('unspecified reward scheme.')
     else:
-      raise Exception('Unspecified reward scheme.')
+      raise Exception('unspecified reward scheme.')
     return rew
 
   def step(self, action):
