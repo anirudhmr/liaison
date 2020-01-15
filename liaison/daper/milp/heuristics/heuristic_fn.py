@@ -50,7 +50,7 @@ def rins(curr_sol, mip, rng, k):
   continuous_sol = scip_solve(relax_integral_constraints(mip))
   errs = []
   for var, val in curr_sol.items():
-    if isinstance(var, IntegerVariable):
+    if isinstance(mip.varname2var[var], IntegerVariable):
       err = fabs(val - continuous_sol[var])
       errs.append((err, var))
 

@@ -57,10 +57,12 @@ def main(argv):
 
   # determine the max allowed k value.
   env = make_env(args.k)
-  k_val = sum([
-      isinstance(var, IntegerVariable)
-      for var in env.milp.mip.varname2var.values()
-  ])
+  k_val = min(
+      args.k,
+      sum([
+          isinstance(var, IntegerVariable)
+          for var in env.milp.mip.varname2var.values()
+      ]))
   res = run_random_heuristic(args.n_trials, args.random_seeds, make_env(k_val))
   heuristic.random.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,

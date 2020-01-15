@@ -29,7 +29,10 @@ args = None
 
 def read_pkl(fname):
   with open(fname, 'rb') as f:
-    return pickle.load(f)
+    try:
+      return pickle.load(f)
+    except EOFError:
+      pass
 
 
 def get(d, k):
@@ -73,7 +76,11 @@ def _filter():
     files = [f'{args.input_dir}/{i}.pkl' for i in range(args.n_read_samples)]
 
   def f(fname):
-    score = compute_primal_integral(read_pkl(fname))
+    sample = read_pkl(fname)
+    if sample:
+      score = compute_primal_integral(sample)
+    else:
+      score = None
     return (score, fname)
 
   with ThreadPool() as pool:
@@ -105,6 +112,8 @@ def generate_cmds(train, valid, test):
   def f(mode, dataset, cmds):
     for i, sample in enumerate(dataset):
       sample = read_pkl(Path(args.input_dir) / sample[1])
+      if sample is None:
+        continue
       out_file = Path(args.output_dir) / mode / f'{i}.pkl'
       cmds += [cmd_gen(sample.seed, out_file)]
 
