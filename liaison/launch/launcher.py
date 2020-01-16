@@ -145,13 +145,14 @@ class Launcher:
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
     loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
-    loggers.append(
-        AvgPipeLogger(
-            TensorplexLogger(
-                client_id='evaluator/0',
-                serializer=self.sess_config.tensorplex.serializer,
-                deserializer=self.sess_config.tensorplex.deserializer,
-            )))
+    # # disable tensorplex for now
+    # loggers.append(
+    #     AvgPipeLogger(
+    #         TensorplexLogger(
+    #             client_id='evaluator/0',
+    #             serializer=self.sess_config.tensorplex.serializer,
+    #             deserializer=self.sess_config.tensorplex.deserializer,
+    #         )))
     loggers.append(
         KVStreamLogger(stream_id=f'{evaluator_name}',
                        client=IRSClient(timeout=20)))

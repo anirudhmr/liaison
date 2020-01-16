@@ -31,4 +31,7 @@ def get_config():
   config.loss.al_coeff.dec_val = .1
   config.loss.al_coeff.dec_approach = 'linear'
 
+  # applicable for agent 'liaison.agents.gcn_large_batch'
+  config.apply_grads_every = 1
+
   return config

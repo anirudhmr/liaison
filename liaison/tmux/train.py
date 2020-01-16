@@ -31,7 +31,7 @@ parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail', 'csail_vcuda'],
+    default=['os_csail', 'csail_vcuda', 'cloudlab_clemson_clnode_182'],
     help=
     'These nodes are always selected irrespective of the filter_nodes_regex specified.'
 )
@@ -71,12 +71,12 @@ def train(argv):
   hyper_configs = []
   exps = []
   for work_id, params in enumerate(
-      # hyper.product(
-      #     hyper.discrete('env_config.k', [5, 10]),
-      #     hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
-      #     hyper.discrete('agent_config.loss.al_coeff.init_val', [1.]),
-      # )):
-      hyper.discrete('agent_config.lr_init', [2e-5])):
+      hyper.product(
+          hyper.discrete('env_config.k', [5]),
+          hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
+          hyper.discrete('agent_config.loss.al_coeff.init_val', [1.]),
+      )):
+    # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first work unit.

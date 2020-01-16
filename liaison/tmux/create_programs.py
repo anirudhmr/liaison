@@ -23,7 +23,7 @@ def build_program(exp,
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
-  irs.set_hard_placement('os_csail')
+  irs.set_hard_placement('cloudlab_clemson_clnode_182')
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
     visualizers.set_hard_placement('csail_vcuda')

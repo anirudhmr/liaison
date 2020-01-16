@@ -587,7 +587,8 @@ def generate_instance(problem, problem_size, rng):
   elif problem == 'facilities':
     m = generate_capacited_facility_location(rng,
                                              n_customers=problem_size,
-                                             n_facilities=problem_size,
+                                             n_facilities=min(
+                                                 problem_size, 100),
                                              ratio=5)
   elif problem == 'setcover':
     ncols = 1000

@@ -91,8 +91,6 @@ NORMALIZATION_CONSTANTS = {
         max_nodes=231,
         max_edges=824,
     ),
-    # these are dummy values, need to be recomputed.
-    # use only for debugging.
     'milp-cauction-100-filtered':
     dict(
         constraint_rhs_normalizer=1.0,
@@ -104,12 +102,12 @@ NORMALIZATION_CONSTANTS = {
     ),
     'milp-corlat':
     dict(
-        constraint_rhs_normalizer=1.0,
-        constraint_coeff_normalizer=1.0,
-        obj_coeff_normalizer=1.5,
-        obj_normalizer=21.14,
-        max_nodes=10000,
-        max_edges=10000,
+        constraint_rhs_normalizer=0.82,
+        constraint_coeff_normalizer=30.086,
+        obj_coeff_normalizer=5.518,
+        obj_normalizer=86.54,
+        max_nodes=1127,
+        max_edges=5730,
     ),
 }
 # assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())
