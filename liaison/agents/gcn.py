@@ -114,9 +114,10 @@ class Agent(BaseAgent):
         # [(T+1)* B]
         values = self._model.get_value(graph_embeddings)
 
-      with tf.variable_scope('auxiliary_supervised_loss'):
-        auxiliary_loss = self._model.get_auxiliary_loss(
-            graph_embeddings, flattened_observations)
+      if config.loss.al_coeff.init_val > 0:
+        with tf.variable_scope('auxiliary_supervised_loss'):
+          auxiliary_loss = self._model.get_auxiliary_loss(
+              graph_embeddings, flattened_observations)
 
       with tf.variable_scope('loss'):
         values = tf.reshape(values, [t_dim + 1, bs_dim])
@@ -138,10 +139,12 @@ class Agent(BaseAgent):
                                bootstrap_value=bootstrap_value,
                                **config.loss)
         loss = self.loss.loss
-        coeff = get_decay_ops(**config.loss.al_coeff)
-        loss += auxiliary_loss * coeff
+        if config.loss.al_coeff.init_val > 0:
+          loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
+          self.loss.logged_values.update({
+              'loss/auxiliary_loss': auxiliary_loss,
+          })
         self.loss.logged_values.update({
-            'loss/auxiliary_loss': auxiliary_loss,
             'loss/total_loss': loss,
         })
 

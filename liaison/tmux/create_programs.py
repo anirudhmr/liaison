@@ -26,7 +26,7 @@ def build_program(exp,
   irs.set_hard_placement('cloudlab_clemson_clnode_182')
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement('csail_vcuda')
+    visualizers.set_hard_placement('cloudlab_clemson_clnode_182')
   else:
     visualizers = None
   actor_pg = exp.new_process_group('actor-*')
