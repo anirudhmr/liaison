@@ -2,12 +2,15 @@
   Evaluator cls. Responsible for batched policy evaluation.
   Returns mean and variance of multiple parallel random environments.
 """
+import copy
 import sys
 import time
+from multiprocessing.pool import ThreadPool
+from threading import Thread
 
 import numpy as np
-
 import tree as nest
+from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.env import StepType
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 from liaison.env.rins import Env
@@ -29,6 +32,7 @@ class Evaluator:
       env_configs,
       traj_length,
       loggers,
+      heuristic_loggers,
       seed,
       max_evaluations=int(1e6),
       n_trials=2,
@@ -67,8 +71,33 @@ class Evaluator:
         **shell_config,
     )
 
+    # non-blocking runs in a new thread.
+    t = Thread(target=self._collect_heuristics,
+               args=(env_class, env_configs, seed, heuristic_loggers))
+    t.start()
     # blocking call -- runs forever
     self._run_loop()
+    t.join()
+
+  def _collect_heuristics(self, env_class, env_configs, seed,
+                          heuristic_loggers):
+
+    def f(i):
+      """Run in parallel process."""
+      config = copy.deepcopy(env_configs[i])
+      config.update(lp_features=False, seed=seed, make_obs_for_mlp=False)
+      env = env_class(id=i, **config)
+      return heuristic_run(
+          'random', env.k, self._n_trials,
+          [seed + i * self._n_trials + j for j in range(self._n_trials)], env)
+
+    with ThreadPool(8) as pool:
+      l = pool.map(f, list(range(len(env_configs))))
+
+    log_values = nest.map_structure(lambda *l: np.swapaxes(np.stack(l), 0, 1),
+                                    *l)
+    for logger in heuristic_loggers:
+      logger.write(log_values)
 
   def _run_loop(self):
     # performs n_evaluations before exiting
@@ -113,7 +142,7 @@ class Evaluator:
                                          observation=ts.observation)
           ts = self._env.step(step_output.action)
 
-        for i in range(len(log_values)):
+        for i, _ in enumerate(log_values):
           log_values[i] = nest.map_structure(lambda *l: np.stack(l),
                                              *log_values[i])
         eval_log_values.append(

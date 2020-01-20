@@ -16,5 +16,7 @@ def get_config():
   config.env_config = ConfigDict()
   config.env_config.n_local_moves = 10
   config.env_config.lp_features = True
+  config.env_config.delta_reward = False
+  config.env_config.primal_gap_reward = True
 
   return config

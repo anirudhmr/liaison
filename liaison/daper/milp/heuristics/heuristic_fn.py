@@ -63,8 +63,18 @@ def rins(curr_sol, mip, rng, k):
   return rng.choice(var_names, size=k, replace=False)
 
 
+def random(curr_sol, mip, rng, k):
+  var_names = []
+  for var, val in curr_sol.items():
+    if isinstance(mip.varname2var[var], IntegerVariable):
+      var_names.append(var)
+  return rng.choice(var_names, size=k, replace=False)
+
+
 def choose_heuristic(heuristic):
-  if heuristic == 'rins':
+  if heuristic == 'random':
+    return random
+  elif heuristic == 'rins':
     return rins
   elif heuristic == 'least_integral':
     return functools.partial(integral, least_integral=True)

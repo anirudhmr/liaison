@@ -9,8 +9,6 @@ from argon import ArgumentParser, to_nested_dicts
 from liaison import utils as U
 from liaison.daper import ConfigDict
 from liaison.daper.milp.heuristics.heuristic_fn import run as run_heuristic
-from liaison.daper.milp.heuristics.random_heuristic import \
-    run as run_random_heuristic
 from liaison.daper.milp.heuristics.spec import MILPHeuristic
 from liaison.daper.milp.primitives import IntegerVariable
 
@@ -39,7 +37,7 @@ def make_env(k_val):
   env_config.primal_gap_reward = True
   env_config.delta_reward = False
   env_config.disable_maxcuts = args.disable_maxcuts
-  assert env_config.n_graphs == True
+  assert env_config.n_graphs == 1
 
   env_class = U.import_obj(env_config.class_name, env_config.class_path)
   env = env_class(id=0, seed=args.seed, **env_config)
@@ -63,7 +61,8 @@ def main(argv):
           isinstance(var, IntegerVariable)
           for var in env.milp.mip.varname2var.values()
       ]))
-  res = run_random_heuristic(args.n_trials, args.random_seeds, make_env(k_val))
+  res = run_heuristic('random', k_val, args.n_trials, args.random_seeds,
+                      make_env(k_val))
   heuristic.random.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
                           k=k_val,

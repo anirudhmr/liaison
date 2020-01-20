@@ -436,8 +436,6 @@ class Env(BaseEnv):
       rew = (prev_obj - curr_obj) / self.config.obj_normalizer
     elif self.config.primal_gap_reward:
       rew = -1.0 * self._primal_gap(curr_obj)
-    elif self.config.primal_integral_reward:
-      raise Exception('unspecified reward scheme.')
     else:
       raise Exception('unspecified reward scheme.')
     return rew

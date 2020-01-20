@@ -71,13 +71,13 @@ def train(argv):
   hyper_configs = []
   exps = []
   for work_id, params in enumerate(
-      hyper.product(
-          hyper.discrete('env_config.k', [5]),
-          hyper.discrete('agent_config.lr_init',
-                         [5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 4e-4]),
-          # hyper.discrete('agent_config.model.sum_aggregation', [False]),
-      )):
-    # hyper.discrete('agent_config.lr_init', [2e-5])):
+      # hyper.product(
+      #     hyper.discrete('env_config.k', [5]),
+      #     hyper.discrete('agent_config.lr_init',
+      #                    [5e-6, 1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 4e-4]),
+      #     hyper.discrete('agent_config.model.sum_aggregation', [False]),
+      # )):
+      hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first work unit.

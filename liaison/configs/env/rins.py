@@ -37,7 +37,6 @@ def get_config():
 
   config.delta_reward = False
   config.primal_gap_reward = True
-  config.primal_integral_reward = False
 
   config.disable_maxcuts = False
 

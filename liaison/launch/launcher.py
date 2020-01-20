@@ -144,18 +144,10 @@ class Launcher:
 
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
-    loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1)))
-    # # disable tensorplex for now
-    # loggers.append(
-    #     AvgPipeLogger(
-    #         TensorplexLogger(
-    #             client_id='evaluator/0',
-    #             serializer=self.sess_config.tensorplex.serializer,
-    #             deserializer=self.sess_config.tensorplex.deserializer,
-    #         )))
     loggers.append(
-        KVStreamLogger(stream_id=f'{evaluator_name}',
-                       client=IRSClient(timeout=20)))
+        AvgPipeLogger(ConsoleLogger(print_every=1, name=evaluator_name)))
+    loggers.append(
+        KVStreamLogger(stream_id=evaluator_name, client=IRSClient(timeout=20)))
     return loggers
 
   def run_evaluator(self, id: str):
@@ -184,14 +176,16 @@ class Launcher:
       })
       env_configs.append(env_config)
 
-    evaluator_config = dict(shell_class=shell_class,
-                            shell_config=shell_config,
-                            env_class=env_class,
-                            env_configs=env_configs,
-                            traj_length=self.traj_length,
-                            loggers=self._setup_evaluator_loggers(id),
-                            seed=self.seed,
-                            **eval_config)
+    evaluator_config = dict(
+        shell_class=shell_class,
+        shell_config=shell_config,
+        env_class=env_class,
+        env_configs=env_configs,
+        traj_length=self.traj_length,
+        loggers=self._setup_evaluator_loggers(id),
+        heuristic_loggers=self._setup_evaluator_loggers(f'heuristic-{id}'),
+        seed=self.seed,
+        **eval_config)
     from liaison.distributed import Evaluator
     Evaluator(**evaluator_config)
 
