@@ -8,11 +8,10 @@
     SYMPH_SPEC_PORT
 """
 
-from __future__ import absolute_import, division, print_function
-
 import logging
 import os
 
+import liaison.utils as U
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 
 from .exp_sender import ExpSender
@@ -39,6 +38,7 @@ class Actor:
       env_configs,
       traj_length,
       seed,
+      system_loggers,
       batch_size=1,  # num_envs
       n_unrolls=None,  # None => loop forever
       use_parallel_envs=False,
@@ -49,6 +49,7 @@ class Actor:
     assert isinstance(actor_id, int)
     self.batch_size = batch_size
     self._traj_length = traj_length
+    self._system_loggers = system_loggers
     if use_parallel_envs:
       self._env = ParallelBatchedEnv(batch_size,
                                      env_class,
@@ -82,21 +83,32 @@ class Actor:
     self._traj.reset()
     self._traj.start(next_state=self._shell.next_state, **dict(ts._asdict()))
     i = 0
+    system_logs = {}
     while True:
       if n_unrolls is not None:
         if i == n_unrolls:
           return
-      step_output = self._shell.step(step_type=ts.step_type,
-                                     reward=ts.reward,
-                                     observation=ts.observation)
-      ts = self._env.step(step_output.action)
+      with U.Timer() as shell_step_timer:
+        step_output = self._shell.step(step_type=ts.step_type,
+                                       reward=ts.reward,
+                                       observation=ts.observation)
+      with U.Timer() as env_step_timer:
+        ts = self._env.step(step_output.action)
       self._traj.add(step_output=step_output, **dict(ts._asdict()))
       if len(self._traj) == self._traj_length + 1:
-        exps = self._traj.debatch_and_stack()
-        self._traj.reset()
-        self._send_experiences(exps)
-        self._traj.start(next_state=self._shell.next_state,
-                         **dict(ts._asdict()))
+        with U.Timer() as send_experience_timer:
+          exps = self._traj.debatch_and_stack()
+          self._traj.reset()
+          self._send_experiences(exps)
+          self._traj.start(next_state=self._shell.next_state,
+                           **dict(ts._asdict()))
+        system_logs['send_experience_sec'] = send_experience_timer.to_seconds()
+
+      for logger in self._system_loggers:
+        logger.write(
+            dict(shell_step_time_sec=shell_step_timer.to_seconds(),
+                 env_step_time_sec=env_step_timer.to_seconds(),
+                 **system_logs))
       i += 1
 
   def _setup_exp_sender(self):

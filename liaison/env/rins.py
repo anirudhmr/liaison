@@ -148,7 +148,10 @@ class Env(BaseEnv):
 
       features = np.hstack((features, constraint_features.flatten()))
 
-    obs = dict(features=features, mask=mask, globals=self._globals)
+    obs = dict(features=features,
+               mask=mask,
+               mlp_mask=mask,
+               globals=self._globals)
     return obs
 
   def _observation_self_attention(self, nodes):
@@ -213,12 +216,15 @@ class Env(BaseEnv):
     nodes[objective_node_offset:objective_node_offset +
           len(objective_nodes), 0:Env.N_OBJECTIVE_FIELDS] = objective_nodes
 
+    obs = {}
     if self.config.make_obs_for_mlp:
-      obs = self._observation_mlp(nodes)
-    elif self.config.make_obs_for_self_attention:
-      obs = self._observation_self_attention(nodes)
-    else:
-      obs = self._observation_graphnet_inductive(nodes)
+      obs.update(self._observation_mlp(nodes))
+
+    if self.config.make_obs_for_self_attention:
+      obs.update(self._observation_self_attention(nodes))
+
+    if self.config.make_obs_for_graphnet:
+      obs.update(self._observation_graphnet_inductive(nodes))
 
     # masks should be mutually disjoint.
     assert not np.any(
@@ -291,6 +297,8 @@ class Env(BaseEnv):
         isinstance(milp.mip.varname2var[var_name], IntegerVariable)
         for var_name in var_names
     ]
+    # variable_nodes[:, Env.VARIABLE_NAME_FIELD] = np.array(range(
+    #     len(var_names))) / float(len(var_names))
     variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD] = [
         milp.optimal_lp_sol[v] for v in var_names
     ]

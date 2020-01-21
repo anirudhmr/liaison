@@ -19,6 +19,7 @@ def get_config():
   # first sess.run is not profiled.
   # generates a profile after every this many steps.
   config.learner.profile_step = 5
+  config.learner.restore_from = ''
 
   config.actor = ConfigDict()
   config.actor.class_path = 'liaison.distributed.actor_full_episode'

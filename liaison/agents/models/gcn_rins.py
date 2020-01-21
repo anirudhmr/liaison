@@ -98,13 +98,13 @@ class Model:
         with tf.variable_scope('edge_model'):
           edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
                                 activation,
-                                activate_final=False,
+                                activate_final=True,
                                 seed=seed,
                                 layer_norm=True)
         with tf.variable_scope('node_model'):
           node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
                                 activation,
-                                activate_final=False,
+                                activate_final=True,
                                 seed=seed,
                                 layer_norm=True)
         # global(node(edge))
@@ -184,8 +184,8 @@ class Model:
         graph_features = graph_features.replace(
             nodes=new_graph_features.nodes + graph_features.nodes,
             edges=new_graph_features.edges + graph_features.edges,
-            # residual connection not needed, since current choice is identity
-            # for globals.
+            # residual connection not needed for globals,
+            # since the current global_model_fn is identity
             globals=new_graph_features.globals)
 
     return graph_features

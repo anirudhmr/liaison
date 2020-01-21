@@ -48,6 +48,7 @@ class Learner(object):
                seed,
                loggers,
                system_loggers,
+               restore_from,
                agent_scope='learner',
                use_gpu=True,
                publish_every=1,
@@ -120,6 +121,7 @@ class Learner(object):
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
       self._saver = tf.train.Saver()
+
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
                                           scope=agent_scope)
       self._variable_names = [var.name for var in self._variables]
@@ -127,6 +129,30 @@ class Learner(object):
                    len(self._variables))
       logging.info('Variable names for publishing: %s',
                    ', '.join(self._variable_names))
+
+      if restore_from:
+        l = tf.train.list_variables(restore_from)
+        to_restore = []
+        # strip ":%d" out from variable names.
+        var_names = list(map(lambda k: k.split(':')[0], self._variable_names))
+        for v, _ in l:
+          if v in var_names:
+            to_restore.append(self._variables[var_names.index(v)])
+
+        if len(to_restore) == 0:
+          print(
+              f'WARNING: No variables found to restore in checkpoint {restore_from}!'
+          )
+        elif len(to_restore) != len(l):
+          print(
+              f'WARNING: Restoring only {len(to_restore)} variables from {len(l)} found in the checkpoint {restore_from}!'
+          )
+        saver = tf.train.Saver(to_restore)
+        saver.restore(self.sess, restore_from)
+        print(f'***********************************************')
+        print(f'Checkpt restored from {restore_from}')
+        print(f'***********************************************')
+
       self._initial_publish()
 
   def _mk_phs(self, traj_spec):

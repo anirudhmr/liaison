@@ -11,10 +11,10 @@ def get_config():
 
   config.model = ConfigDict()
   config.model.class_path = "liaison.agents.models.gcn_rins"
-  config.model.n_prop_layers = 4
-  config.model.node_hidden_layer_sizes = [32, 32]
-  config.model.edge_hidden_layer_sizes = [32, 32]
-  config.model.sum_aggregation = True
+  config.model.n_prop_layers = 8
+  config.model.node_hidden_layer_sizes = [32]
+  config.model.edge_hidden_layer_sizes = [32]
+  config.model.sum_aggregation = False
 
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0

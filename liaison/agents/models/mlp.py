@@ -1,7 +1,6 @@
 """MLP based model."""
 
 import numpy as np
-
 import sonnet as snt
 from liaison.agents.models.utils import *
 from liaison.specs import BoundedArraySpec
@@ -52,8 +51,8 @@ class Model:
 
     logits = self.policy(obs['features'])
     bs = tf.shape(step_type)[0]
-    if 'mask' in obs:
-      mask = obs['mask']
+    if 'mlp_mask' in obs:
+      mask = obs['mlp_mask']
       logits = tf.reshape(logits, tf.shape(mask))
       # mask some of the logits
       logits = tf.where(tf.equal(mask, 1), logits,

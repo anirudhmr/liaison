@@ -71,7 +71,6 @@ class Evaluator:
         **shell_config,
     )
 
-    # non-blocking runs in a new thread.
     t = Thread(target=self._collect_heuristics,
                args=(env_class, env_configs, seed, heuristic_loggers))
     t.start()
@@ -94,6 +93,14 @@ class Evaluator:
     with ThreadPool(8) as pool:
       l = pool.map(f, list(range(len(env_configs))))
 
+    for i in range(len(l)):
+      for j in range(len(l[i])):
+        # stack the timesteps first
+        l[i][j] = nest.map_structure(lambda *l: np.stack(l), *l[i][j])
+      # now stack the  trials
+      l[i] = nest.map_structure(lambda *l: np.stack(l), *l[i])
+
+    # final output is (num_trials, num_envs, n_local_moves)
     log_values = nest.map_structure(lambda *l: np.swapaxes(np.stack(l), 0, 1),
                                     *l)
     for logger in heuristic_loggers:

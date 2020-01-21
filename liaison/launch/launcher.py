@@ -2,6 +2,7 @@
 Defines the LaunchSettings class that holds all the
 information one needs to launch a component of surreal
 """
+import copy
 import faulthandler
 import os
 import subprocess
@@ -106,6 +107,19 @@ class Launcher:
         stdout=sys.stdout,
         stderr=subprocess.STDOUT)
 
+  def _setup_actor_system_loggers(self, id):
+    loggers = []
+    # loggers.append(ConsoleLogger(name='system'))
+    loggers.append(
+        TensorplexLogger(
+            client_id=f'actor/{id}',
+            host=os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST'],
+            port=os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT'],
+            serializer=self.sess_config.tensorplex.serializer,
+            deserializer=self.sess_config.tensorplex.deserializer,
+        ))
+    return loggers
+
   def run_actor(self, actor_id):
     """
         Launches an actor process with actor_id
@@ -128,15 +142,18 @@ class Launcher:
                         agent_config=agent_config,
                         **self.sess_config.shell)
 
-    actor_config = dict(actor_id=actor_id,
-                        shell_class=shell_class,
-                        shell_config=shell_config,
-                        env_class=env_class,
-                        env_configs=[self.env_config] * self.batch_size,
-                        traj_length=self.traj_length,
-                        seed=self.seed + actor_id * self.batch_size,
-                        batch_size=self.batch_size,
-                        **self.sess_config.actor)
+    actor_config = dict(
+        actor_id=actor_id,
+        shell_class=shell_class,
+        shell_config=shell_config,
+        env_class=env_class,
+        env_configs=[self.env_config] * self.batch_size,
+        traj_length=self.traj_length,
+        seed=self.seed + actor_id * self.batch_size,
+        batch_size=self.batch_size,
+        system_loggers=self._setup_actor_system_loggers(actor_id)
+        if actor_id == 0 else [],
+        **self.sess_config.actor)
 
     actor_class = U.import_obj(sess_config.actor.class_name,
                                sess_config.actor.class_path)
@@ -146,6 +163,15 @@ class Launcher:
     loggers = []
     loggers.append(
         AvgPipeLogger(ConsoleLogger(print_every=1, name=evaluator_name)))
+    if evaluator_name in ['train', 'valid', 'test']:
+      loggers.append(
+          AvgPipeLogger(
+              TensorplexLogger(
+                  client_id=f'evaluator/%d' %
+                  ['train', 'valid', 'test'].index(evaluator_name),
+                  serializer=self.sess_config.tensorplex.serializer,
+                  deserializer=self.sess_config.tensorplex.deserializer,
+              )))
     loggers.append(
         KVStreamLogger(stream_id=evaluator_name, client=IRSClient(timeout=20)))
     return loggers
@@ -160,6 +186,8 @@ class Launcher:
     shell_class = U.import_obj(sess_config.shell.class_name,
                                sess_config.shell.class_path)
     env_class = U.import_obj(env_config.class_name, env_config.class_path)
+    agent_config = copy.deepcopy(agent_config)
+    agent_config.update(evaluation_mode=True)
     shell_config = dict(agent_class=agent_class,
                         agent_config=agent_config,
                         **self.sess_config.shell)

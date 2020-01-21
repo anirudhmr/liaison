@@ -93,7 +93,7 @@ def run(heuristic, k, n_trials, seeds, env):
     rng = np.random.RandomState(seed)
     ts = env.reset()
     obs = ConfigDict(ts.observation)
-    log_vals[trial_i].append(obs.curr_episode_log_values)
+    log_vals[trial_i].append(dict(obs.curr_episode_log_values))
 
     while ts.step_type != StepType.LAST:
       var_names = heuristic_fn(env._curr_soln, env.milp.mip, rng, k)
@@ -104,5 +104,5 @@ def run(heuristic, k, n_trials, seeds, env):
           assert ts.step_type != StepType.LAST
       obs = ConfigDict(ts.observation)
       assert obs.graph_features.globals[Env.GLOBAL_LOCAL_SEARCH_STEP]
-      log_vals[trial_i].append(obs.curr_episode_log_values)
+      log_vals[trial_i].append(dict(obs.curr_episode_log_values))
   return log_vals

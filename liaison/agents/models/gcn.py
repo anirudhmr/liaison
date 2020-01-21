@@ -68,13 +68,13 @@ class Model:
                                   activation,
                                   True,
                                   seed,
-                                  layer_norm=True)
+                                  layer_norm=False)
     with tf.variable_scope('node_model'):
       self._node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
                                   activation,
                                   True,
                                   seed,
-                                  layer_norm=True)
+                                  layer_norm=False)
 
     with tf.variable_scope('encode'):
       self._encode_net = gn.modules.GraphIndependent(
@@ -138,11 +138,12 @@ class Model:
         # one round of message passing
         new_graph_features = self._graphnet(graph_features)
 
+        graph_features = new_graph_features
         # residual connections
-        graph_features = graph_features.replace(
-            nodes=new_graph_features.nodes + graph_features.nodes,
-            edges=new_graph_features.edges + graph_features.edges,
-            globals=new_graph_features.globals + graph_features.globals)
+        # graph_features = graph_features.replace(
+        #     nodes=new_graph_features.nodes + graph_features.nodes,
+        #     edges=new_graph_features.edges + graph_features.edges,
+        #     globals=new_graph_features.globals + graph_features.globals)
 
     return graph_features
 

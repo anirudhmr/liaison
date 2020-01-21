@@ -17,6 +17,7 @@ def get_config():
   config.mlp_embed_constraints = False
 
   config.make_obs_for_self_attention = False
+  config.make_obs_for_graphnet = True
   """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 
