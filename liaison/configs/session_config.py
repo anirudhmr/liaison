@@ -5,7 +5,7 @@ def get_config():
   config = ConfigDict()
 
   config.learner = ConfigDict()
-  config.learner.publish_every = 1000
+  config.learner.publish_every = 100
   config.learner.checkpoint_every = int(1e9)
   config.learner.n_train_steps = int(1e9)
   config.learner.use_gpu = False
@@ -36,7 +36,7 @@ def get_config():
   config.shell.agent_scope = 'shell'
   config.shell.ps_client_timeout = 2
   config.shell.ps_client_not_ready_sleep = 2
-  config.shell.sync_period = 100  # in # steps.
+  config.shell.sync_period = 10  # in # steps.
   config.shell.use_gpu = False
 
   config.replay = ConfigDict()

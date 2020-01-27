@@ -1,6 +1,9 @@
+import graph_nets as gn
 import numpy as np
+import sonnet as snt
 import tensorflow as tf
 import tensorflow.keras as K
+from sonnet.python.ops import initializers
 
 
 class BipartiteGraphConvolution(K.Model):
@@ -13,7 +16,8 @@ class BipartiteGraphConvolution(K.Model):
                activation,
                initializer,
                right_to_left=False,
-               memory_hack=False, sum_aggregation=True):
+               memory_hack=False,
+               sum_aggregation=True):
     """
       For memory_hack see issue https://github.com/ds4dm/learn2branch/issues/4
     """
@@ -24,44 +28,50 @@ class BipartiteGraphConvolution(K.Model):
     self.right_to_left = right_to_left
     self.memory_hack = memory_hack
 
-    # feature layers
-    self.feature_module_left = K.Sequential([
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       use_bias=True,
-                       kernel_initializer=self.initializer)
-    ])
-    self.feature_module_edge = K.Sequential([
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       use_bias=False,
-                       kernel_initializer=self.initializer)
-    ])
-    self.feature_module_right = K.Sequential([
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       use_bias=False,
-                       kernel_initializer=self.initializer)
-    ])
+    with tf.variable_scope('feature_module_left'):
+      self.feature_module_left = snt.nets.MLP(
+          [self.emb_size],
+          activate_final=False,
+          activation=self.activation,
+          initializers=dict(w=self.initializer,
+                            b=initializers.init_ops.Constant(0)))
 
-    # the convolution model (edge_model)
-    self.feature_module_final = K.Sequential([
-        K.layers.Activation(self.activation),
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       kernel_initializer=self.initializer)
-    ])
+    with tf.variable_scope('feature_module_right'):
+      self.feature_module_right = snt.nets.MLP(
+          [self.emb_size],
+          activation=self.activation,
+          activate_final=False,
+          initializers=dict(w=self.initializer,
+                            b=initializers.init_ops.Constant(0)))
 
-    # output_layers
-    self.output_module = K.Sequential([
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       kernel_initializer=self.initializer),
-        K.layers.Activation(self.activation),
-        K.layers.Dense(units=self.emb_size,
-                       activation=None,
-                       kernel_initializer=self.initializer),
-    ])
+    with tf.variable_scope('feature_module_edge'):
+      self.feature_module_edge = snt.nets.MLP(
+          [self.emb_size],
+          activation=self.activation,
+          activate_final=False,
+          initializers=dict(w=self.initializer,
+                            b=initializers.init_ops.Constant(0)))
+
+    with tf.variable_scope('feature_module_final'):
+      # the convolution model (edge_model)
+      self.feature_module_final = snt.Sequential([
+          K.layers.Activation(self.activation),
+          snt.nets.MLP([self.emb_size],
+                       activation=self.activation,
+                       activate_final=False,
+                       initializers=dict(w=self.initializer,
+                                         b=initializers.init_ops.Constant(0))),
+      ])
+
+    with tf.variable_scope('output_module'):
+      # output_layers
+      self.output_module = snt.nets.MLP(
+          [self.emb_size, self.emb_size],
+          activate_final=False,
+          activation=self.activation,
+          initializers=dict(w=self.initializer,
+                            b=initializers.init_ops.Constant(0)),
+      )
     self.sum_aggregation = sum_aggregation
 
   def call(self, inputs):
@@ -95,9 +105,8 @@ class BipartiteGraphConvolution(K.Model):
     right_features = tf.gather(self.feature_module_right(right_features),
                                axis=0,
                                indices=edge_indices[1])
-
     # compute joint features
-    if memory_hack:
+    if self.memory_hack:
       joint_features = left_features + edge_features + right_features
     else:
       joint_features = tf.concat(
@@ -197,10 +206,11 @@ class Model(K.Model):
     graph_features = obs['graph_features']
     assert isinstance(graph_features, gn.graphs.GraphsTuple)
 
+    # variables -> constraints.
     # gather receiver node features as right features
     variable_features = tf.gather(graph_features.nodes,
                                   axis=0,
-                                  indices=graph_features.receivers)
+                                  indices=graph_features.senders)
     variable_features = variable_features[:, 0:obs['right_feature_dim']]
 
     # gather sender node features as left features
@@ -221,14 +231,13 @@ class Model(K.Model):
     constraint_features = self.activation(constraint_features)
 
     variable_features = self.conv_c_to_v(
-        (constraint_features, (graph_features.senders,
-                               graph_features.receivers), graph_features.edges,
+        (constraint_features, (graph_features.receivers,
+                               graph_features.senders), graph_features.edges,
          variable_features))
     variable_features = self.activation(variable_features)
 
     # OUTPUT
     output = self.policy_torso(variable_features)
-    output = tf.reshape(output, [1, -1])
     return output
 
   def call(self, *args, **kwargs):

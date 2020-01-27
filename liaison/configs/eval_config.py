@@ -18,5 +18,6 @@ def get_config():
   config.env_config.lp_features = True
   config.env_config.delta_reward = False
   config.env_config.primal_gap_reward = True
+  config.env_config.n_graphs = 1
 
   return config

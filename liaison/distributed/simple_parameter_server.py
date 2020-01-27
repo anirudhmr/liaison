@@ -180,5 +180,6 @@ class ParameterServer(Thread):
       return PSResponse(type='parameters',
                         info=self.param_info,
                         parameters=params_asked_for)._asdict()
+
     else:
       raise ValueError('invalid request type received: %s' % (request.type))

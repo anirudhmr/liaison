@@ -50,6 +50,7 @@ class LogBestSol(Heur):
 def sample_milp_work(rng):
   milp = MILP()
   milp.problem_type = args.problem_type
+  milp.problem_size = args.problem_size
   mip = generate_instance(args.problem_type, args.problem_size, rng)
   if not args.only_collect_metadata:
     milp.mip = mip

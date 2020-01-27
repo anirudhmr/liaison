@@ -42,9 +42,10 @@ class Env(BaseEnv):
   VARIABLE_IS_INTEGER_FIELD = 3
   # optimal lp solution (for the continuous relaxation)
   VARIABLE_OPTIMAL_LP_SOLN_FIELD = 4
+  VARIABLE_OBJ_COEFF_FIELD = 5
   # TODO: Add variable lower and upper bound vals.
 
-  N_VARIABLE_FIELDS = 5
+  N_VARIABLE_FIELDS = 6
 
   # constant used in the constraints.
   CONSTRAINT_CONSTANT_FIELD = 0
@@ -84,6 +85,7 @@ class Env(BaseEnv):
                n_local_moves=10,
                max_nodes=-1,
                max_edges=-1,
+               enable_curriculum=False,
                **env_config):
     """If graph_seed < 0, then use the environment seed.
        k -> Max number of variables to unfix at a time.
@@ -103,7 +105,13 @@ class Env(BaseEnv):
     self._setup_graph_random_state(graph_seed)
     self._dataset = dataset
     self._dataset_type = dataset_type
-    self._n_graphs = n_graphs
+    if n_graphs >= LENGTH_MAP[dataset][dataset_type]:
+      print(
+          'WARNING: Specified number of graphs exceeds whats available in dataset_constants.py'
+      )
+      self._n_graphs = LENGTH_MAP[dataset][dataset_type]
+    else:
+      self._n_graphs = n_graphs
     self._graph_start_idx = graph_start_idx
 
     self.config.update(NORMALIZATION_CONSTANTS[dataset])
@@ -115,15 +123,49 @@ class Env(BaseEnv):
     self._prev_final_quality = np.nan
     self._prev_mean_work = np.nan
     self._reset_next_step = True
+    self._enable_curriculum = enable_curriculum
+    if enable_curriculum:
+      self._global_step_fetcher = GlobalStepFetcher()
+    else:
+      self._global_step_fetcher = None
+    # map from sample to length of the mip
+    self._sample_lengths = None
     self.reset()
+
+  def _pick_sample_for_curriculum(self):
+    n_graphs = self._n_graphs
+    graph_start_idx = self._graph_start_idx
+    config = self.config
+
+    if self._sample_lengths is None:
+      self._sample_lengths = {}
+      for i in range(graph_start_idx, graph_start_idx + n_graphs):
+        sample = get_sample(self._dataset, self._dataset_type, i)
+        self._sample_lengths[i] = sample['problem_size']
+    step = self._global_step_fetcher.get()
+    val = config.sample_size_schedule.start_value
+    if step >= config.sample_size_schedule.start_step:
+      val += ((step - config.sample_size_schedule.start_step) *
+              (config.sample_size_schedule.max_value -
+               config.sample_size_schedule.start_value) /
+              config.sample_size_schedule.dec_steps)
+    val = min(val, config.sample_size_schedule.max_value)
+
+    choices = []
+    for i, length in self._sample_lengths.items():
+      if length <= val:
+        choices.append(i)
+    return np.random.choice(choices)
 
   def _sample(self, choice=None):
     n_graphs = self._n_graphs
     graph_start_idx = self._graph_start_idx
-
     if choice is None:
-      choice = np.random.choice(
-          range(graph_start_idx, graph_start_idx + n_graphs))
+      if self._enable_curriculum:
+        choice = self._pick_sample_for_curriculum()
+      else:
+        choice = np.random.choice(
+            range(graph_start_idx, graph_start_idx + n_graphs))
 
     self._milp_choice = choice
     return get_sample(self._dataset, self._dataset_type, choice)
@@ -148,14 +190,13 @@ class Env(BaseEnv):
 
       features = np.hstack((features, constraint_features.flatten()))
 
-    obs = dict(features=features,
+    obs = dict(features=np.float32(features),
                mask=mask,
                mlp_mask=mask,
-               globals=self._globals)
+               globals=np.float32(self._globals))
     return obs
 
   def _observation_self_attention(self, nodes):
-
     mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
     features = np.hstack((nodes.flatten(), self._globals))
     cv = []
@@ -172,13 +213,13 @@ class Env(BaseEnv):
     obs = dict(mask=mask,
                var_nodes=np.float32(self._variable_nodes),
                var_embeddings=var_embeddings,
-               globals=self._globals)
+               globals=np.float32(self._globals))
     return obs
 
   def _observation_graphnet_inductive(self, nodes):
     graph_features = dict(nodes=nodes,
-                          edges=self._edges,
-                          globals=self._globals,
+                          edges=np.array(self._edges, dtype=np.float32),
+                          globals=np.array(self._globals, dtype=np.float32),
                           senders=np.array(self._senders, dtype=np.int32),
                           receivers=np.array(self._receivers, dtype=np.int32),
                           n_node=np.array(len(nodes), dtype=np.int32),
@@ -194,6 +235,20 @@ class Env(BaseEnv):
                node_mask=node_mask,
                mask=node_mask)
     return obs
+
+  def _observation_bipartite_graphnet(self):
+    graph_features = dict(left_nodes=pad_first_dim(self._variable_nodes,
+                                                   self._max_nodes),
+                          right_nodes=pad_first_dim(self._constraint_nodes,
+                                                    self._max_nodes),
+                          n_left_nodes=np.int32(len(self._variable_nodes)),
+                          n_right_nodes=np.int32(len(self._constraint_nodes)),
+                          globals=np.array(self._globals, dtype=np.float32),
+                          **self._static_graph_features)
+
+    mask = pad_last_dim(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD],
+                        self._max_nodes)
+    return dict(graph_features=graph_features, node_mask=mask, mask=mask)
 
   def _observation(self):
     variable_nodes = self._variable_nodes
@@ -225,6 +280,9 @@ class Env(BaseEnv):
 
     if self.config.make_obs_for_graphnet:
       obs.update(self._observation_graphnet_inductive(nodes))
+
+    if self.config.make_obs_for_bipartite_graphnet:
+      obs.update(self._observation_bipartite_graphnet())
 
     # masks should be mutually disjoint.
     assert not np.any(
@@ -258,6 +316,70 @@ class Env(BaseEnv):
             final_quality=np.float32(self._final_quality),
             **nest.map_structure(np.float32, dict(self._mip_stats))))
     return obs
+
+  def _encode_static_graph_features(self):
+    milp = self.milp
+    # get undirected edge representation first
+    n_edges = sum([len(c) for c in milp.mip.constraints]) + len(milp.mip.obj)
+    edges = np.zeros((n_edges, Env.N_EDGE_FIELDS), dtype=np.float32)
+    senders = np.zeros((n_edges), dtype=np.int32)
+    receivers = np.zeros((n_edges), dtype=np.int32)
+
+    i = 0
+    for cid, c in enumerate(milp.mip.constraints):
+      c = c.cast_sense_to_le()
+      for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
+        edges[
+            i, Env.
+            EDGE_WEIGHT_FIELD] = coeff / self.config.constraint_coeff_normalizer
+        # sender is the variable
+        senders[i] = self._varnames2varidx[var_name]
+        # receiver is the constraint.
+        receivers[i] = len(self._variable_nodes) + cid
+        i += 1
+
+    for j, (var_name, coeff) in enumerate(
+        zip(milp.mip.obj.expr.var_names, milp.mip.obj.expr.coeffs)):
+      edges[i + j, Env.
+            EDGE_WEIGHT_FIELD] = coeff / self.config.obj_coeff_normalizer
+      senders[i + j] = self._varnames2varidx[var_name]
+      receivers[i +
+                j] = len(self._variable_nodes) + len(self._constraint_nodes)
+
+    # now duplicate the edges to make them directed.
+    edges = np.vstack((edges, edges))
+    senders, receivers = np.hstack((senders, receivers)), np.hstack(
+        (receivers, senders))
+
+    return dict(edges=edges,
+                senders=senders,
+                receivers=receivers,
+                n_edge=np.int32(len(edges)))
+
+  def _encode_static_bipartite_graph_features(self):
+    milp = self.milp
+    # get undirected edge representation first
+    n_edges = sum([len(c) for c in milp.mip.constraints])
+    edges = np.zeros((n_edges, Env.N_EDGE_FIELDS), dtype=np.float32)
+    senders = np.zeros((n_edges), dtype=np.int32)
+    receivers = np.zeros((n_edges), dtype=np.int32)
+
+    i = 0
+    for cid, c in enumerate(milp.mip.constraints):
+      c = c.cast_sense_to_le()
+      for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
+        edges[
+            i, Env.
+            EDGE_WEIGHT_FIELD] = coeff / self.config.constraint_coeff_normalizer
+        # sender is the variable
+        senders[i] = self._varnames2varidx[var_name]
+        # receiver is the constraint.
+        receivers[i] = cid
+        i += 1
+    return dict(edges=edges,
+                senders=senders,
+                receivers=receivers,
+                n_edge=np.int32(len(edges)))
 
   def reset(self):
     milp = self.milp = self._sample()
@@ -303,6 +425,11 @@ class Env(BaseEnv):
         milp.optimal_lp_sol[v] for v in var_names
     ]
     variable_nodes = self._reset_mask(variable_nodes)
+    for var_name, coeff in zip(milp.mip.obj.expr.var_names,
+                               milp.mip.obj.expr.coeffs):
+      variable_nodes[
+          self._varnames2varidx[var_name], Env.
+          VARIABLE_OBJ_COEFF_FIELD] = coeff / self.config.obj_coeff_normalizer
 
     # now construct constraint nodes
     constraint_nodes = np.zeros(
@@ -319,46 +446,13 @@ class Env(BaseEnv):
     objective_nodes[:,
                     1] = milp.feasible_objective / self.config.obj_normalizer
 
-    # get undirected edge representation first
-    n_edges = sum([len(c) for c in milp.mip.constraints]) + len(milp.mip.obj)
-    edges = np.zeros((n_edges, Env.N_EDGE_FIELDS), dtype=np.float32)
-    senders = np.zeros((n_edges), dtype=np.int32)
-    receivers = np.zeros((n_edges), dtype=np.int32)
-
-    i = 0
-    for cid, c in enumerate(milp.mip.constraints):
-      c = c.cast_sense_to_le()
-      for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
-        edges[
-            i, Env.
-            EDGE_WEIGHT_FIELD] = coeff / self.config.constraint_coeff_normalizer
-        # sender is the variable
-        senders[i] = self._varnames2varidx[var_name]
-        # receiver is the constraint.
-        receivers[i] = len(variable_nodes) + cid
-        i += 1
-
-    for j, (var_name, coeff) in enumerate(
-        zip(milp.mip.obj.expr.var_names, milp.mip.obj.expr.coeffs)):
-      edges[i + j, Env.
-            EDGE_WEIGHT_FIELD] = coeff / self.config.obj_coeff_normalizer
-      senders[i + j] = self._varnames2varidx[var_name]
-      receivers[i + j] = len(variable_nodes) + len(constraint_nodes)
-
-    # now duplicate the edges to make them directed.
-    edges = np.vstack((edges, edges))
-    senders, receivers = np.hstack((senders, receivers)), np.hstack(
-        (receivers, senders))
-
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
     globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(
         self._steps_per_episode)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
 
-    self._edges = edges
     self._globals = globals_
-    self._senders, self._receivers = senders, receivers
     self._variable_nodes = variable_nodes
     self._objective_nodes = objective_nodes
     self._constraint_nodes = constraint_nodes
@@ -382,6 +476,12 @@ class Env(BaseEnv):
     self._curr_soln = copy.deepcopy(milp.feasible_solution)
     self._curr_obj = milp.feasible_objective
     self._prev_obj = milp.feasible_objective
+
+    if self.config.make_obs_for_graphnet:
+      self._static_graph_features = self._encode_static_graph_features()
+    elif self.config.make_obs_for_bipartite_graphnet:
+      self._static_graph_features = self._encode_static_bipartite_graph_features(
+      )
     return restart(self._observation())
 
   def _scip_solve(self, mip):
@@ -428,7 +528,7 @@ class Env(BaseEnv):
   def _primal_gap(self, curr_obj):
     optimal_obj = self.milp.optimal_objective
     if curr_obj == 0 and optimal_obj == 0:
-      rew = 0.
+      rew = 1.
     elif np.sign(curr_obj) * np.sign(optimal_obj) < 0:
       rew = 1.
     else:
@@ -564,6 +664,10 @@ class Env(BaseEnv):
         self._steps_per_episode)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     globals_[Env.GLOBAL_LOCAL_SEARCH_STEP] = local_search_case
+
+    self._globals = globals_
+    self._variable_nodes = variable_nodes
+    self._objective_nodes = obj_nodes
 
     if self._n_steps == self._steps_per_episode:
       self._reset_next_step = True

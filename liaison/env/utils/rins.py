@@ -1,10 +1,12 @@
 import functools
 import os
 import pickle
+import time
 
 import numpy as np
 from liaison.daper.dataset_constants import DATASET_PATH
 from liaison.daper.milp.primitives import relax_integral_constraints
+from liaison.distributed import ParameterClient
 from liaison.utils import ConfigDict
 from pyscipopt import Model
 
@@ -45,3 +47,26 @@ def get_sample(dataset, dataset_type, graph_idx):
   milp = ConfigDict(milp)
   milp.optimal_lp_sol = ass
   return milp
+
+
+class GlobalStepFetcher:
+  # fetches global step value from the parameter server.
+  # caches to avoid overloading the remote server.
+
+  def __init__(self, min_request_spacing=2):
+    self._ps_client = ParameterClient(host=os.environ['SYMPH_PS_SERVING_HOST'],
+                                      port=os.environ['SYMPH_PS_SERVING_PORT'],
+                                      agent_scope=None,
+                                      timeout=2,
+                                      not_ready_sleep=2)
+    self._min_request_spacing = min_request_spacing
+    self._prev_time = time.time()
+    self._prev_response = 0
+
+  def get(self):
+    if time.time() - self._prev_time >= self._min_request_spacing:
+      info = self._ps_client.fetch_info_no_retry()
+      if info:
+        self._prev_response = info['iteration']
+      self._prev_time = time.time()
+    return self._prev_response

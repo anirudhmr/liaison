@@ -18,6 +18,7 @@ def get_config():
 
   config.make_obs_for_self_attention = False
   config.make_obs_for_graphnet = True
+  config.make_obs_for_bipartite_graphnet = False
   """if graph_seed < 0, then use the environment seed"""
   config.graph_seed = 42
 
@@ -40,5 +41,12 @@ def get_config():
   config.primal_gap_reward = True
 
   config.disable_maxcuts = False
+  config.enable_curriculum = False
+
+  config.sample_size_schedule = ConfigDict()
+  config.sample_size_schedule.start_value = 40
+  config.sample_size_schedule.max_value = 100
+  config.sample_size_schedule.start_step = 10000
+  config.sample_size_schedule.dec_steps = 25000
 
   return config

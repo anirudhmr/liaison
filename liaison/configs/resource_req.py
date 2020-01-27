@@ -21,6 +21,8 @@ def get_config():
   config.actor.mem = 0
   config.actor.gpu_compute = []
   config.actor.gpu_mem = []
+  # config.actor.gpu_compute = [.1]
+  # config.actor.gpu_mem = [1]
 
   config.evaluator = ConfigDict()
   config.evaluator.cpu = 1

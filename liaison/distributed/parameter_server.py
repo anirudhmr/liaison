@@ -339,6 +339,31 @@ class ParameterClient(object):
     assert response.type == 'info' or response.type == 'not_ready'
     return response.info
 
+  def fetch_info_no_retry(self):
+    """
+        Fetch the metadata of parameters on parameter server.
+        Keeps trying on time outs. Returns None if response received with
+        status `not_ready`.
+
+    Returns:
+        dictionary of metadata
+    """
+    try:
+      response = self._client.request(
+          PSRequest(type='info',
+                    hash=self._last_hash,
+                    var_list=None,
+                    agent_scope=self._agent_scope)._asdict())
+    except ZmqTimeoutError:
+      logging.info('ZmQ timed out.')
+      self.on_fetch_parameter_failed()
+      return None
+
+    self.on_fetch_parameter_success()
+    response = PSResponse(**response)
+    assert response.type == 'info' or response.type == 'not_ready'
+    return response.info
+
   def on_fetch_parameter_failed(self):
     """
             Called when connection with parameter server fails

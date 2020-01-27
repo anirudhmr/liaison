@@ -13,7 +13,7 @@ from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
 parser = argparse.ArgumentParser()
 parser.add_argument('-o', '--out_dir', type=str, required=True)
 parser.add_argument('--problem_type', type=str, required=True)
-parser.add_argument('--problem_size', type=int, required=True)
+parser.add_argument('--problem_size', type=int, nargs='+', required=True)
 parser.add_argument('-N', '--n_samples', type=int, required=True)
 parser.add_argument('--seed', type=int, required=True)
 parser.add_argument('--gap', type=float, default=0.)
@@ -42,11 +42,22 @@ class LogBestSol(Heur):
     return dict(result=SCIP_RESULT.DELAYED)
 
 
+def sample_problem_size(seed):
+  rng = np.random.RandomState(seed)
+  l = args.problem_size[0]
+  if len(args.problem_size) > 1:
+    r = args.problem_size[1]
+  else:
+    r = l
+  return np.random.choice(list(range(l, r + 1)))
+
+
 def sample_milp_work(seed):
   milp = MILP()
   milp.problem_type = args.problem_type
   milp.seed = seed
-  mip = generate_instance(args.problem_type, args.problem_size,
+  milp.problem_size = sample_problem_size(seed)
+  mip = generate_instance(args.problem_type, milp.problem_size,
                           np.random.RandomState(seed))
   milp.mip = None
 

@@ -43,8 +43,8 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       # flatten graph features for the policy network
       # convert dict to graphstuple
-      graph_features = gn.graphs.GraphsTuple(**obs['graph_features'])
-      obs['graph_features'] = flatten_graphs(graph_features)
+      obs['graph_features'] = self._process_graph_features(
+          obs['graph_features'])
 
       logits, _ = self._model.get_logits(
           self._model.compute_graph_embeddings(obs), obs['node_mask'])
@@ -56,6 +56,16 @@ class Agent(BaseAgent):
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
       raise Exception('graph_features not found in observation.')
+
+  def _process_graph_features(self, graph_features):
+    if set(graph_features.keys()) == set(gn.graphs.GraphsTuple._fields):
+      return flatten_graphs(gn.graphs.GraphsTuple(**graph_features))
+    elif set(graph_features.keys()) == set(
+        gn.graphs.BipartiteGraphsTuple._fields):
+      return flatten_bipartite_graphs(
+          gn.graphs.BipartiteGraphsTuple(**graph_features))
+    else:
+      raise Exception('Unknown graph features provided.')
 
   def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
                        observations, discounts):
@@ -91,8 +101,9 @@ class Agent(BaseAgent):
         flattened_observations = nest.map_structure(merge_first_two_dims,
                                                     observations)
         # flatten by merging the batch and node, edge dimensions
-        flattened_observations['graph_features'] = flatten_graphs(
-            gn.graphs.GraphsTuple(**flattened_observations['graph_features']))
+        flattened_observations[
+            'graph_features'] = self._process_graph_features(
+                flattened_observations['graph_features'])
 
       with tf.variable_scope('graph_embeddings'):
         graph_embeddings = self._model.compute_graph_embeddings(

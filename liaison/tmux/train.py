@@ -19,19 +19,21 @@ parser.add_config_file(name='cluster', default='ccc/config.py')
 parser.add_config_file(name='resource_req',
                        default='liaison/configs/resource_req.py')
 parser.add_argument('--spy_measurement_interval', type=float, default=2.)
-parser.add_argument('--gpu_overload_obj_coeff', type=int, default=1)
-parser.add_argument('--gpu_load_balancing_obj_coeff', type=int, default=1)
-parser.add_argument('--gpu_wu_consolidation_obj_coeff', type=int, default=.25)
-parser.add_argument('--cpu_overload_obj_coeff', type=int, default=1)
-parser.add_argument('--cpu_load_balancing_obj_coeff', type=int, default=1)
-parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=int, default=10)
+parser.add_argument('--gpu_overload_obj_coeff', type=float, default=1)
+parser.add_argument('--gpu_load_balancing_obj_coeff', type=float, default=1)
+parser.add_argument('--gpu_wu_consolidation_obj_coeff',
+                    type=float,
+                    default=.25)
+parser.add_argument('--cpu_overload_obj_coeff', type=float, default=1)
+parser.add_argument('--cpu_load_balancing_obj_coeff', type=float, default=1)
+parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=float, default=10)
 parser.add_argument('--filter_nodes_regex', type=str, default='.*')
 parser.add_argument('--without_evaluators', action='store_true')
 parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail', 'csail_vcuda', 'cloudlab_clemson_clnode_182'],
+    default=['os_csail', 'cloudlab_clemson_clnode2_0'],
     help=
     'These nodes are always selected irrespective of the filter_nodes_regex specified.'
 )
@@ -73,8 +75,8 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           hyper.discrete('env_config.k', [5]),
-          hyper.discrete('agent_config.lr_init', [2e-4, 4e-4, 1e-3, 2e-3]),
-          # hyper.discrete('agent_config.model.sum_aggregation', [False]),
+          hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
+          hyper.discrete('agent_config.model.sum_aggregation', [False]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),

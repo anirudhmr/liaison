@@ -8,6 +8,7 @@ from liaison.daper.milp.primitives import MIPInstance
 MILP = lambda: ConfigDict(
     mip=MIPInstance,
     problem_type=str,
+    problem_size=int,
     # Optimal objective achieved.
     optimal_objective=float,
     optimal_solution=Dict[str, int],

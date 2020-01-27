@@ -23,10 +23,10 @@ def build_program(exp,
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
-  irs.set_hard_placement('cloudlab_clemson_clnode_182')
+  irs.set_hard_placement('cloudlab_clemson_clnode2_0')
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement('cloudlab_clemson_clnode_182')
+    visualizers.set_hard_placement('cloudlab_clemson_clnode2_0')
   else:
     visualizers = None
   actor_pg = exp.new_process_group('actor-*')

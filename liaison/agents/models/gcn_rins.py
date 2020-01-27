@@ -4,6 +4,7 @@ import graph_nets as gn
 import numpy as np
 import sonnet as snt
 from liaison.agents.models.utils import *
+from liaison.agents.utils import *
 from sonnet.python.ops import initializers
 
 INF = np.float32(1e9)
@@ -63,8 +64,10 @@ class Model:
       value_torso_hidden_layer_sizes=[64, 64],
       supervised_prediction_torso_hidden_layer_sizes=[64, 64],
       action_spec=None,
-      sum_aggregation=True):
-    self.activation = activation
+      sum_aggregation=True,
+      use_layer_norm=True,
+  ):
+    self.activation = get_activation_from_str(activation)
     self.n_prop_layers = n_prop_layers
     self.seed = seed
     self.policy = None
@@ -90,23 +93,24 @@ class Model:
       self._encode_net = gn.modules.GraphIndependent(
           edge_model_fn=lambda: f(edge_embed_dim, 'edge_encode'),
           global_model_fn=lambda: f(global_embed_dim, 'global_encode'),
-          node_model_fn=None)
+          node_model_fn=lambda: f(node_embed_dim, 'node_encode'))
+
+    with tf.variable_scope('edge_model'):
+      edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
+                            activation,
+                            activate_final=True,
+                            seed=seed,
+                            layer_norm=use_layer_norm)
+    with tf.variable_scope('node_model'):
+      node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
+                            activation,
+                            activate_final=True,
+                            seed=seed,
+                            layer_norm=use_layer_norm)
 
     self._graphnet_models = [None for _ in range(n_prop_layers)]
     for i in range(n_prop_layers):
       with tf.variable_scope('graphnet_model_%d' % i):
-        with tf.variable_scope('edge_model'):
-          edge_model = make_mlp(edge_hidden_layer_sizes + [edge_embed_dim],
-                                activation,
-                                activate_final=True,
-                                seed=seed,
-                                layer_norm=True)
-        with tf.variable_scope('node_model'):
-          node_model = make_mlp(node_hidden_layer_sizes + [node_embed_dim],
-                                activation,
-                                activate_final=True,
-                                seed=seed,
-                                layer_norm=True)
         # global(node(edge))
         self._graphnet_models[i] = gn.modules.GraphNetwork(
             edge_model_fn=lambda fn=edge_model: fn,
@@ -126,7 +130,7 @@ class Model:
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(0)),
           activate_final=False,
-          activation=get_activation_from_str(self.activation))
+          activation=self.activation)
 
     with tf.variable_scope('supervised_prediction_torso'):
       self.supervised_prediction_torso = snt.nets.MLP(
@@ -134,16 +138,24 @@ class Model:
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(0)),
           activate_final=False,
-          activation=get_activation_from_str(self.activation),
+          activation=self.activation,
       )
 
     with tf.variable_scope('value_torso'):
-      self.value_torso = snt.nets.MLP(
+      self.value_torso_1 = snt.nets.MLP(
+          value_torso_hidden_layer_sizes,
+          initializers=dict(w=glorot_uniform(seed),
+                            b=initializers.init_ops.Constant(0)),
+          activate_final=True,
+          activation=self.activation,
+      )
+
+      self.value_torso_2 = snt.nets.MLP(
           value_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(0)),
           activate_final=False,
-          activation=get_activation_from_str(self.activation),
+          activation=self.activation,
       )
 
   def _validate_observations(self, obs):
@@ -170,6 +182,12 @@ class Model:
         tf.where(tf.equal(constraint_type_mask, 1),
                  self._constraint_encode_net(nodes),
                  self._obj_encode_net(nodes)))
+    col = tf.fill([infer_shape(nodes)[0]], 0)
+    node_types = tf.where(
+        tf.equal(var_type_mask, 1), col,
+        tf.where(tf.equal(constraint_type_mask, 1), col + 1, col + 2))
+    node_types = tf.one_hot(node_types, 3)
+    nodes = tf.concat([nodes, node_types], axis=-1)
     graph_features = graph_features.replace(nodes=nodes)
     graph_features = self._encode_net(graph_features)
     return graph_features
@@ -179,7 +197,6 @@ class Model:
       with tf.variable_scope('prop_layer_%d' % i):
         # one round of message passing
         new_graph_features = self._graphnet_models[i](graph_features)
-
         # residual connections
         graph_features = graph_features.replace(
             nodes=new_graph_features.nodes + graph_features.nodes,
@@ -285,10 +302,14 @@ class Model:
                         these to use with different network heads for value, policy etc.
     """
     with tf.variable_scope('value_network'):
-      value = gn.blocks.NodesToGlobalsAggregator(
+      graph_features = graph_features.replace(
+          nodes=self.value_torso_1(graph_features.nodes))
+
+      agg = gn.blocks.NodesToGlobalsAggregator(
           tf.unsorted_segment_mean)(graph_features)
-      value = tf.concat([value, graph_features.globals], axis=-1)
-      return tf.squeeze(self.value_torso(value), axis=-1)
+
+      value = tf.concat([agg, graph_features.globals], axis=-1)
+      return tf.squeeze(self.value_torso_2(value), axis=-1)
 
   def dummy_state(self, bs):
     return tf.fill(tf.expand_dims(bs, 0), 0)

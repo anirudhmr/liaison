@@ -125,11 +125,74 @@ def flatten_graphs(graph_features):
   """
   node_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
   edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
+
+  senders = tf.gather_nd(params=graph_features.senders, indices=edge_indices)
+  receivers = tf.gather_nd(params=graph_features.receivers,
+                           indices=edge_indices)
+  cumsum = gn.utils_tf.gpu_cumsum(graph_features.n_node, exclusive=True)
+  offsets = gn.utils_tf.repeat(cumsum, graph_features.n_edge)
+  senders += offsets
+  receivers += offsets
+
   graph_features = graph_features.replace(
       nodes=tf.gather_nd(params=graph_features.nodes, indices=node_indices),
       edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
-      senders=tf.gather_nd(params=graph_features.senders,
-                           indices=edge_indices),
-      receivers=tf.gather_nd(params=graph_features.receivers,
-                             indices=edge_indices))
+      senders=senders,
+      receivers=receivers)
   return gn.utils_tf.stop_gradient(graph_features)
+
+
+def flatten_bipartite_graphs(graph_features):
+  """
+    Flatten graphs. Remove padding.
+    Args:
+      graph_features: gn.graphs.GraphsTuple.
+      B is batch size
+      M_N is the max # of node (graphs with < M_N nodes use padding)
+      M_E max # of edges.
+      graph_features.nodes    => [B, M_N, ...]
+      graph_features.edges    => [B, M_E, ...]
+      graph_features.senders  => [B, M_E]
+      graph_features.receivers=> [B, M_E]
+      graph_features.n_node   => [B]
+      graph_features.n_edge   => [B]
+      graph_features.globals  => [B, ...]
+    Returns:
+      graph_features: gn.graphs.GraphsTuple
+      Let S_N = sum(graph_features.n_node)
+      Let S_E = sum(graph_features.n_edge)
+      graph_features.nodes    => [S_N, ...]
+      graph_features.edges    => [S_E, ...]
+      graph_features.senders  => [S_E]
+      graph_features.receivers=> [S_E]
+      graph_features.n_node   => [B]
+      graph_features.n_edge   => [B]
+      graph_features.globals  => [B, ...]
+  """
+  left_indices = gn.utils_tf.sparse_to_dense_indices(
+      graph_features.n_left_nodes)
+  right_indices = gn.utils_tf.sparse_to_dense_indices(
+      graph_features.n_right_nodes)
+  edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
+
+  senders = tf.gather_nd(params=graph_features.senders, indices=edge_indices)
+  receivers = tf.gather_nd(params=graph_features.receivers,
+                           indices=edge_indices)
+  senders += gn.utils_tf.repeat(
+      gn.utils_tf.gpu_cumsum(graph_features.n_left_nodes, exclusive=True),
+      graph_features.n_edge)
+  receivers += gn.utils_tf.repeat(
+      gn.utils_tf.gpu_cumsum(graph_features.n_right_nodes, exclusive=True),
+      graph_features.n_edge)
+
+  graph_features = graph_features.replace(
+      left_nodes=tf.gather_nd(params=graph_features.left_nodes,
+                              indices=left_indices),
+      right_nodes=tf.gather_nd(params=graph_features.right_nodes,
+                               indices=right_indices),
+      edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
+      senders=senders,
+      receivers=receivers)
+
+  with tf.name_scope('stop_gradient'):
+    return graph_features.map(tf.stop_gradient)

@@ -8,8 +8,11 @@ DATASET_PATH = {
     'milp-cauction-100': '/data/nms/tfp/datasets/milp/cauction/size-100',
     'milp-cauction-100-filtered':
     '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
+    'milp-cauction-mixed':
+    '/data/nms/tfp/datasets/milp/cauction/size-mixed-small',
     'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',
     'milp-cauction-300': '/data/nms/tfp/datasets/milp/cauction/size-300',
+    'milp-cauction-25': '/data/nms/tfp/datasets/milp/cauction/size-25',
     'milp-setcover-10': '/data/nms/tfp/datasets/milp/setcover/size-10',
     'milp-setcover-100': '/data/nms/tfp/datasets/milp/setcover/size-100',
     'milp-indset-10': '/data/nms/tfp/datasets/milp/indset/size-10',
@@ -27,7 +30,9 @@ LENGTH_MAP = {
     'milp-facilities-3': dict(train=1000, valid=128, test=128),
     'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-10': dict(train=10000, valid=1000, test=1000),
+    'milp-cauction-25': dict(train=2000, valid=100, test=100),
     'milp-cauction-100': dict(train=1000, valid=100, test=100),
+    'milp-cauction-mixed': dict(train=2000, valid=100, test=100),
     'milp-cauction-100-filtered': dict(train=1000, valid=100, test=100),
     'milp-cauction-200': dict(train=1000, valid=100, test=100),
     'milp-cauction-300': dict(train=512, valid=16, test=16),
@@ -108,6 +113,24 @@ NORMALIZATION_CONSTANTS = {
         obj_normalizer=86.54,
         max_nodes=1127,
         max_edges=5730,
+    ),
+    'milp-cauction-mixed':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=305.17,
+        obj_normalizer=4692.65,
+        max_nodes=694,
+        max_edges=6944,
+    ),
+    'milp-cauction-25':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=301.82,
+        obj_normalizer=1872.97,
+        max_nodes=179,
+        max_edges=2114,
     ),
 }
 # assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())

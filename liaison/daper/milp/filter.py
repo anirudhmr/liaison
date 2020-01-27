@@ -65,6 +65,15 @@ def compute_primal_integral(sample):
   return integral
 
 
+def compute_score(fname):
+  sample = read_pkl(fname)
+  if sample:
+    score = compute_primal_integral(sample)
+  else:
+    score = None
+  return (score, fname)
+
+
 def _filter():
   scores = []
   if args.n_read_samples is None:
@@ -75,16 +84,8 @@ def _filter():
   else:
     files = [f'{args.input_dir}/{i}.pkl' for i in range(args.n_read_samples)]
 
-  def f(fname):
-    sample = read_pkl(fname)
-    if sample:
-      score = compute_primal_integral(sample)
-    else:
-      score = None
-    return (score, fname)
-
   with ThreadPool() as pool:
-    scores = pool.map(f, files)
+    scores = pool.map(compute_score, files)
   return list(filter(lambda k: k[0], scores))
 
 
@@ -100,10 +101,10 @@ def split(dataset):
   ])
 
 
-def cmd_gen(seed, out_file):
-  cmd = "python %s --seed=%d --out_file=%s %s" % (os.path.join(
-      os.path.dirname(__file__),
-      'sample_graph.py'), seed, out_file, ' '.join(REMAINDER))
+def cmd_gen(seed, out_file, problem_size):
+  cmd = "python %s --seed=%d --out_file=%s --problem_size=%d %s" % (
+      os.path.join(os.path.dirname(__file__), 'sample_graph.py'), seed,
+      out_file, problem_size, ' '.join(REMAINDER))
   return cmd
 
 
@@ -115,7 +116,8 @@ def generate_cmds(train, valid, test):
       if sample is None:
         continue
       out_file = Path(args.output_dir) / mode / f'{i}.pkl'
-      cmds += [cmd_gen(sample.seed, out_file)]
+      # problem_size added in new version.
+      cmds += [cmd_gen(sample.seed, out_file, sample['problem_size'])]
 
   cmds = []
   f('train', train, cmds)
