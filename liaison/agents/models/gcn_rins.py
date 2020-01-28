@@ -60,6 +60,8 @@ class Model:
       global_embed_dim=8,
       node_hidden_layer_sizes=[64],
       edge_hidden_layer_sizes=[32],  # if num edges is high keep this light.
+      policy_summarize_hidden_layer_sizes=[32],
+      value_summarize_hidden_layer_sizes=[32],
       policy_torso_hidden_layer_sizes=[64, 64],
       value_torso_hidden_layer_sizes=[64, 64],
       supervised_prediction_torso_hidden_layer_sizes=[64, 64],
@@ -141,15 +143,25 @@ class Model:
           activation=self.activation,
       )
 
-    with tf.variable_scope('value_torso'):
-      self.value_torso_1 = snt.nets.MLP(
-          value_torso_hidden_layer_sizes,
+    with tf.variable_scope('policy_summarize'):
+      self.policy_summarize = snt.nets.MLP(
+          policy_summarize_hidden_layer_sizes,
           initializers=dict(w=glorot_uniform(seed),
                             b=initializers.init_ops.Constant(0)),
           activate_final=True,
           activation=self.activation,
       )
 
+    with tf.variable_scope('value_summarize'):
+      self.value_summarize = snt.nets.MLP(
+          value_summarize_hidden_layer_sizes,
+          initializers=dict(w=glorot_uniform(seed),
+                            b=initializers.init_ops.Constant(0)),
+          activate_final=True,
+          activation=self.activation,
+      )
+
+    with tf.variable_scope('value_torso'):
       self.value_torso_2 = snt.nets.MLP(
           value_torso_hidden_layer_sizes + [1],
           initializers=dict(w=glorot_uniform(seed),
@@ -251,6 +263,14 @@ class Model:
                         these to use with different network heads for value, policy etc.
     """
     # broadcast globals and attach them to node features
+    graph_features = graph_features.replace(globals=tf.concat([
+        graph_features.globals,
+        gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)
+        (graph_features.replace(
+            nodes=self.policy_summarize(graph_features.nodes)))
+    ],
+                                                              axis=-1))
+
     graph_features = graph_features.replace(nodes=tf.concat([
         graph_features.nodes,
         gn.blocks.broadcast_globals_to_nodes(graph_features)
@@ -302,11 +322,9 @@ class Model:
                         these to use with different network heads for value, policy etc.
     """
     with tf.variable_scope('value_network'):
-      graph_features = graph_features.replace(
-          nodes=self.value_torso_1(graph_features.nodes))
-
-      agg = gn.blocks.NodesToGlobalsAggregator(
-          tf.unsorted_segment_mean)(graph_features)
+      agg = gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)(
+          graph_features.replace(
+              nodes=self.value_summarize(graph_features.nodes)))
 
       value = tf.concat([agg, graph_features.globals], axis=-1)
       return tf.squeeze(self.value_torso_2(value), axis=-1)

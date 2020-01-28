@@ -49,4 +49,7 @@ def get_config():
   config.sample_size_schedule.start_step = 10000
   config.sample_size_schedule.dec_steps = 25000
 
+  # add one hot node labels for debugging graphnet models.
+  config.attach_node_labels = False
+
   return config

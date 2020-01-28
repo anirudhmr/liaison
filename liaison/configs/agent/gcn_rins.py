@@ -12,13 +12,17 @@ def get_config():
   config.model = ConfigDict()
   config.model.class_path = "liaison.agents.models.gcn_rins"
   config.model.n_prop_layers = 4
-  config.model.edge_embed_dim = 32
-  config.model.node_embed_dim = 32
-  config.model.node_hidden_layer_sizes = [32]
-  config.model.edge_hidden_layer_sizes = [32]
+  config.model.edge_embed_dim = 16
+  config.model.node_embed_dim = 16
+  config.model.global_embed_dim = 16
+  config.model.node_hidden_layer_sizes = [16]
+  config.model.edge_hidden_layer_sizes = [16]
   config.model.policy_torso_hidden_layer_sizes = [16, 16]
   config.model.value_torso_hidden_layer_sizes = [16, 16]
-  config.model.supervised_prediction_torso_hidden_layer_sizes = [32, 16]
+  config.model.policy_summarize_hidden_layer_sizes = [16]
+  config.model.value_summarize_hidden_layer_sizes = [16]
+
+  config.model.supervised_prediction_torso_hidden_layer_sizes = [16, 16]
 
   config.model.sum_aggregation = False
   config.model.use_layer_norm = True

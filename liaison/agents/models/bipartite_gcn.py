@@ -31,7 +31,7 @@ class BipartiteGraphConvolution(K.Model):
     with tf.variable_scope('feature_module_left'):
       self.feature_module_left = snt.nets.MLP(
           [self.emb_size],
-          activate_final=False,
+          activate_final=True,
           activation=self.activation,
           initializers=dict(w=self.initializer,
                             b=initializers.init_ops.Constant(0)))
@@ -40,7 +40,7 @@ class BipartiteGraphConvolution(K.Model):
       self.feature_module_right = snt.nets.MLP(
           [self.emb_size],
           activation=self.activation,
-          activate_final=False,
+          activate_final=True,
           initializers=dict(w=self.initializer,
                             b=initializers.init_ops.Constant(0)))
 
@@ -48,7 +48,7 @@ class BipartiteGraphConvolution(K.Model):
       self.feature_module_edge = snt.nets.MLP(
           [self.emb_size],
           activation=self.activation,
-          activate_final=False,
+          activate_final=True,
           initializers=dict(w=self.initializer,
                             b=initializers.init_ops.Constant(0)))
 
@@ -58,7 +58,7 @@ class BipartiteGraphConvolution(K.Model):
           K.layers.Activation(self.activation),
           snt.nets.MLP([self.emb_size],
                        activation=self.activation,
-                       activate_final=False,
+                       activate_final=True,
                        initializers=dict(w=self.initializer,
                                          b=initializers.init_ops.Constant(0))),
       ])
@@ -67,7 +67,7 @@ class BipartiteGraphConvolution(K.Model):
       # output_layers
       self.output_module = snt.nets.MLP(
           [self.emb_size, self.emb_size],
-          activate_final=False,
+          activate_final=True,
           activation=self.activation,
           initializers=dict(w=self.initializer,
                             b=initializers.init_ops.Constant(0)),

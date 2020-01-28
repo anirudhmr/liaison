@@ -218,12 +218,14 @@ class Env(BaseEnv):
 
   def _observation_graphnet_inductive(self, nodes):
     graph_features = dict(nodes=nodes,
-                          edges=np.array(self._edges, dtype=np.float32),
                           globals=np.array(self._globals, dtype=np.float32),
-                          senders=np.array(self._senders, dtype=np.int32),
-                          receivers=np.array(self._receivers, dtype=np.int32),
                           n_node=np.array(len(nodes), dtype=np.int32),
-                          n_edge=np.array(len(self._edges), dtype=np.int32))
+                          **self._static_graph_features)
+
+    if self.config.attach_node_labels:
+      labels = np.eye(len(nodes), dtype=np.float32)
+      nodes = np.hstack((nodes, labels))
+      graph_features.update(nodes=nodes)
 
     node_mask = np.zeros(len(nodes), dtype=np.int32)
     node_mask[0:len(self._variable_nodes

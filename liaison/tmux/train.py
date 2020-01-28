@@ -56,6 +56,7 @@ parser.add_argument('--coloc_constraints',
     then use the string:
       a;b;c p;q;r x;y;z
   ''')
+parser.add_argument('--disable_sweep', action='store_true')
 
 
 def train(argv):
@@ -75,7 +76,10 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           hyper.discrete('env_config.k', [5]),
-          hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
+          hyper.discrete('agent_config.lr_init', [5e-5]),
+          hyper.discrete('agent_config.ent_dec_init',
+                         [1e-3, 5e-4, 2e-4, 1e-4, 5e-5]),
+          # hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
           hyper.discrete('agent_config.model.sum_aggregation', [False]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
@@ -95,6 +99,8 @@ def train(argv):
     exps.append(exp)
     exp_flags.append(exp_flag)
     hyper_configs.append(params)
+    if args.disable_sweep:
+      break
 
   exp_procs = [[
       proc for pg in exp.list_process_groups() for proc in pg.list_processes()
