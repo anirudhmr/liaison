@@ -1,5 +1,6 @@
-import graph_nets as gn
 import numpy as np
+
+import graph_nets as gn
 import sonnet as snt
 import tensorflow as tf
 import tensorflow.keras as K
@@ -118,16 +119,19 @@ class BipartiteGraphConvolution(K.Model):
                                 indices=tf.expand_dims(
                                     edge_indices[scatter_dim], axis=1),
                                 shape=[scatter_out_size, self.emb_size])
-    # mean convolution
+    # convolution
     neighbour_count = tf.scatter_nd(
         updates=tf.ones(shape=[tf.shape(edge_indices)[1], 1],
                         dtype=tf.float32),
         indices=tf.expand_dims(edge_indices[scatter_dim], axis=1),
         shape=[scatter_out_size, 1])
-    neighbour_count = tf.where(tf.equal(neighbour_count, 0),
-                               tf.ones_like(neighbour_count),
-                               neighbour_count)  # NaN safety trick
-    conv_output = conv_output / neighbour_count
+
+    if not self.sum_aggregation:
+      # mean aggregation
+      neighbour_count = tf.where(tf.equal(neighbour_count, 0),
+                                 tf.ones_like(neighbour_count),
+                                 neighbour_count)  # NaN safety trick
+      conv_output /= neighbour_count
 
     # apply final module
     output = self.output_module(

@@ -46,26 +46,24 @@ class Env(BaseEnv):
 
   # see Learning to Branch in Mixed Integer Programming paper from Khalil et al.,
   # for a description of some of the following features.
-  VARIABLE_OBJ_COEFF_RAW_FIELD = 5
-  VARIABLE_OBJ_COEFF_POSITIVE_FIELD = 6
-  VARIABLE_OBJ_COEFF_NEGATIVE_FIELD = 7
+  VARIABLE_OBJ_COEFF_FIELD = 5
 
-  VARIABLE_N_CONSTRAINTS_FIELD = 8
+  VARIABLE_N_CONSTRAINTS_FIELD = 6
 
   # stats of the constraints that the variable is involved in.
-  VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD = 9
-  VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD = 10
-  VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD = 11
-  VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD = 12
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD = 7
+  VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD = 8
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD = 9
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD = 10
 
   # slack is distance from the floor
   # ceil is distance from the roof
-  VARIABLE_LP_SOLN_SLACK_DOWN_FIELD = 13
-  VARIABLE_LP_SOLN_SLACK_UP_FIELD = 14
-  VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD = 15
-  VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD = 16
+  VARIABLE_LP_SOLN_SLACK_DOWN_FIELD = 11
+  VARIABLE_LP_SOLN_SLACK_UP_FIELD = 12
+  VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD = 13
+  VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD = 14
   # TODO: Add variable lower and upper bound vals.
-  N_VARIABLE_FIELDS = 17
+  N_VARIABLE_FIELDS = 15
 
   # constant used in the constraints.
   CONSTRAINT_CONSTANT_FIELD = 0
@@ -415,9 +413,9 @@ class Env(BaseEnv):
         # receiver is the constraint.
         receivers[i] = cid
         i += 1
-    return dict(edges=edges,
-                senders=senders,
-                receivers=receivers,
+    return dict(edges=pad_first_dim(edges, self._max_edges),
+                senders=pad_first_dim(senders, self._max_edges),
+                receivers=pad_first_dim(receivers, self._max_edges),
                 n_edge=np.int32(len(edges)))
 
   def reset(self):
@@ -485,7 +483,7 @@ class Env(BaseEnv):
         if var in variable_stats_degrees:
           variable_stats_degrees[var].append(len(cons))
         else:
-          variable_stats_degrees = [len(cons)]
+          variable_stats_degrees[var] = [len(cons)]
 
     for i, var_name in self._varnames2varidx.items():
       l = variable_stats_degrees.get(var_name, None)

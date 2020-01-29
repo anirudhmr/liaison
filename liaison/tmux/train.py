@@ -77,7 +77,6 @@ def train(argv):
       hyper.product(
           hyper.discrete('env_config.k', [5]),
           hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
-          hyper.discrete('agent_config.model.sum_aggregation', [False]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),

@@ -21,10 +21,9 @@ def get_config():
   config.model.value_torso_hidden_layer_sizes = [16, 16]
   config.model.policy_summarize_hidden_layer_sizes = [16]
   config.model.value_summarize_hidden_layer_sizes = [16]
-
   config.model.supervised_prediction_torso_hidden_layer_sizes = [16, 16]
 
-  config.model.sum_aggregation = False
+  config.model.sum_aggregation = True
   config.model.use_layer_norm = True
 
   config.clip_rho_threshold = 1.0
