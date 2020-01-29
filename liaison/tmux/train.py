@@ -76,10 +76,7 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           hyper.discrete('env_config.k', [5]),
-          hyper.discrete('agent_config.lr_init', [5e-5]),
-          hyper.discrete('agent_config.ent_dec_init',
-                         [1e-3, 5e-4, 2e-4, 1e-4, 5e-5]),
-          # hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
+          hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
           hyper.discrete('agent_config.model.sum_aggregation', [False]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):

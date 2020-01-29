@@ -4,6 +4,7 @@ import pickle
 import time
 
 import numpy as np
+
 from liaison.daper.dataset_constants import DATASET_PATH
 from liaison.daper.milp.primitives import relax_integral_constraints
 from liaison.distributed import ParameterClient
@@ -70,3 +71,13 @@ class GlobalStepFetcher:
         self._prev_response = info['iteration']
       self._prev_time = time.time()
     return self._prev_response
+
+
+def np_slack_down(a):
+  # a is np array
+  return a - np.floor(a)
+
+
+def np_slack_up(a):
+  # a is np array
+  return np.ceil(a) - a

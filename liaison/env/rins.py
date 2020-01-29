@@ -4,11 +4,12 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
-import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
+import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
@@ -42,14 +43,39 @@ class Env(BaseEnv):
   VARIABLE_IS_INTEGER_FIELD = 3
   # optimal lp solution (for the continuous relaxation)
   VARIABLE_OPTIMAL_LP_SOLN_FIELD = 4
-  VARIABLE_OBJ_COEFF_FIELD = 5
-  # TODO: Add variable lower and upper bound vals.
 
-  N_VARIABLE_FIELDS = 6
+  # see Learning to Branch in Mixed Integer Programming paper from Khalil et al.,
+  # for a description of some of the following features.
+  VARIABLE_OBJ_COEFF_RAW_FIELD = 5
+  VARIABLE_OBJ_COEFF_POSITIVE_FIELD = 6
+  VARIABLE_OBJ_COEFF_NEGATIVE_FIELD = 7
+
+  VARIABLE_N_CONSTRAINTS_FIELD = 8
+
+  # stats of the constraints that the variable is involved in.
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD = 9
+  VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD = 10
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD = 11
+  VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD = 12
+
+  # slack is distance from the floor
+  # ceil is distance from the roof
+  VARIABLE_LP_SOLN_SLACK_DOWN_FIELD = 13
+  VARIABLE_LP_SOLN_SLACK_UP_FIELD = 14
+  VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD = 15
+  VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD = 16
+  # TODO: Add variable lower and upper bound vals.
+  N_VARIABLE_FIELDS = 17
 
   # constant used in the constraints.
   CONSTRAINT_CONSTANT_FIELD = 0
-  N_CONSTRAINT_FIELDS = 1
+  CONSTRAINT_DEGREE_FIELD = 1
+  CONSTRAINT_STATS_COEFF_MEAN_FIELD = 3
+  CONSTRAINT_STATS_COEFF_STD_FIELD = 4
+  CONSTRAINT_STATS_COEFF_MIN_FIELD = 5
+  CONSTRAINT_STATS_COEFF_MAX_FIELD = 6
+  # TODO: Add dual solution for the constraint here.
+  N_CONSTRAINT_FIELDS = 7
 
   # objective
   # current lp bound
@@ -61,6 +87,8 @@ class Env(BaseEnv):
   N_OBJECTIVE_FIELDS = 2
 
   # coefficient in the constraint as edge weight.
+  # This edge weight is normalized by the global dataset normalization
+  # constant
   EDGE_WEIGHT_FIELD = 0
 
   N_EDGE_FIELDS = 1
@@ -248,6 +276,15 @@ class Env(BaseEnv):
                           globals=np.array(self._globals, dtype=np.float32),
                           **self._static_graph_features)
 
+    if self.config.attach_node_labels:
+      left_labels = np.eye(len(graph_features.left_nodes), dtype=np.float32)
+      left_nodes = np.hstack((graph_features.left_nodes, left_labels))
+
+      right_labels = np.eye(len(graph_features.right_nodes), dtype=np.float32)
+      right_nodes = np.hstack((graph_features.right_nodes, right_labels))
+
+      graph_features.update(left_nodes=left_nodes, right_nodes=right_nodes)
+
     mask = pad_last_dim(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD],
                         self._max_nodes)
     return dict(graph_features=graph_features, node_mask=mask, mask=mask)
@@ -417,21 +454,61 @@ class Env(BaseEnv):
     feas_sol = [milp.feasible_solution[v] for v in var_names]
     variable_nodes[:, Env.VARIABLE_CURR_ASSIGNMENT_FIELD] = feas_sol
     variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD] = feas_sol
+    variable_nodes[:, Env.VARIABLE_LP_SOLN_SLACK_UP_FIELD] = np_slack_up(
+        feas_sol)
+    variable_nodes[:, Env.VARIABLE_LP_SOLN_SLACK_DOWN_FIELD] = np_slack_down(
+        feas_sol)
     variable_nodes[:, Env.VARIABLE_IS_INTEGER_FIELD] = [
         isinstance(milp.mip.varname2var[var_name], IntegerVariable)
         for var_name in var_names
     ]
-    # variable_nodes[:, Env.VARIABLE_NAME_FIELD] = np.array(range(
-    #     len(var_names))) / float(len(var_names))
     variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD] = [
         milp.optimal_lp_sol[v] for v in var_names
     ]
+    variable_nodes[:, Env.
+                   VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD] = np_slack_down(
+                       variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD])
+    variable_nodes[:, Env.
+                   VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD] = np_slack_up(
+                       variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD])
+
     variable_nodes = self._reset_mask(variable_nodes)
     for var_name, coeff in zip(milp.mip.obj.expr.var_names,
                                milp.mip.obj.expr.coeffs):
       variable_nodes[
           self._varnames2varidx[var_name], Env.
           VARIABLE_OBJ_COEFF_FIELD] = coeff / self.config.obj_coeff_normalizer
+
+    variable_stats_degrees = {}
+    for i, cons in enumerate(milp.mip.constraints):
+      for var in cons.expr.var_names:
+        if var in variable_stats_degrees:
+          variable_stats_degrees[var].append(len(cons))
+        else:
+          variable_stats_degrees = [len(cons)]
+
+    for i, var_name in self._varnames2varidx.items():
+      l = variable_stats_degrees.get(var_name, None)
+      # TODO: Normalize these fields.
+      if l:
+        variable_nodes[i, Env.
+                       VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD] = max(l)
+        variable_nodes[
+            i, Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD] = np.mean(l)
+        variable_nodes[i, Env.
+                       VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD] = np.std(l)
+        variable_nodes[i, Env.
+                       VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD] = min(l)
+
+    # Normalization
+    for field in [
+        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD,
+        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD,
+        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD,
+        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD,
+    ]:
+      if np.mean(variable_nodes[:, field]):
+        variable_nodes[:, field] /= np.mean(variable_nodes[:, field])
 
     # now construct constraint nodes
     constraint_nodes = np.zeros(
@@ -441,6 +518,15 @@ class Env(BaseEnv):
       constraint_nodes[
           i, Env.
           CONSTRAINT_CONSTANT_FIELD] = c.rhs / self.config.constraint_rhs_normalizer
+      # Normalize this?
+      constraint_nodes[i, Env.CONSTRAINT_DEGREE_FIELD] = len(c)
+      coeffs = list(c.expr.coeffs)
+      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MEAN_FIELD] = np.mean(
+          coeffs) / self.config.constraint_coeff_normalizer
+      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MIN_FIELD] = np.min(
+          coeffs) / self.config.constraint_coeff_normalizer
+      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MAX_FIELD] = np.max(
+          coeffs) / self.config.constraint_coeff_normalizer
 
     objective_nodes = np.zeros((1, Env.N_OBJECTIVE_FIELDS), dtype=np.float32)
     objective_nodes[:,
@@ -657,6 +743,11 @@ class Env(BaseEnv):
     variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD] = [
         curr_lp_sol[k] for k in var_names
     ]
+    variable_nodes[:, Env.VARIABLE_LP_SOLN_SLACK_UP_FIELD] = np_slack_up(
+        variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD])
+    variable_nodes[:, Env.VARIABLE_LP_SOLN_SLACK_DOWN_FIELD] = np_slack_down(
+        variable_nodes[:, Env.VARIABLE_LP_SOLN_FIELD])
+
     obj_nodes[:, Env.
               OBJ_LP_VALUE_FIELD] = curr_lp_obj / self.config.obj_normalizer
     obj_nodes[:, Env.
