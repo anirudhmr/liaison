@@ -15,6 +15,7 @@ from liaison.utils import ConfigDict
 
 parser = argon.ArgumentParser('Liaison trainer', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
+parser.add_argument('--bundle_actors', action='store_true')
 parser.add_config_file(name='cluster', default='ccc/config.py')
 parser.add_config_file(name='resource_req',
                        default='liaison/configs/resource_req.py')
@@ -59,6 +60,12 @@ parser.add_argument('--coloc_constraints',
 parser.add_argument('--disable_sweep', action='store_true')
 
 
+def validate_args(args):
+  if args.bundle_actors:
+    # use sess_config.actor_bundle.n_actors in this case.
+    assert args.n_actors == 1
+
+
 def train(argv):
   tp = TurrealParser()
   tp.add_external_parser(parser)
@@ -66,6 +73,7 @@ def train(argv):
   if func.__name__.split('action_')[-1] != 'create':
     return
   args = external_parser_args[0]
+  validate_args(args)
 
   cluster = tp.get_cluster()
 
@@ -77,6 +85,7 @@ def train(argv):
       hyper.product(
           hyper.discrete('env_config.k', [5]),
           hyper.discrete('agent_config.lr_init', [2e-5, 5e-5, 1e-4, 2e-4]),
+          hyper.discrete('agent_config.ent_dec_init', [1e-2]),
       )):
     # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
@@ -85,6 +94,7 @@ def train(argv):
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
+                  bundle_actors=args.bundle_actors,
                   with_visualizers=(work_id == 0)
                   and (not args.without_visualizers),
                   with_evaluators=(not args.without_evaluators))

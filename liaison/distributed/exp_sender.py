@@ -7,7 +7,7 @@ import pyarrow as pa
 from caraml.zmq import ZmqSender
 from liaison.session import PeriodicTracker
 
-from .exp_serializer import get_serializer, get_deserializer
+from .exp_serializer import get_deserializer, get_serializer
 
 
 class ExpBuffer(object):
@@ -15,10 +15,10 @@ class ExpBuffer(object):
         Temporarily holds and deduplicates experience
     """
 
-  def __init__(self):
+  def __init__(self, serialize_fn):
     self.exp_list = []  # list of exp dicts
     self.ob_storage = {}
-    self._serialize_fn = get_serializer()
+    self._serialize_fn = serialize_fn
 
   def add(self, hash_dict, nonhash_dict):
     """
@@ -72,18 +72,27 @@ class ExpSender(object):
   such as multiagent, self-play, etc.
   """
 
-  def __init__(self, *, host, port, flush_iteration):
+  def __init__(self,
+               *,
+               host,
+               port,
+               flush_iteration,
+               compress_before_send,
+               manual_flush=False):
     """
         Args:
             flush_iteration: how many send() calls before we flush the buffer
         """
     U.assert_type(flush_iteration, int)
-    self._client = ZmqSender(host=host,
-                             port=port,
-                             serializer=get_serializer(),
-                             deserializer=get_deserializer())
-    self._exp_buffer = ExpBuffer()
-    self._flush_tracker = PeriodicTracker(flush_iteration)
+    self._client = ZmqSender(
+        host=host,
+        port=port,
+        serializer=get_serializer(compress_before_send),
+        deserializer=get_deserializer(compress_before_send))
+    self._exp_buffer = ExpBuffer(get_serializer(compress_before_send))
+    if not manual_flush:
+      self._flush_tracker = PeriodicTracker(flush_iteration)
+    self._manual_flush = manual_flush
 
   def send(self, hash_dict, nonhash_dict=None):
     """
@@ -99,6 +108,10 @@ class ExpSender(object):
         hash_dict=hash_dict,
         nonhash_dict=nonhash_dict,
     )
-    if self._flush_tracker.track_increment():
-      exp_binary = self._exp_buffer.flush()
-      self._client.send(exp_binary)
+    if not self._manual_flush:
+      if self._flush_tracker.track_increment():
+        self.flush()
+
+  def flush(self):
+    exp_binary = self._exp_buffer.flush()
+    self._client.send(exp_binary)

@@ -26,6 +26,7 @@ from __future__ import absolute_import, division, print_function
 
 import collections
 
+import numpy as np
 import tensorflow as tf
 
 nest = tf.contrib.framework.nest
@@ -258,15 +259,28 @@ def from_importance_weights(log_rhos,
       discount_t, c_t, delta_t = sequence_item
       return delta_t + discount_t * c_t * acc
 
-    initial_values = tf.zeros_like(bootstrap_value)
-    vs_minus_v_xs = tf.scan(
-        fn=scanfunc,
-        elems=sequences,
-        initializer=initial_values,
-        parallel_iterations=1,
-        back_prop=False,
-        reverse=True,  # Computation starts from the back.
-        name='scan')
+    def scanfunc_py(discounts, cs, deltas):
+      ret = np.zeros_like(deltas, dtype=np.float32)
+      acc = np.zeros_like(deltas[0], dtype=np.float32)
+      for i in reversed(range(len(deltas))):
+        ret[i] = deltas[i] + discounts[i] * cs[i] * acc
+        acc = ret[i]
+      return ret
+
+    # initial_values = tf.zeros_like(bootstrap_value)
+    # vs_minus_v_xs = tf.scan(
+    #     fn=scanfunc,
+    #     elems=sequences,
+    #     initializer=initial_values,
+    #     parallel_iterations=8,
+    #     back_prop=False,
+    #     reverse=True,  # Computation starts from the back.
+    #     name='scan')
+    vs_minus_v_xs = tf.compat.v1.py_func(scanfunc_py,
+                                         sequences,
+                                         tf.float32,
+                                         False,
+                                         name='py_func')
 
     # Add V(x_s) to get v_s.
     vs = tf.add(vs_minus_v_xs, values, name='vs')

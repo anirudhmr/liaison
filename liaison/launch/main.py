@@ -34,6 +34,12 @@ parser.add_argument('--results_folder', type=str, required=True)
 parser.add_argument('--hyper_configs', type=str, required=True)
 
 
+def check_config_compatibility(env_config, sess_config, agent_config,
+                               eval_config):
+  assert sess_config.learner.compress_before_send == sess_config.actor.compress_before_send == sess_config.replay.compress_before_send
+  assert sess_config.actor.discount_factor == agent_config.discount_factor
+
+
 class LauncherSetup(Launcher):
 
   def __init__(self):
@@ -62,6 +68,9 @@ class LauncherSetup(Launcher):
       self.eval_config = ConfigDict(to_nested_dicts(args.eval_config))
     else:
       self.eval_config = ConfigDict()
+
+    check_config_compatibility(self.env_config, self.sess_config,
+                               self.agent_config, self.eval_config)
 
 
 def main(_):

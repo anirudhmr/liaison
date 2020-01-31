@@ -28,6 +28,7 @@ class LearnerDataPrefetcher(DataFetcher):
       prefetch_processes,
       prefetch_threads_per_process,
       tmp_dir,
+      compress_before_send,
       worker_preprocess=None,
   ):
     assert batch_size % prefetch_batch_size == 0
@@ -50,8 +51,8 @@ class LearnerDataPrefetcher(DataFetcher):
                      remote_port=self.sampler_port,
                      requests=self.request_generator(),
                      worker_comm_port=self.worker_comm_port,
-                     remote_serializer=get_serializer(),
-                     remote_deserialzer=get_deserializer(),
+                     remote_serializer=get_serializer(compress_before_send),
+                     remote_deserialzer=get_deserializer(compress_before_send),
                      n_workers=self.prefetch_processes,
                      worker_handler=self.worker_preprocess,
                      threads_per_worker=prefetch_threads_per_process,

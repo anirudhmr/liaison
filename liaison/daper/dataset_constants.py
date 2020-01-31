@@ -8,6 +8,8 @@ DATASET_PATH = {
     'milp-cauction-100': '/data/nms/tfp/datasets/milp/cauction/size-100',
     'milp-cauction-100-filtered':
     '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
+    # 'milp-cauction-100-filtered':
+    # '/nobackup/users/addanki/datasets/milp/cauction/size-100-gap-.01',
     'milp-cauction-mixed':
     '/data/nms/tfp/datasets/milp/cauction/size-mixed-small',
     'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',

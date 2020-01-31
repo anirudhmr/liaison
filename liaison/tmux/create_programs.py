@@ -17,6 +17,7 @@ def get_fuzzy_match(config, name):
 def build_program(exp,
                   n_actors,
                   res_req_config,
+                  bundle_actors,
                   with_visualizers=True,
                   with_evaluators=True):
   learner = exp.new_process('learner')
@@ -29,10 +30,14 @@ def build_program(exp,
     visualizers.set_hard_placement('cloudlab_clemson_clnode2_0')
   else:
     visualizers = None
-  actor_pg = exp.new_process_group('actor-*')
+
   actors = []
-  for i in range(n_actors):
-    actors.append(actor_pg.new_process('actor-{}'.format(i)))
+  if bundle_actors:
+    actors.append(exp.new_process('actor_bundle'))
+  else:
+    actor_pg = exp.new_process_group('actor-*')
+    for i in range(n_actors):
+      actors.append(actor_pg.new_process('actor-{}'.format(i)))
 
   if with_evaluators:
     evaluator = exp.new_process('evaluators')

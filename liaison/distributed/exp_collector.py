@@ -4,7 +4,7 @@ from threading import Thread
 import liaison.utils as U
 from caraml.zmq import ZmqReceiver
 
-from .exp_serializer import get_serializer, get_deserializer
+from .exp_serializer import get_deserializer, get_serializer
 
 
 class ExperienceCollectorServer(Thread):
@@ -13,12 +13,18 @@ class ExperienceCollectorServer(Thread):
         deduplicates experience whenever possible
     """
 
-  def __init__(self, host, port, exp_handler, load_balanced=True):
+  def __init__(self,
+               host,
+               port,
+               exp_handler,
+               compress_before_send,
+               load_balanced=True):
     Thread.__init__(self)
     self.host = host
     self.port = port
     self.load_balanced = load_balanced
     self._exp_handler = exp_handler
+    self._compress_before_send = compress_before_send
     # To be initialized in run()
     self._weakref_map = None
     self.receiver = None
@@ -28,11 +34,12 @@ class ExperienceCollectorServer(Thread):
         Starts the server loop
     """
     self._weakref_map = weakref.WeakValueDictionary()
-    self.receiver = ZmqReceiver(host=self.host,
-                                port=self.port,
-                                bind=not self.load_balanced,
-                                serializer=get_serializer(),
-                                deserializer=get_deserializer())
+    self.receiver = ZmqReceiver(
+        host=self.host,
+        port=self.port,
+        bind=not self.load_balanced,
+        serializer=get_serializer(self._compress_before_send),
+        deserializer=get_deserializer(self._compress_before_send))
     while True:
       exp, storage = self.receiver.recv()
       experience_list = self._retrieve_storage(exp, storage)

@@ -18,7 +18,8 @@ def pad_first_dim(features: np.ndarray, pad_to_len):
     return features
   assert features.shape[0] <= pad_to_len, (features.shape, pad_to_len)
   return np.pad(features, [(0, pad_to_len - features.shape[0])] + [(0, 0)] *
-                (features.ndim - 1))
+                (features.ndim - 1),
+                mode='constant')
 
 
 def pad_last_dim(features: np.ndarray, pad_to_len):
@@ -28,7 +29,8 @@ def pad_last_dim(features: np.ndarray, pad_to_len):
 
   assert features.shape[-1] <= pad_to_len, (features.shape, pad_to_len)
   return np.pad(features, [(0, 0)] * (features.ndim - 1) +
-                [(0, pad_to_len - features.shape[-1])])
+                [(0, pad_to_len - features.shape[-1])],
+                mode='constant')
 
 
 @functools.lru_cache(maxsize=100)

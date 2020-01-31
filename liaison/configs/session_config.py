@@ -20,6 +20,7 @@ def get_config():
   # generates a profile after every this many steps.
   config.learner.profile_step = 5
   config.learner.restore_from = ''
+  config.learner.compress_before_send = True
 
   config.actor = ConfigDict()
   config.actor.class_path = 'liaison.distributed.actor_full_episode'
@@ -28,6 +29,10 @@ def get_config():
   config.actor.use_parallel_envs = True
   config.actor.use_threaded_envs = False
   config.actor.discount_factor = 1.0
+  config.actor.compress_before_send = True
+
+  config.actor_bundle = ConfigDict()
+  config.actor_bundle.n_actors = 64
 
   config.shell = ConfigDict()
   # shell class path is default to the distributed folder.
@@ -53,6 +58,7 @@ def get_config():
   config.replay.loggerplex.enable_local_logger = True
   config.replay.loggerplex.local_logger_level = 'info'
   config.replay.loggerplex.local_logger_time_format = 'hms'
+  config.replay.compress_before_send = True
 
   config.loggerplex = ConfigDict()
   config.loggerplex.enable_local_logger = True

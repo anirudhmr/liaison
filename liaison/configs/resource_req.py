@@ -13,8 +13,8 @@ def get_config():
   config.learner.mem = 0
   config.learner.gpu_compute = []
   config.learner.gpu_mem = []
-  config.learner.gpu_compute = [1]
-  config.learner.gpu_mem = [10]
+  # config.learner.gpu_compute = [1]
+  # config.learner.gpu_mem = [10]
 
   config.actor = ConfigDict()
   config.actor.cpu = 1
@@ -24,6 +24,14 @@ def get_config():
   # config.actor.gpu_compute = [.1]
   # config.actor.gpu_mem = [1]
 
+  config.actor_bundle = ConfigDict()
+  config.actor_bundle.cpu = 32
+  config.actor_bundle.cpu = 0
+  config.actor_bundle.gpu_compute = []
+  config.actor_bundle.gpu_mem = []
+  config.actor_bundle.gpu_compute = [1]
+  config.actor_bundle.gpu_mem = [8.]
+
   config.evaluator = ConfigDict()
   config.evaluator.cpu = 1
   config.evaluator.mem = 0
@@ -32,7 +40,7 @@ def get_config():
 
   config.replay = ConfigDict()
   config.replay.cpu = 0
-  config.replay.mem = 0
+  config.replay.mem = 0  #50 * 1e3  # 50 GB
   config.replay.gpu_compute = []
   config.replay.gpu_mem = []
 

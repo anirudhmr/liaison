@@ -7,12 +7,12 @@
     SYMPH_COLLECTOR_FRONTEND_PORT
     SYMPH_SPEC_PORT
 """
-
 import logging
 import os
 
 import liaison.utils as U
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
+from liaison.utils import ConfigDict
 
 from .actor import Actor as BaseActor
 from .exp_sender import ExpSender
@@ -46,9 +46,8 @@ class Actor(BaseActor):
       use_threaded_envs=False,
       discount_factor=None,
       **sess_config):
-
-    del sess_config
     assert isinstance(actor_id, int)
+    self.config = ConfigDict(sess_config)
     self.batch_size = batch_size
     self._traj_length = traj_length
     self._system_loggers = system_loggers

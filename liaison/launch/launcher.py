@@ -76,6 +76,8 @@ class Launcher:
 
     if component_name == 'actor':
       self.run_actor(actor_id=component_id)
+    elif component_name == 'actor_bundle':
+      self.run_actor_bundle()
     elif component_name == 'evaluator':
       self.run_evaluator(id=component_id)
     elif component_name == 'evaluators':
@@ -158,6 +160,13 @@ class Launcher:
     actor_class = U.import_obj(sess_config.actor.class_name,
                                sess_config.actor.class_path)
     actor_class(**actor_config)  # blocking constructor.
+
+  def run_actor_bundle(self):
+    components = [
+        self.run_component(f'actor-{i}')
+        for i in range(self.sess_config.actor_bundle.n_actors)
+    ]
+    U.wait_for_popen(components)
 
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []

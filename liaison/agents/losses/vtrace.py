@@ -42,17 +42,17 @@ class Loss:
     values = values[:-1]
 
     # Compute vtrace on the CPU for better perf.
-    with tf.device("/cpu:0"):
-      vtrace_returns = vtrace_ops.from_logits(
-          behaviour_policy_logits=behavior_logits,
-          target_policy_logits=target_logits,
-          actions=actions,
-          discounts=discounts[1:] * discount_factor,
-          rewards=rewards[1:],
-          values=values,
-          bootstrap_value=bootstrap_value,
-          clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-          clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold, tf.float32))
+    # with tf.device("/cpu:0"):
+    vtrace_returns = vtrace_ops.from_logits(
+        behaviour_policy_logits=behavior_logits,
+        target_policy_logits=target_logits,
+        actions=actions,
+        discounts=discounts[1:] * discount_factor,
+        rewards=rewards[1:],
+        values=values,
+        bootstrap_value=bootstrap_value,
+        clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
+        clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold, tf.float32))
 
     # Ignore the timesteps that caused a reset to happen
     # [T, B]

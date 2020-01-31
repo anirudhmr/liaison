@@ -93,6 +93,7 @@ class TurrealParser(SymphonyParser):
 
     self._setup_xmanager_client(args)
     exp_id = self._register_exp(self.experiment_name)
+    print(f'Registered Experiment ID: {exp_id}')
     if args.tmux_server_name is None:
       self.create_cluster(f'{exp_id}')
     self._record_launch_command(exp_id)

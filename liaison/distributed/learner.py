@@ -213,7 +213,8 @@ class Learner(object):
         max_prefetch_queue=config.max_prefetch_queue * pf_bs,
         prefetch_processes=config.prefetch_processes,
         prefetch_threads_per_process=config.prefetch_threads_per_process,
-        tmp_dir=config.inmem_tmp_dir)
+        tmp_dir=config.inmem_tmp_dir,
+        compress_before_send=config.compress_before_send)
     self._exp_fetcher.start()
 
   def _setup_ps_client_handle(self):

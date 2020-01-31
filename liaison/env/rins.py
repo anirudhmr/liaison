@@ -4,12 +4,11 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
+import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
-import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)

@@ -13,6 +13,7 @@ import os
 
 import liaison.utils as U
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
+from liaison.utils import ConfigDict
 
 from .exp_sender import ExpSender
 from .full_episode_trajectory import Trajectory as FullEpisodeTrajectory
@@ -44,9 +45,8 @@ class Actor:
       use_parallel_envs=False,
       use_threaded_envs=False,
       **sess_config):
-
-    del sess_config
     assert isinstance(actor_id, int)
+    self.config = ConfigDict(sess_config)
     self.batch_size = batch_size
     self._traj_length = traj_length
     self._system_loggers = system_loggers
@@ -115,16 +115,18 @@ class Actor:
     self._exp_sender = ExpSender(
         host=os.environ['SYMPH_COLLECTOR_FRONTEND_HOST'],
         port=os.environ['SYMPH_COLLECTOR_FRONTEND_PORT'],
-        flush_iteration=self.batch_size)
+        flush_iteration=None,
+        manual_flush=True,
+        compress_before_send=self.config.compress_before_send)
 
   def _send_experiences(self, exps):
     for exp in exps:
       self._exp_sender.send(hash_dict=exp)
+    self._exp_sender.flush()
 
   def _start_spec_server(self):
     logging.info("Starting spec server.")
     print("Starting spec server.")
-
     self._spec_server = SpecServer(port=os.environ['SYMPH_SPEC_PORT'],
                                    traj_spec=self._traj.spec,
                                    action_spec=self._action_spec)

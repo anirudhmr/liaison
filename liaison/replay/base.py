@@ -26,6 +26,7 @@ class Replay:
   def __init__(self,
                seed,
                evict_interval,
+               compress_before_send,
                load_balanced=True,
                index=0,
                **kwargs):
@@ -43,13 +44,13 @@ class Replay:
         port=collector_port,
         exp_handler=self._insert_wrapper,
         load_balanced=load_balanced,
-    )
+        compress_before_send=compress_before_send)
     self._sampler_server = ZmqServer(
         host='localhost' if load_balanced else '*',
         port=sampler_port,
         bind=not load_balanced,
-        serializer=get_serializer(),
-        deserializer=get_deserializer())
+        serializer=get_serializer(compress_before_send),
+        deserializer=get_deserializer(compress_before_send))
     self._sampler_server_thread = None
 
     self._evict_interval = evict_interval
