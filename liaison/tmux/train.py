@@ -34,7 +34,7 @@ parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail', 'cloudlab_clemson_clnode2_0'],
+    default=['os_csail', 'cloudlab_clemson_clnode_0'],
     help=
     'These nodes are always selected irrespective of the filter_nodes_regex specified.'
 )
@@ -57,7 +57,10 @@ parser.add_argument('--coloc_constraints',
     then use the string:
       a;b;c p;q;r x;y;z
   ''')
-parser.add_argument('--disable_sweep', action='store_true')
+parser.add_argument('--disable_sweep',
+                    '--no_sweep',
+                    '--without_sweep',
+                    action='store_true')
 
 
 def validate_args(args):

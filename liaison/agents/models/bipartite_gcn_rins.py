@@ -179,6 +179,30 @@ class Model(GCNRinsModel):
                       tf.fill(tf.shape(node_mask), -INF))
     return logits, log_vals
 
+  def get_auxiliary_loss(self, graph_features: gn.graphs.GraphsTuple, obs):
+    """
+      Returns a prediction for each node.
+      This is useful for supervised node labelling/prediction tasks.
+    """
+    # broadcast globals and attach them to node features
+    broadcasted_globals = gn.utils_tf.repeat(graph_features.globals,
+                                             graph_features.n_left_nodes,
+                                             axis=0)
+    left_nodes = tf.concat([graph_features.left_nodes, broadcasted_globals],
+                           axis=-1)
+
+    # get logits over nodes
+    preds = self.supervised_prediction_torso(left_nodes)
+    # remove the final singleton dimension
+    preds = tf.squeeze(preds, axis=-1)
+
+    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_left_nodes)
+    opt_sol = tf.gather_nd(indices, obs['optimal_solution'],
+                           infer_shape(preds))
+
+    auxiliary_loss = tf.reduce_mean((preds - opt_sol)**2)
+    return auxiliary_loss
+
   def get_value(self, graph_features: gn.graphs.GraphsTuple):
     """
       graph_embeddings: Message propagated graph embeddings.

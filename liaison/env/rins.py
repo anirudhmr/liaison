@@ -245,7 +245,7 @@ class Env(BaseEnv):
     graph_features = dict(nodes=nodes,
                           globals=np.array(self._globals, dtype=np.float32),
                           n_node=np.array(len(nodes), dtype=np.int32),
-                          **self._static_graph_features)
+                          **self._static_graph_features[0])
 
     if self.config.attach_node_labels:
       labels = np.eye(len(nodes), dtype=np.float32)
@@ -260,7 +260,8 @@ class Env(BaseEnv):
     graph_features = self._pad_graph_features(graph_features)
     obs = dict(graph_features=graph_features,
                node_mask=node_mask,
-               mask=node_mask)
+               mask=node_mask,
+               **self._static_graph_features[1])
     return obs
 
   def _observation_bipartite_graphnet(self):
@@ -293,19 +294,19 @@ class Env(BaseEnv):
 
     nodes = np.zeros(
         (len(variable_nodes) + len(constraint_nodes) + len(objective_nodes),
-         max(Env.N_VARIABLE_FIELDS, Env.N_CONSTRAINT_FIELDS,
-             Env.N_OBJECTIVE_FIELDS)),
+         variable_nodes.shape[1] + constraint_nodes.shape[1] +
+         objective_nodes.shape[1]),
         dtype=np.float32)
 
-    nodes[0:len(variable_nodes), 0:Env.N_VARIABLE_FIELDS] = variable_nodes
+    nodes[0:len(variable_nodes), :variable_nodes.shape[1]] = variable_nodes
 
     constraint_node_offset = len(variable_nodes)
     nodes[constraint_node_offset:constraint_node_offset +
-          len(constraint_nodes), 0:Env.N_CONSTRAINT_FIELDS] = constraint_nodes
+          len(constraint_nodes), :constraint_nodes.shape[1]] = constraint_nodes
 
     objective_node_offset = constraint_node_offset + len(constraint_nodes)
     nodes[objective_node_offset:objective_node_offset +
-          len(objective_nodes), 0:Env.N_OBJECTIVE_FIELDS] = objective_nodes
+          len(objective_nodes), :objective_nodes.shape[1]] = objective_nodes
 
     obs = {}
     if self.config.make_obs_for_mlp:
@@ -320,24 +321,9 @@ class Env(BaseEnv):
     if self.config.make_obs_for_bipartite_graphnet:
       obs.update(self._observation_bipartite_graphnet())
 
-    # masks should be mutually disjoint.
-    assert not np.any(
-        np.logical_and(self._var_type_mask, self._constraint_type_mask))
-    assert not np.any(np.logical_and(self._var_type_mask, self._obj_type_mask))
-    assert not np.any(
-        np.logical_and(self._constraint_type_mask, self._obj_type_mask))
-    assert np.all(
-        np.logical_or(
-            self._var_type_mask,
-            np.logical_or(self._constraint_type_mask, self._obj_type_mask)))
-
     obs = dict(
         **obs,
         optimal_solution=pad_last_dim(self._optimal_soln, self._max_nodes),
-        var_type_mask=pad_last_dim(self._var_type_mask, self._max_nodes),
-        constraint_type_mask=pad_last_dim(self._constraint_type_mask,
-                                          self._max_nodes),
-        obj_type_mask=pad_last_dim(self._obj_type_mask, self._max_nodes),
         log_values=dict(  # useful for tensorboard.
             ep_return=np.float32(self._prev_ep_return),
             avg_quality=np.float32(self._prev_avg_quality),
@@ -387,10 +373,38 @@ class Env(BaseEnv):
     senders, receivers = np.hstack((senders, receivers)), np.hstack(
         (receivers, senders))
 
+    # compute masks for each node type
+    variable_nodes = self._variable_nodes
+    objective_nodes = self._objective_nodes
+    constraint_nodes = self._constraint_nodes
+    n_nodes = len(variable_nodes) + len(objective_nodes) + len(
+        constraint_nodes)
+    var_type_mask = np.zeros((n_nodes), dtype=np.int32)
+    var_type_mask[0:len(variable_nodes)] = 1
+    constraint_type_mask = np.zeros((n_nodes), dtype=np.int32)
+    constraint_type_mask[len(variable_nodes):len(variable_nodes) +
+                         len(constraint_nodes)] = 1
+    obj_type_mask = np.zeros((n_nodes), dtype=np.int32)
+    obj_type_mask[len(variable_nodes) +
+                  len(constraint_nodes):len(variable_nodes) +
+                  len(constraint_nodes) + len(objective_nodes)] = 1
+
+    # masks should be mutually disjoint.
+    assert not np.any(np.logical_and(var_type_mask, constraint_type_mask))
+    assert not np.any(np.logical_and(var_type_mask, obj_type_mask))
+    assert not np.any(np.logical_and(constraint_type_mask, obj_type_mask))
+    assert np.all(
+        np.logical_or(var_type_mask,
+                      np.logical_or(constraint_type_mask, obj_type_mask)))
+
     return dict(edges=edges,
                 senders=senders,
                 receivers=receivers,
-                n_edge=np.int32(len(edges)))
+                n_edge=np.int32(len(edges))), dict(
+                    var_type_mask=pad_last_dim(var_type_mask, self._max_nodes),
+                    constraint_type_mask=pad_last_dim(constraint_type_mask,
+                                                      self._max_nodes),
+                    obj_type_mask=pad_last_dim(obj_type_mask, self._max_nodes))
 
   def _encode_static_bipartite_graph_features(self):
     milp = self.milp
@@ -541,19 +555,7 @@ class Env(BaseEnv):
     self._variable_nodes = variable_nodes
     self._objective_nodes = objective_nodes
     self._constraint_nodes = constraint_nodes
-    n_nodes = len(variable_nodes) + len(objective_nodes) + len(
-        constraint_nodes)
 
-    # compute masks for each node type
-    self._var_type_mask = np.zeros((n_nodes), dtype=np.int32)
-    self._var_type_mask[0:len(variable_nodes)] = 1
-    self._constraint_type_mask = np.zeros((n_nodes), dtype=np.int32)
-    self._constraint_type_mask[len(variable_nodes):len(variable_nodes) +
-                               len(constraint_nodes)] = 1
-    self._obj_type_mask = np.zeros((n_nodes), dtype=np.int32)
-    self._obj_type_mask[len(variable_nodes) +
-                        len(constraint_nodes):len(variable_nodes) +
-                        len(constraint_nodes) + len(objective_nodes)] = 1
     self._unfixed_variables = set([
         var for var in var_names
         if isinstance(milp.mip.varname2var[var], ContinuousVariable)
@@ -562,6 +564,7 @@ class Env(BaseEnv):
     self._curr_obj = milp.feasible_objective
     self._prev_obj = milp.feasible_objective
 
+    # static features computed only once per episode.
     if self.config.make_obs_for_graphnet:
       self._static_graph_features = self._encode_static_graph_features()
     elif self.config.make_obs_for_bipartite_graphnet:
@@ -602,6 +605,7 @@ class Env(BaseEnv):
                            solving_time=solver.getSolvingTime(),
                            pre_solving_time=solver.getPresolvingTime(),
                            time_elapsed=timer.to_seconds())
+    solver.freeProb()
     return ass, obj, mip_stats
 
   def _reset_mask(self, variable_nodes):

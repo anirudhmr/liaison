@@ -80,10 +80,9 @@ class ExpSender(object):
                compress_before_send,
                manual_flush=False):
     """
-        Args:
-            flush_iteration: how many send() calls before we flush the buffer
-        """
-    U.assert_type(flush_iteration, int)
+      Args:
+          flush_iteration: how many send() calls before we flush the buffer
+    """
     self._client = ZmqSender(
         host=host,
         port=port,
