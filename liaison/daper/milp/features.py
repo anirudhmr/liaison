@@ -123,9 +123,8 @@ def extract_state(model, buffer=None):
   #     model.getLPColsData()[i].getVar().name
   #     for i in range(len(model.getLPColsData()))
   # ]
-  var_names = model.getVars(transformed=True)
   # get rid of the 't_' added to the start of the vars by scip
-  var_names = [v.name.lstrip('t_') for v in var_names]
+  var_names = [v.name.lstrip('t_') for v in model.getVars(transformed=True)]
 
   variable_features = {
       'names': col_feat_names,
@@ -282,7 +281,6 @@ def get_features_from_scip_model(m):
 
   l = []
   branchrule = SamplingAgent(seed=42, out=l)
-
   m.includeBranchrule(branchrule=branchrule,
                       name="Sampling branching rule",
                       desc="",

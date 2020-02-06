@@ -1,5 +1,6 @@
 import datetime
 import gzip
+import os
 import pdb
 import pickle
 
@@ -301,20 +302,25 @@ def get_features_from_scip_model(m):
   m.optimize()
   # m.constructLP()
   assert len(l) == 1
-  pdb.set_trace()
-  m.freeProb()
   return l[0]['state']
 
 
 def add_instance(solver):
-  mip = generate_instance('cauction', 50, np.random.RandomState(42))
-  mip.add_to_scip_solver(solver)
+  # mip = generate_instance('cauction', 50, np.random.RandomState(42))
+  # mip.add_to_scip_solver(solver)
+  from liaison.daper.dataset_constants import DATASET_PATH
+  dataset_path = DATASET_PATH['milp-cauction-100-filtered']
+
+  with open(os.path.join(dataset_path, 'train', f'278.pkl'), 'rb') as f:
+    milp = pickle.load(f)
+  milp.mip.add_to_scip_solver(solver)
 
 
 def test_presolve():
   m = scip.Model()
   m.hideOutput()
   add_instance(m)
+
   m.setIntParam('display/verblevel', 0)
   init_scip_params(m, seed=42)
   m.setIntParam('timing/clocktype', 2)
@@ -338,6 +344,9 @@ def test_scip_features():
   m.setRealParam('limits/time', 120)
   m.setParam('limits/nodes', 1)
 
+  m.presolve()
+  orig_vars = list(m.getVars(transformed=True))
+
   l = []
   branchrule = SamplingAgent(seed=42, out=l)
 
@@ -353,18 +362,50 @@ def test_scip_features():
   m.setBoolParam('branching/vanillafullstrong/donotbranch', True)
   m.setBoolParam('branching/vanillafullstrong/idempotent', True)
 
-  m.presolve()
+  # m.presolve()
   m.optimize()
   # m.constructLP()
+
   assert len(l) == 1
-  pdb.set_trace()
+  c_f, e_f, v_f = l[0]['state']
+  # assert v_f['var_names'] == orig_vars, (orig_vars, v_f['var_names'])
   m.freeProb()
-  return l[0]['state']
+
+
+def get_model():
+  m = scip.Model()
+  m.hideOutput()
+  m.setIntParam('display/verblevel', 0)
+  init_scip_params(m, seed=42)
+  m.setIntParam('timing/clocktype', 2)
+  m.setRealParam('limits/time', 120)
+  m.setParam('limits/nodes', 1)
+  return m
+
+
+def test2():
+  m = get_model()
+  m.hideOutput()
+  add_instance(m)
+  m.presolve()
+  orig_vars = list(
+      map(lambda v: v.name.lstrip('t_'), m.getVars(transformed=True)))
+
+  m = scip.Model(sourceModel=m, origcopy=True)
+  m.hideOutput()
+  m.setIntParam('display/verblevel', 0)
+  init_scip_params(m, seed=42)
+  m.setIntParam('timing/clocktype', 2)
+  m.setRealParam('limits/time', 120)
+  m.setParam('limits/nodes', 1)
+  c_f, e_f, v_f = get_features_from_scip_model(m)
+  assert v_f['var_names'] == orig_vars, (orig_vars, v_f['var_names'])
 
 
 def main(_):
-  test_presolve()
-  test_scip_features()
+  # test_presolve()
+  # test_scip_features()
+  test2()
 
 
 if __name__ == '__main__':

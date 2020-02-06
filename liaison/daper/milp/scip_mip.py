@@ -36,7 +36,7 @@ class SCIPMIPInstance:
   def get_features(self):
     # create a copy to avoid polluting the current one.
     # returns constraint_features, edge_features, variable_features
-    m = scip.Model(sourceModel=self.model)
+    m = scip.Model(sourceModel=self.model, origcopy=True)
     return get_features_from_scip_model(m)
 
   def fix(self, fixed_ass, relax_integral_constraints=False):
@@ -60,5 +60,10 @@ class SCIPMIPInstance:
     for v, val in fixed_ass.items():
       fixed_model.chgVarLbGlobal(val)
       fixed_model.chgVarUbGlobal(val)
+
+    if relax_integral_constraints:
+      for v in fixed_model.getVars():
+        fixed_model.chgVarType('CONTINUOUS')
+
     m = SCIPMIPInstance(fixed_model)
     return m

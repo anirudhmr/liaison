@@ -83,7 +83,9 @@ class Env(RINSEnv):
     variable_nodes[:, Env.VARIABLE_OBJ_COEFF_FIELD] = list(
         map(lambda v: v.getObj() / self.config.obj_coeff_normalizer, mip.vars))
     assert list(map(lambda v: v.lstrip('t_'),
-                    v_f['var_names'])) == self._var_names
+                    v_f['var_names'])) == self._var_names, (self._milp_choice,
+                                                            self._var_names,
+                                                            v_f['var_names'])
     variable_nodes[:, Env.N_VARIABLE_FIELDS:] = v_f['values']
     # TODO: Add variable stats fields here.
     self._variable_nodes = variable_nodes
