@@ -9,8 +9,6 @@ def get_config():
   config.class_path = "liaison.agents.gcn"
   config.class_name = "Agent"
 
-  # The following code duplicated in gcn_ar.py as well.
-  # Propagate any changes made
   config.model = ConfigDict()
   config.model.class_path = "liaison.agents.models.gcn_rins"
   config.model.n_prop_layers = 4

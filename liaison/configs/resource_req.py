@@ -14,7 +14,7 @@ def get_config():
   config.learner.gpu_compute = []
   config.learner.gpu_mem = []
   config.learner.gpu_compute = [1]
-  config.learner.gpu_mem = [10]
+  config.learner.gpu_mem = [14]
 
   config.actor = ConfigDict()
   config.actor.cpu = 1
@@ -22,7 +22,7 @@ def get_config():
   config.actor.gpu_compute = []
   config.actor.gpu_mem = []
   # config.actor.gpu_compute = [.1]
-  # config.actor.gpu_mem = [1]
+  # config.actor.gpu_mem = [8]
 
   config.actor_bundle = ConfigDict()
   config.actor_bundle.cpu = 32

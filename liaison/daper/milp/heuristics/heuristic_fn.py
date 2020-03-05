@@ -80,6 +80,8 @@ def choose_heuristic(heuristic):
     return functools.partial(integral, least_integral=True)
   elif heuristic == 'most_integral':
     return functools.partial(integral, least_integral=False)
+  elif heuristic == 'greedy':
+    return greedy
   else:
     raise Exception(f'Unknown heuristic: {heuristic}')
 

@@ -130,9 +130,9 @@ class Env(BaseEnv):
     self._setup_graph_random_state(graph_seed)
     self._dataset = dataset
     self._dataset_type = dataset_type
-    if n_graphs >= LENGTH_MAP[dataset][dataset_type]:
+    if n_graphs > LENGTH_MAP[dataset][dataset_type]:
       print(
-          'WARNING: Specified number of graphs exceeds whats available in dataset_constants.py'
+          f'WARNING: Specified number of graphs ({n_graphs}) exceeds whats available in dataset_constants.py ({LENGTH_MAP[dataset][dataset_type]})'
       )
       self._n_graphs = LENGTH_MAP[dataset][dataset_type]
     else:
@@ -324,6 +324,11 @@ class Env(BaseEnv):
     obs = dict(
         **obs,
         optimal_solution=pad_last_dim(self._optimal_soln, self._max_nodes),
+        optimal_lp_solution=pad_last_dim(self._optimal_lp_soln,
+                                         self._max_nodes),
+        current_solution=pad_last_dim(
+            np.float32([self._curr_soln[v] for v in self._var_names]),
+            self._max_nodes),
         log_values=dict(  # useful for tensorboard.
             ep_return=np.float32(self._prev_ep_return),
             avg_quality=np.float32(self._prev_avg_quality),
@@ -458,6 +463,8 @@ class Env(BaseEnv):
     # optimal solution can be used for supervised auxiliary tasks.
     self._optimal_soln = np.float32(
         [milp.optimal_solution[v] for v in var_names])
+    self._optimal_lp_soln = np.float32(
+        [milp.optimal_lp_sol[v] for v in var_names])
     # first construct variable nodes
     variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS),
                               dtype=np.float32)

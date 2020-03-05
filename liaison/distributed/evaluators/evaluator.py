@@ -9,6 +9,7 @@ from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
+
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.env import StepType
@@ -125,20 +126,28 @@ class Evaluator:
 
         ts = self._env.reset()
         log_values = [[] for _ in range(len(env_mask))]
-        while np.any(env_mask):
+        first_step = True
 
+        while np.any(env_mask):
+          obs = ts.observation
           for i, mask in enumerate(env_mask):
-            obs = ts.observation
             if 'graph_features' in obs:
               globals_ = obs['graph_features']['globals']
             else:
               globals_ = obs['globals']
 
-            if mask and globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP]:
+            if mask and (globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP]
+                         or first_step):
               d = nest.map_structure(lambda v: v[i],
                                      obs['curr_episode_log_values'])
-              d.update(rew=ts.reward[i])
+              d.update(
+                  rew=ts.reward[i],
+                  optimal_solution=obs['optimal_solution'][i],
+                  optimal_lp_solution=obs['optimal_lp_solution'][i],
+                  current_solution=obs['current_solution'][i],
+              )
               log_values[i].append(d)
+              first_step = False
 
           for i, mask in enumerate(env_mask):
             if mask and ts.step_type[i] == StepType.LAST:
@@ -164,4 +173,4 @@ class Evaluator:
       if i != self.max_evaluations - 1:
         time.sleep(self._eval_sleep_time)
 
-    print('Evaluator done!!')
+    print('Evaluator is done!!')

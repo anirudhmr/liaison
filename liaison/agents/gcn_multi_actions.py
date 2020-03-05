@@ -1,8 +1,10 @@
+# Multi-dimensional action space.
 import graph_nets as gn
 import tensorflow as tf
 import tree as nest
 from liaison.agents import BaseAgent, StepOutput
-from liaison.agents.losses.vtrace import Loss as VTraceLoss
+from liaison.agents.losses.vtrace import \
+    MultiActionLoss as VTraceMultiActionLoss
 from liaison.agents.utils import *
 from liaison.env import StepType
 from liaison.utils import ConfigDict
@@ -46,11 +48,10 @@ class Agent(BaseAgent):
       obs['graph_features'] = self._process_graph_features(
           obs['graph_features'])
 
-      logits, _ = self._model.get_logits(
-          self._model.compute_graph_embeddings(obs), obs['node_mask'])
+      logitss, actions = self._model.get_actions(
+          self._model.compute_graph_embeddings(obs), obs)
 
-      action = sample_from_logits(logits, self.seed)
-      return StepOutput(action, logits,
+      return StepOutput(actions, logitss,
                         self._model.dummy_state(infer_shape(step_type)[0]))
 
   def _validate_observations(self, obs):
@@ -88,8 +89,8 @@ class Agent(BaseAgent):
 
     self._validate_observations(observations)
     config = self.config
-    behavior_logits = step_outputs.logits  # [T, B]
-    actions = step_outputs.action  # [T, B]
+    behavior_logits = step_outputs.logits  # [T, B, T2, T1]
+    actions = step_outputs.action  # [T, B, T2]
 
     with tf.variable_scope(self._name):
       t_dim = infer_shape(step_types)[0] - 1
@@ -105,20 +106,18 @@ class Agent(BaseAgent):
             'graph_features'] = self._process_graph_features(
                 flattened_observations['graph_features'])
 
-      with tf.variable_scope('graph_embeddings'):
-        graph_embeddings = self._model.compute_graph_embeddings(
-            flattened_observations)
+      # compute graph_embeddings
+      graph_embeddings = self._model.compute_graph_embeddings(
+          flattened_observations)
 
-      with tf.variable_scope('target_logits'):
-        # get logits
-        # target_logits -> [(T + 1)* B, ...]
-        target_logits, logits_logged_vals = self._model.get_logits(
-            graph_embeddings, flattened_observations['node_mask'])
-        # reshape to [T + 1, B ...]
-        target_logits = tf.reshape(target_logits, [t_dim + 1, bs_dim] +
-                                   infer_shape(behavior_logits)[2:])
-        # reshape to [T, B ...]
-        target_logits = target_logits[:-1]
+      # get logits
+      # target_logits -> [T * B, ...]
+      target_logits, _ = self._model.get_actions(
+          graph_embeddings, flattened_observations,
+          tf.reshape(actions, [-1, infer_shape(actions)[-1]]))
+      assert infer_shape(target_logits)[0] == bs_dim * t_dim
+      target_logits = tf.reshape(target_logits, [t_dim, bs_dim] +
+                                 infer_shape(behavior_logits)[2:])
 
       with tf.variable_scope('value'):
         # get value.
@@ -126,13 +125,10 @@ class Agent(BaseAgent):
         values = self._model.get_value(graph_embeddings)
 
       if config.loss.al_coeff.init_val > 0:
-        with tf.variable_scope('auxiliary_supervised_loss'):
-          auxiliary_loss = self._model.get_auxiliary_loss(
-              graph_embeddings, flattened_observations)
+        raise Exception('Not supported just yet!')
 
       with tf.variable_scope('loss'):
         values = tf.reshape(values, [t_dim + 1, bs_dim])
-
         # bug in previous versions.
         # Note that the bootstrap value has to be according to the target policy.
         # Hence it cannot be computed from the actor's policy.
@@ -141,23 +137,22 @@ class Agent(BaseAgent):
         # else:
         bootstrap_value = values[-1]
 
-        self.loss = VTraceLoss(step_types,
-                               actions,
-                               rewards,
-                               discounts,
-                               behavior_logits,
-                               target_logits,
-                               values,
-                               config.discount_factor,
-                               self._get_entropy_regularization_constant(),
-                               bootstrap_value=bootstrap_value,
-                               **config.loss)
+        self.loss = VTraceMultiActionLoss(
+            step_types,
+            actions,
+            rewards,
+            discounts,
+            behavior_logits,
+            target_logits,
+            values,
+            config.discount_factor,
+            self._get_entropy_regularization_constant(),
+            bootstrap_value=bootstrap_value,
+            **config.loss)
         loss = self.loss.loss
         if config.loss.al_coeff.init_val > 0:
-          loss += auxiliary_loss * get_decay_ops(**config.loss.al_coeff)
-          self.loss.logged_values.update({
-              'loss/auxiliary_loss': auxiliary_loss,
-          })
+          raise Exception('Not supported just yet!')
+
         self.loss.logged_values.update({
             'loss/total_loss': loss,
         })
@@ -180,23 +175,25 @@ class Agent(BaseAgent):
             # entropy
             'entropy/uniform_random_entropy':
             f(
-                compute_entropy(
-                    tf.cast(tf.greater(target_logits, -1e8), tf.float32))),
+                tf.reduce_mean(
+                    compute_entropy(
+                        tf.cast(tf.greater(target_logits, -1e8), tf.float32)),
+                    -1)),
             'entropy/target_policy_entropy':
-            f(compute_entropy(target_logits)),
+            f(tf.reduce_mean(compute_entropy(target_logits), -1)),
             'entropy/behavior_policy_entropy':
-            f(compute_entropy(behavior_logits)),
+            f(tf.reduce_mean(compute_entropy(behavior_logits), -1)),
             'entropy/is_ratio':
             f(
-                tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=actions, logits=target_logits) +
-                       tf.nn.sparse_softmax_cross_entropy_with_logits(
-                           labels=actions, logits=behavior_logits))),
+                tf.reduce_mean(
+                    tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
+                        labels=actions, logits=target_logits) +
+                           tf.nn.sparse_softmax_cross_entropy_with_logits(
+                               labels=actions, logits=behavior_logits)), -1)),
             # rewards
             'reward/avg_reward':
             f(rewards[1:]),
             **opt_vals,
-            **logits_logged_vals,
             **self._extract_logged_values(
                 nest.map_structure(lambda k: k[:-1], observations), f),
             **self.loss.logged_values

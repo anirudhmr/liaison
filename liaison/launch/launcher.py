@@ -203,14 +203,11 @@ class Launcher:
 
     env_configs = []
 
-    print('**********************************************')
-    print('WARNING: graph_start_idx is switched off')
-    print('**********************************************')
     for i in range(eval_config.batch_size):
       env_config = ConfigDict(**self.env_config)
       env_config.update({
           eval_config.dataset_type_field: id,
-          'graph_start_idx': 0,
+          'graph_start_idx': i,
           **eval_config.env_config
       })
       env_configs.append(env_config)

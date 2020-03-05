@@ -152,6 +152,20 @@ class Model(GCNRinsModel):
     # Run multiple rounds of graph convolutions
     return self._convolve(self._encode(obs['graph_features']))
 
+  def get_node_embeddings(self, obs, graph_embeddings):
+    # Returns embeddings of the nodes in the shape (B, N_max, d)
+    graph_features = graph_embeddings
+    broadcasted_globals = gn.utils_tf.repeat(graph_features.globals,
+                                             graph_features.n_left_nodes,
+                                             axis=0)
+    left_nodes = tf.concat([graph_features.left_nodes, broadcasted_globals],
+                           axis=-1)
+    indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_left_nodes)
+    left_nodes = tf.scatter_nd(
+        indices, left_nodes,
+        infer_shape(obs['node_mask']) + [infer_shape(left_nodes)[-1]])
+    return left_nodes, graph_features.n_left_nodes
+
   def get_logits(self, graph_features, node_mask):
     """
       graph_embeddings: Message propagated graph embeddings.
@@ -210,7 +224,6 @@ class Model(GCNRinsModel):
                         these to use with different network heads for value, policy etc.
     """
     with tf.variable_scope('value_network'):
-
       left_nodes = graph_features.left_nodes
       right_nodes = graph_features.right_nodes
       num_graphs = infer_shape(graph_features.n_left_nodes)[0]

@@ -68,7 +68,7 @@ class Model:
       action_spec=None,
       sum_aggregation=True,
       use_layer_norm=True,
-  ):
+      **kwargs):
     self.activation = get_activation_from_str(activation)
     self.n_prop_layers = n_prop_layers
     self.seed = seed
@@ -255,6 +255,23 @@ class Model:
         self._encode(obs['graph_features'], obs['var_type_mask'],
                      obs['constraint_type_mask'], obs['obj_type_mask']))
     return graph_features
+
+  def get_node_embeddings(self, obs):
+    graph_features = self.compute_graph_embeddings(obs)
+    graph_features = graph_features.replace(globals=tf.concat([
+        graph_features.globals,
+        gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)
+        (graph_features.replace(
+            nodes=self.policy_summarize(graph_features.nodes)))
+    ],
+                                                              axis=-1))
+
+    graph_features = graph_features.replace(nodes=tf.concat([
+        graph_features.nodes,
+        gn.blocks.broadcast_globals_to_nodes(graph_features)
+    ],
+                                                            axis=-1))
+    return graph_features.nodes
 
   def get_logits(self, graph_features: gn.graphs.GraphsTuple, node_mask):
     """

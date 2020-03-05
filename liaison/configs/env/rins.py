@@ -52,4 +52,7 @@ def get_config():
   # add one hot node labels for debugging graphnet models.
   config.attach_node_labels = False
 
+  # multi dimensional action space.
+  config.muldi_actions = False
+
   return config
