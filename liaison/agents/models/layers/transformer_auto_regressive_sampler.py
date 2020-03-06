@@ -2,12 +2,13 @@
 # Decoder generates queries which are dotted with the encoder keys
 # to compute the attention weights and softmax over the input keys
 
+from tqdm import tqdm
+
 import graph_nets as gn
 # Code adapted from https://github.com/Kyubyong/transformer/blob/master/model.py
 import tensorflow as tf
 from liaison.agents.utils import infer_shape
 from liaison.utils import ConfigDict
-from tqdm import tqdm
 
 from .transformer_utils import *
 
@@ -28,20 +29,13 @@ class Transformer:
     training: boolean.
   '''
 
-  def encode(self, inp_embeddings, x_seqlens, training=True):
+  def encode(self, inp_embeddings, src_masks, training=True):
     '''
         Returns
         memory: encoder outputs. (N, T1, d_model)
     '''
     with tf.variable_scope("encoder", reuse=tf.AUTO_REUSE):
       enc = inp_embeddings  # enc -> (N, L1, d)
-      # src_masks -> (N, L1)
-      # src_masks[i, j] = 0 for all j < x_seqlens[i]
-      indices = gn.utils_tf.sparse_to_dense_indices(x_seqlens)
-      src_masks = tf.scatter_nd(indices,
-                                tf.ones(infer_shape(indices)[:1], tf.bool),
-                                infer_shape(enc)[:2])
-      src_masks = tf.logical_not(src_masks)
 
       ## Blocks
       for i in range(self.hp.num_blocks):
@@ -50,7 +44,7 @@ class Transformer:
           enc = multihead_attention(queries=enc,
                                     keys=enc,
                                     values=enc,
-                                    key_masks=src_masks,
+                                    key_masks=tf.logical_not(src_masks),
                                     num_heads=self.hp.num_heads,
                                     dropout_rate=self.hp.dropout_rate,
                                     training=training,
@@ -58,7 +52,7 @@ class Transformer:
           # feed forward
           enc = ff(enc, num_units=[self.hp.d_ff, self.hp.d_model])
     memory = enc
-    return memory, src_masks
+    return memory
 
   def decode(self, dec, memory, src_masks, training=True):
     '''
@@ -90,7 +84,7 @@ class Transformer:
           dec = multihead_attention(queries=dec,
                                     keys=memory,
                                     values=memory,
-                                    key_masks=src_masks,
+                                    key_masks=tf.logical_not(src_masks),
                                     num_heads=self.hp.num_heads,
                                     dropout_rate=self.hp.dropout_rate,
                                     training=training,

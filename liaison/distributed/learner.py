@@ -154,6 +154,7 @@ class Learner(object):
         print(f'***********************************************')
 
       self._initial_publish()
+      self._exp_fetcher.start()
 
   def _mk_phs(self, traj_spec):
 
@@ -215,7 +216,6 @@ class Learner(object):
         prefetch_threads_per_process=config.prefetch_threads_per_process,
         tmp_dir=config.inmem_tmp_dir,
         compress_before_send=config.compress_before_send)
-    self._exp_fetcher.start()
 
   def _setup_ps_client_handle(self):
     """Initialize self._ps_client and connect it to the ps."""

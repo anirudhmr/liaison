@@ -280,11 +280,13 @@ class Env(RINSEnv):
     variable_nodes = self._variable_nodes
     obj_nodes = self._objective_nodes
     mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
+
+    # check if action is valid.
     # check if the previous step's mask was successfully applied
     for act in action:
       assert mask[act], mask
-
-    globals_[Env.GLOBAL_UNFIX_LEFT] -= 1
+    # no duplicates
+    assert len(set(action)) == len(action)
 
     fixed_assignment = {
         var: curr_sol[var]
@@ -306,7 +308,6 @@ class Env(RINSEnv):
                                                os.getpid())
 
     # restock the limit for unfixes in this episode.
-    globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     curr_lp_sol = curr_sol
     curr_lp_obj = curr_obj
     self._n_local_moves += 1

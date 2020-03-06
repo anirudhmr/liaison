@@ -16,7 +16,8 @@ from argon import to_nested_dicts
 from liaison.distributed import Learner, SimpleParameterServer
 from liaison.irs import IRSClient, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
-                             KVStreamLogger, TensorplexLogger)
+                             FileStreamLogger, KVStreamLogger,
+                             TensorplexLogger)
 from liaison.replay import ReplayLoadBalancer
 from liaison.utils import ConfigDict
 from tensorplex import Loggerplex, Tensorplex
@@ -241,7 +242,9 @@ class Launcher:
             serializer=self.sess_config.tensorplex.serializer,
             deserializer=self.sess_config.tensorplex.deserializer,
         ))
-    return loggers
+    vis_loggers = []
+    vis_loggers.append(FileStreamLogger(client=IRSClient(timeout=20)))
+    return loggers, vis_loggers
 
   def _setup_learner_system_loggers(self):
     loggers = []
@@ -265,11 +268,13 @@ class Launcher:
 
     agent_class = U.import_obj(self.agent_config.class_name,
                                self.agent_config.class_path)
+    loggers, vis_loggers = self._setup_learner_loggers()
     learner = Learner(agent_class=agent_class,
-                      agent_config=self.agent_config,
+                      agent_config=dict(vis_loggers=vis_loggers,
+                                        **self.agent_config),
                       traj_length=self.traj_length,
                       seed=self.seed,
-                      loggers=self._setup_learner_loggers(),
+                      loggers=loggers,
                       system_loggers=self._setup_learner_system_loggers(),
                       **self.sess_config.learner)
     learner.main()
@@ -425,6 +430,8 @@ class Launcher:
                                 str(self.work_id)),
         kvstream_folder=os.path.join(self.results_folder, 'kvstream',
                                      str(self.work_id)),
+        vis_files_folder=os.path.join(self.results_folder, 'vis_files',
+                                      str(self.work_id)),
         hyper_param_config_file=os.path.join(self.results_folder,
                                              'hyper_params', str(self.work_id),
                                              'hyper_params.json'),

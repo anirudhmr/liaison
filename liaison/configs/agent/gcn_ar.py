@@ -11,11 +11,12 @@ def get_config():
 
   config.model = ConfigDict()
   config.model.class_path = 'liaison.agents.models.transformer_auto_regressive'
-  config.model.num_blocks = 2
+  config.model.num_blocks = 4
   config.model.d_ff = 32
   config.model.num_heads = 4
-  config.model.d_model = 32
+  config.model.d_model = 128
   config.model.dropout_rate = 0.
+  config.model.use_mlp_value_func = False
 
   # The following code duplicated in gcn_rins.py as well.
   # Propagate any changes made as needed.
@@ -54,5 +55,7 @@ def get_config():
 
   # applicable for agent 'liaison.agents.gcn_large_batch'
   config.apply_grads_every = 1
+
+  config.log_features_every = 100
 
   return config

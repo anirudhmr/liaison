@@ -85,7 +85,7 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          hyper.discrete('env_config.k', [5]),
+          hyper.discrete('env_config.k', [25]),
           hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
           # hyper.discrete('agent_config.lr_init', [1e-4, 1e-3]),
           hyper.discrete('agent_config.ent_dec_init', [1e-2]),

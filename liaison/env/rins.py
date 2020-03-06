@@ -121,7 +121,10 @@ class Env(BaseEnv):
     self.config = ConfigDict(env_config)
     self.id = id
     self.k = k
-    self._steps_per_episode = k * n_local_moves
+    if self.config.muldi_actions:
+      self._steps_per_episode = n_local_moves
+    else:
+      self._steps_per_episode = k * n_local_moves
     self.seed = seed
     self._max_nodes = max_nodes
     self._max_edges = max_edges

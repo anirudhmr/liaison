@@ -19,6 +19,7 @@ class Agent(BaseAgent):
     self._name = name
     self._action_spec = action_spec
     self._load_model(name, action_spec=action_spec, **(model or {}))
+    self._global_step = tf.train.get_or_create_global_step()
 
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
@@ -112,9 +113,12 @@ class Agent(BaseAgent):
 
       # get logits
       # target_logits -> [T * B, ...]
-      target_logits, _ = self._model.get_actions(
-          graph_embeddings, flattened_observations,
-          tf.reshape(actions, [-1, infer_shape(actions)[-1]]))
+      target_logits, _, self._logged_features = self._model.get_actions(
+          graph_embeddings,
+          flattened_observations,
+          step_types,
+          tf.reshape(actions, [-1] + infer_shape(actions)[2:]),
+          log_features=True)
       assert infer_shape(target_logits)[0] == bs_dim * t_dim
       target_logits = tf.reshape(target_logits, [t_dim, bs_dim] +
                                  infer_shape(behavior_logits)[2:])
@@ -122,7 +126,8 @@ class Agent(BaseAgent):
       with tf.variable_scope('value'):
         # get value.
         # [(T+1)* B]
-        values = self._model.get_value(graph_embeddings)
+        values = self._model.get_value(graph_embeddings,
+                                       flattened_observations)
 
       if config.loss.al_coeff.init_val > 0:
         raise Exception('Not supported just yet!')
@@ -199,9 +204,24 @@ class Agent(BaseAgent):
             **self.loss.logged_values
         }
 
+  def _log_features(self, features, step):
+    # feature_dict -> collected Feature
+    # logs t-SNE visualization of features to files.
+    self._model.log_features(features, step, self.config.vis_loggers)
+
   def update(self, sess, feed_dict, profile_kwargs):
     """profile_kwargs pass to sess.run for profiling purposes."""
-    _, vals = sess.run([self._train_op, self._logged_values],
-                       feed_dict=feed_dict,
-                       **profile_kwargs)
+    ops = [self._logged_values]
+    i = sess.run(self._global_step)
+    log_features = False
+    if i % self.config.log_features_every == 0:
+      ops += [self._logged_features]
+      log_features = True
+
+    vals, *l = sess.run(ops + [self._train_op],
+                        feed_dict=feed_dict,
+                        **profile_kwargs)
+
+    if log_features:
+      self._log_features(l[0], i)
     return vals

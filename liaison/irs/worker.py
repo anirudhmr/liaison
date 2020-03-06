@@ -173,3 +173,9 @@ class Worker(Thread):
     with open(os.path.join(self.kvstream_folder, stream) + '.pkl', 'wb') as f:
       d = dict(kv=kv_data, stream=stream, **kwargs)
       pickle.dump(d, f)
+
+  def save_file(self, fname, data, **kwargs):
+    fname = f'{self.config.vis_files_folder}/{fname}'
+    U.f_mkdir(os.path.dirname(fname))
+    with open(fname, 'wb') as f:
+      f.write(data)
