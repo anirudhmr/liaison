@@ -1,9 +1,11 @@
-"""Bundle together shell config and actor config in one file here. """
-
+import liaison.utils as U
+import numpy as np
+from absl import app
 from liaison.utils import ConfigDict
+from tqdm import trange
 
 
-def get_config():
+def get_env_config():
   config = ConfigDict()
 
   # required fields.
@@ -22,18 +24,18 @@ def get_config():
 
   # specify dataset by dataset_path or dataset
   config.dataset_path = ''
-  config.dataset = ''
+  config.dataset = 'milp-cauction-100-filtered'
   config.dataset_type = 'train'
   config.graph_start_idx = 0
-  config.n_graphs = 1
+  config.n_graphs = 1000
 
-  config.max_nodes = -1
-  config.max_edges = -1
+  config.max_nodes = 800
+  config.max_edges = 12000
 
   config.k = 5
-  config.n_local_moves = 100
+  config.n_local_moves = 20
 
-  config.lp_features = True
+  config.lp_features = False
 
   config.delta_reward = False
   config.primal_gap_reward = True
@@ -61,6 +63,26 @@ def get_config():
   config.attach_node_labels = False
 
   # multi dimensional action space.
-  config.muldi_actions = False
+  config.muldi_actions = True
 
   return config
+
+
+def make_env():
+  env_config = get_env_config()
+  Env = U.import_obj(env_config.class_name, env_config.class_path)
+  return Env(0, 42, **env_config)
+
+
+def main(argv):
+  env = make_env()
+  ts = env.reset()
+
+  for i in trange(1000):
+    mask = ts.observation['mask']
+    act = np.random.choice(len(mask), env.k, replace=False, p=mask / sum(mask))
+    ts = env.step(act)
+
+
+if __name__ == '__main__':
+  app.run(main)

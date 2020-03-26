@@ -29,6 +29,7 @@ parser.add_argument('--cpu_load_balancing_obj_coeff', type=float, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=float, default=10)
 parser.add_argument('--filter_nodes_regex', type=str, default='.*')
 parser.add_argument('--without_evaluators', action='store_true')
+parser.add_argument('--without_valid_and_test_evaluators', action='store_true')
 parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
@@ -85,12 +86,12 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          hyper.discrete('env_config.k', [25]),
+          # hyper.discrete('env_config.k', [10, 20]),
           hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
-          # hyper.discrete('agent_config.lr_init', [1e-4, 1e-3]),
+          # hyper.discrete('agent_config.lr_init', [5e-4]),
           hyper.discrete('agent_config.ent_dec_init', [1e-2]),
+          # hyper.discrete('env_config.graph_start_idx', list(range(8))),
       )):
-    # hyper.discrete('agent_config.lr_init', [2e-5])):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
                                  env_name='liaison')
     # start tensorboard only for the first work unit.
@@ -100,7 +101,9 @@ def train(argv):
                   bundle_actors=args.bundle_actors,
                   with_visualizers=(work_id == 0)
                   and (not args.without_visualizers),
-                  with_evaluators=(not args.without_evaluators))
+                  with_evaluators=(not args.without_evaluators),
+                  without_valid_and_test_evaluators=args.
+                  without_valid_and_test_evaluators)
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += ['--hyper_configs', str(shlex.quote(json.dumps(params)))]

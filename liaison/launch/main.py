@@ -1,7 +1,5 @@
 """Entry script for each component in the setup."""
 
-from __future__ import absolute_import, division, print_function
-
 import liaison.utils as U
 from absl import app, logging
 from argon import ArgumentParser, to_nested_dicts

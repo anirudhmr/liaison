@@ -19,7 +19,8 @@ def build_program(exp,
                   res_req_config,
                   bundle_actors,
                   with_visualizers=True,
-                  with_evaluators=True):
+                  with_evaluators=True,
+                  without_valid_and_test_evaluators=False):
   learner = exp.new_process('learner')
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')

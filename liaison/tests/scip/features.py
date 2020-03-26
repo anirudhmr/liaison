@@ -127,7 +127,7 @@ def extract_state(model, buffer=None):
   #     model.getLPColsData()[i].getVar().name
   #     for i in range(len(model.getLPColsData()))
   # ]
-  # get rid of the 't_' added to the start of the vars by scip
+  # Strip the prefix 't_' added by scip
   var_names = [i.name.lstrip('t_') for i in model.getVars(transformed=True)]
 
   variable_features = {

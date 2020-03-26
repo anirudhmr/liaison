@@ -13,8 +13,8 @@ def get_config():
   config.learner.mem = 0
   config.learner.gpu_compute = []
   config.learner.gpu_mem = []
-  config.learner.gpu_compute = [1]
-  config.learner.gpu_mem = [14]
+  # config.learner.gpu_compute = [1]
+  # config.learner.gpu_mem = [14]
 
   config.actor = ConfigDict()
   config.actor.cpu = 1

@@ -7,6 +7,7 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
+from liaison.daper.milp.primitives import relax_integral_constraints
 from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
                        Model)
 
@@ -71,23 +72,28 @@ def sample_milp_work(rng):
   model.optimize()
   milp.optimal_objective = model.getObjVal()
   if not args.only_collect_metadata:
-    milp.optimal_solution = {
-        var.name: model.getVal(var)
-        for var in model.getVars()
-    }
+    milp.optimal_solution = {var.name: model.getVal(var) for var in model.getVars()}
   milp.is_optimal = (model.getStatus() == 'optimal')
   milp.optimal_sol_metadata.n_nodes = model.getNNodes()
   milp.optimal_sol_metadata.gap = model.getGap()
   milp.optimal_sol_metadata.primal_integral = heur.primal_integral
   milp.optimal_sol_metadata.primal_gaps = heur.l
+  milp.optimal_lp_sol = None
 
   feasible_sol = model.getSols()[-1]
   milp.feasible_objective = model.getSolObjVal(feasible_sol)
   if not args.only_collect_metadata:
     milp.feasible_solution = {
-        var.name: feasible_sol[var]
+        var.name: model.getSolVal(feasible_sol, var)
         for var in model.getVars()
     }
+    solver = Model()
+    solver.hideOutput()
+    relax_integral_constraints(milp.mip).add_to_scip_solver(solver)
+    solver.optimize()
+    assert solver.getStatus() == 'optimal', solver.getStatus()
+    ass = {var.name: solver.getVal(var) for var in solver.getVars()}
+    milp.optimal_lp_sol = ass
   return milp
 
 

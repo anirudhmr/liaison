@@ -16,7 +16,7 @@ from symphony.tmux import Node
 
 ENV_ACTIVATE_CMD = 'conda activate liaison'
 PYTHONPATH_CMD = 'export PYTHONPATH="$PYTHONPATH:`pwd`"'
-PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD]
+PREAMBLE_CMDS = [ENV_ACTIVATE_CMD, PYTHONPATH_CMD, 'export KMP_AFFINITY=none']
 
 
 class TurrealParser(SymphonyParser):

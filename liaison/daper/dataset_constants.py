@@ -6,21 +6,21 @@ DATASET_PATH = {
     'milp-facilities-10': '/data/nms/tfp/datasets/milp/facilities/size-10',
     'milp-cauction-10': '/data/nms/tfp/datasets/milp/cauction/size-10',
     'milp-cauction-100': '/data/nms/tfp/datasets/milp/cauction/size-100',
-    'milp-cauction-100-filtered':
-    '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
+    'milp-cauction-100-filtered': '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
     # 'milp-cauction-100-filtered':
     # '/nobackup/users/addanki/datasets/milp/cauction/size-100-gap-.01',
-    'milp-cauction-mixed':
-    '/data/nms/tfp/datasets/milp/cauction/size-mixed-small',
+    'milp-cauction-mixed': '/data/nms/tfp/datasets/milp/cauction/size-mixed-small',
     'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',
     'milp-cauction-300': '/data/nms/tfp/datasets/milp/cauction/size-300',
+    'milp-cauction-300-filtered': '/data/nms/tfp/datasets/milp/cauction/size-300-filtered',
     'milp-cauction-25': '/data/nms/tfp/datasets/milp/cauction/size-25',
+    'milp-cauction-25-filtered': '/data/nms/tfp/datasets/milp/cauction/size-25-filtered',
+    'milp-cauction-50-filtered': '/data/nms/tfp/datasets/milp/cauction/size-50-filtered',
     'milp-setcover-10': '/data/nms/tfp/datasets/milp/setcover/size-10',
     'milp-setcover-100': '/data/nms/tfp/datasets/milp/setcover/size-100',
     'milp-indset-10': '/data/nms/tfp/datasets/milp/indset/size-10',
     'milp-indset-100': '/data/nms/tfp/datasets/milp/indset/size-100',
-    'milp-bcol':
-    '/data/nms/tfp/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
+    'milp-bcol': '/data/nms/tfp/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
     'milp-corlat': '/data/nms/tfp/datasets/milp/corlat',
     'milp-regions': '/data/nms/tfp/datasets/milp/mip_datasets/Regions200-mps'
 }
@@ -33,16 +33,25 @@ LENGTH_MAP = {
     'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-10': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-25': dict(train=2000, valid=100, test=100),
+    'milp-cauction-25-filtered': dict(train=10000, valid=1000, test=1000),
+    'milp-cauction-50-filtered': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-100': dict(train=1000, valid=100, test=100),
     'milp-cauction-mixed': dict(train=2000, valid=100, test=100),
     'milp-cauction-100-filtered': dict(train=1000, valid=100, test=100),
     'milp-cauction-200': dict(train=1000, valid=100, test=100),
     'milp-cauction-300': dict(train=512, valid=16, test=16),
+    'milp-cauction-300-filtered': dict(train=1000, valid=200, test=200),
     'milp-setcover-10': dict(train=10000, valid=1000, test=1000),
     'milp-setcover-100': dict(train=1000, valid=100, test=100),
     'milp-indset-10': dict(train=10000, valid=1000, test=1000),
     'milp-indset-100': dict(train=1000, valid=100, test=100),
     'milp-corlat': dict(train=256, valid=32, test=32),
+}
+
+DATASET_INFO_PATH = {
+    'milp-cauction-25-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-25-filtered',
+    'milp-cauction-100-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-100-filtered',
+    'milp-cauction-300-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-300-filtered',
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -115,6 +124,8 @@ NORMALIZATION_CONSTANTS = {
         obj_normalizer=86.54,
         max_nodes=1127,
         max_edges=5730,
+        constraint_degree_normalizer=101,
+        cont_variable_normalizer=100.,
     ),
     'milp-cauction-mixed':
     dict(
@@ -135,4 +146,3 @@ NORMALIZATION_CONSTANTS = {
         max_edges=2114,
     ),
 }
-# assert sorted(DATASET_PATH.keys()) == sorted(LENGTH_MAP.keys())

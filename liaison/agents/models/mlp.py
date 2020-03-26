@@ -1,5 +1,7 @@
 """MLP based model."""
 
+import sys
+
 import numpy as np
 import sonnet as snt
 from liaison.agents.models.utils import *
@@ -51,12 +53,16 @@ class Model:
 
     logits = self.policy(obs['features'])
     bs = tf.shape(step_type)[0]
+    assert 'mlp_mask' in obs
     if 'mlp_mask' in obs:
       mask = obs['mlp_mask']
       logits = tf.reshape(logits, tf.shape(mask))
       # mask some of the logits
       logits = tf.where(tf.equal(mask, 1), logits,
                         tf.fill(tf.shape(logits), MINF))
+    nan_found = tf.reduce_any(tf.math.is_nan(logits))
+    with tf.control_dependencies([nan_found]):
+      logits = tf.identity(logits)
     return logits, self._dummy_state(bs), {}
 
   def get_value(self, _, __, obs, ___):

@@ -9,6 +9,7 @@ from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
 
 import numpy as np
+
 from absl import app
 from liaison.daper import ConfigDict
 from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
@@ -102,7 +103,7 @@ def split(dataset):
 
 
 def cmd_gen(seed, out_file, problem_size):
-  cmd = "python %s --seed=%d --out_file=%s --problem_size=%d %s" % (
+  cmd = "python %s --seed=%d --out_file=%s --problem_size=%d --gap=0. %s" % (
       os.path.join(os.path.dirname(__file__), 'sample_graph.py'), seed,
       out_file, problem_size, ' '.join(REMAINDER))
   return cmd

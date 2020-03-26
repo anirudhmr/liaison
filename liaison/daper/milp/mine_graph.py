@@ -57,8 +57,7 @@ def sample_milp_work(seed):
   milp.problem_type = args.problem_type
   milp.seed = seed
   milp.problem_size = sample_problem_size(seed)
-  mip = generate_instance(args.problem_type, milp.problem_size,
-                          np.random.RandomState(seed))
+  mip = generate_instance(args.problem_type, milp.problem_size, np.random.RandomState(seed))
   milp.mip = None
 
   model = Model()
@@ -81,8 +80,7 @@ def sample_milp_work(seed):
   milp.optimal_sol_metadata.n_sum = heur.i
   milp.optimal_sol_metadata.primal_gaps = heur.l
 
-  feasible_sol = model.getSols()[-1]
-  milp.feasible_objective = model.getSolObjVal(feasible_sol)
+  milp.feasible_objective = model.getSolObjVal(model.getSols()[-1])
   return milp
 
 

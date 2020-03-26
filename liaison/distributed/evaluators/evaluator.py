@@ -9,7 +9,6 @@ from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
-
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.env import StepType
@@ -31,7 +30,6 @@ class Evaluator:
       shell_config,
       env_class,
       env_configs,
-      traj_length,
       loggers,
       heuristic_loggers,
       seed,
@@ -44,7 +42,6 @@ class Evaluator:
       **unused_config):
     del unused_config
     self.batch_size = batch_size
-    self._traj_length = traj_length
     self._loggers = loggers
     self.max_evaluations = max_evaluations
     self._n_trials = n_trials
@@ -149,8 +146,8 @@ class Evaluator:
               log_values[i].append(d)
               first_step = False
 
-          for i, mask in enumerate(env_mask):
-            if mask and ts.step_type[i] == StepType.LAST:
+          for i in range(len(env_mask)):
+            if ts.step_type[i] == StepType.LAST:
               env_mask[i] = False
 
           step_output = self._shell.step(step_type=ts.step_type,
@@ -158,6 +155,7 @@ class Evaluator:
                                          observation=ts.observation)
           ts = self._env.step(step_output.action)
 
+        # done with all the local moves
         for i, _ in enumerate(log_values):
           log_values[i] = nest.map_structure(lambda *l: np.stack(l),
                                              *log_values[i])

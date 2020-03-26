@@ -1,13 +1,10 @@
 """Graphnet based model."""
 import tempfile
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-from tqdm import tqdm
-
 import graph_nets as gn
 import liaison.utils as U
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import sonnet as snt
 from liaison.agents.models.gcn_rins import make_mlp
 from liaison.agents.models.layers.transformer_auto_regressive_sampler import \
@@ -17,7 +14,9 @@ from liaison.agents.models.utils import *
 from liaison.agents.utils import infer_shape, sample_from_logits
 from liaison.env import StepType
 from liaison.utils import ConfigDict
+from sklearn.manifold import TSNE
 from sonnet.python.ops import initializers
+from tqdm import tqdm
 
 mpl.use('Agg')
 plt.style.use('seaborn')
@@ -30,8 +29,8 @@ class Model:
     self.k = action_spec.shape[-1]
     self.config = ConfigDict(kwargs)
     with tf.variable_scope('gcn_model'):
-      self._gcn_model = U.import_obj('Model', model_kwargs['class_path'])(
-          seed=seed, **model_kwargs)
+      self._gcn_model = U.import_obj('Model', model_kwargs['class_path'])(seed=seed,
+                                                                          **model_kwargs)
 
     with tf.variable_scope('transformer'):
       self._trans = Transformer(**self.config)
@@ -62,8 +61,7 @@ class Model:
                     decoding phase.
         action_mask: Masks where the previous action has taken place.
     """
-    xs, n_node = self._gcn_model.get_node_embeddings(
-        obs, graph_embeddings)  # (N, L1, d)
+    xs, n_node = self._gcn_model.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
     node_mask = tf.reshape(obs['node_mask'], infer_shape(xs)[:-1])
     node_mask = tf.cast(node_mask, tf.bool)
     if sampled_actions is not None:
@@ -79,31 +77,25 @@ class Model:
     # compute src_mask to remove padding nodes interfering.
     indices = gn.utils_tf.sparse_to_dense_indices(n_node)
     # src_masks -> (N, L1)
-    src_masks = tf.scatter_nd(indices,
-                              tf.ones(infer_shape(indices)[:1], tf.bool),
+    src_masks = tf.scatter_nd(indices, tf.ones(infer_shape(indices)[:1], tf.bool),
                               infer_shape(xs)[:2])
 
     if sampled_actions is not None:
       log_features = dict()
-      log_features.update(
-          dict(xs=xs, src_masks=src_masks, step_types=step_types[:-1]))
+      log_features.update(dict(xs=xs, src_masks=src_masks, step_types=step_types[:-1]))
       log_features.update(dict(actions=sampled_actions))
 
     xs = snt.BatchApply(self._node_emb_mlp)(xs)  # (N, L1, d_model)
     memory = xs
-    # Optionally add encode
-    # memory = self._trans.encode(xs, node_mask)
 
     N = infer_shape(xs)[0]
     # Feed in zero embedding as the start sentinel.
-    _decoder_inputs = tf.zeros((N, 1, infer_shape(xs)[-1]),
-                               tf.float32)  # (N, 1, d)
+    _decoder_inputs = tf.zeros((N, 1, infer_shape(xs)[-1]), tf.float32)  # (N, 1, d)
     logitss = []
     actions = []
 
     for i in tqdm(range(self.k)):
-      dec = self._trans.decode(_decoder_inputs, memory, src_masks,
-                               True)  # (N, T1, d_model)
+      dec = self._trans.decode(_decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
 
       with tf.variable_scope('attn_head', reuse=tf.AUTO_REUSE):
         # Q -> (N, d_model)
@@ -118,22 +110,20 @@ class Model:
       # scale
       outputs /= (Q.get_shape().as_list()[-1]**0.5)
 
-      indices = gn.utils_tf.sparse_to_dense_indices(n_node)
-      logits = tf.where(node_mask, outputs,
-                        tf.fill(tf.shape(node_mask), np.float32(-1e9)))
+      logits = tf.where(node_mask, outputs, tf.fill(tf.shape(node_mask), np.float32(-1e9)))
 
-      logitss.append(logits)
       if sampled_actions is None:
         act = sample_from_logits(logits, self.seed)  # (N,)
       else:
         act = sampled_actions[:, i]
+
+      logitss.append(logits)
       actions.append(act)
 
       # update node_masks to remove the current selected node for the next
       # decoding iteration.
       indices = tf.stack([tf.range(N), act], axis=-1)
-      action_mask = tf.scatter_nd(indices, tf.ones((N, ), tf.bool),
-                                  infer_shape(node_mask))
+      action_mask = tf.scatter_nd(indices, tf.ones((N, ), tf.bool), infer_shape(node_mask))
       node_mask = tf.logical_and(node_mask, tf.logical_not(action_mask))
 
       embs = tf.gather_nd(xs, indices)  # (N, d)
@@ -158,8 +148,7 @@ class Model:
     src_masks = np.reshape(src_masks, step_types.shape + src_masks.shape[1:])
     actions = features['actions']
     # actions -> (T, B, N_acts)
-    actions = np.reshape(features['actions'],
-                         step_types.shape + actions.shape[1:])
+    actions = np.reshape(features['actions'], step_types.shape + actions.shape[1:])
 
     N_FIGS = 4
     collected_indices = []
@@ -173,8 +162,7 @@ class Model:
 
     collected_indices = collected_indices[:N_FIGS]
 
-    fig, axes = plt.subplots(ncols=len(collected_indices),
-                             figsize=[8 * len(collected_indices), 8])
+    fig, axes = plt.subplots(ncols=len(collected_indices), figsize=[8 * len(collected_indices), 8])
 
     for (t, b), ax in zip(collected_indices, axes):
       x = xs[t, b][src_masks[t, b]]
@@ -187,23 +175,20 @@ class Model:
 
     with tempfile.SpooledTemporaryFile(mode='rw+b') as f:
       fig.savefig(f, format='png')
-      f.seek(0)
       for logger in loggers:
+        f.seek(0)
         logger.write(f, step=step, fname=f'graph_embedding_tsne_{step}.png')
 
   def get_value(self, graph_embeddings, obs):
     # Give this the optimal solution as well in the inputs?
     if self.config.use_mlp_value_func:
-
-      xs, _ = self._gcn_model.get_node_embeddings(
-          obs, graph_embeddings)  # (N, L1, d)
+      xs, _ = self._gcn_model.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
       xs = tf.reshape(xs, [infer_shape(xs)[0], -1])
 
       with tf.variable_scope('value_network'):
         self.value = snt.nets.MLP([32, 32, 1],
-                                  initializers=dict(
-                                      w=glorot_uniform(self.seed),
-                                      b=initializers.init_ops.Constant(0.0)),
+                                  initializers=dict(w=glorot_uniform(self.seed),
+                                                    b=initializers.init_ops.Constant(0.0)),
                                   activate_final=False,
                                   activation=get_activation_from_str('relu'))
       return tf.squeeze(self.value(xs), axis=-1)

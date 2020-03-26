@@ -1,5 +1,5 @@
 """
-python liaison/daper/milp/mine_dataset.py --out_dir=/data/nms/tfp/datasets/milp/facilities/size-3/ -- --problem_type=facilities --problem_size=3 | parallel --ungroup -j8
+python liaison/daper/milp/mine_dataset.py -- --out_dir=/data/nms/tfp/datasets/milp/facilities/size-3/ --problem_type=facilities --problem_size=3 | parallel --ungroup -j8
 """
 import argparse
 import math

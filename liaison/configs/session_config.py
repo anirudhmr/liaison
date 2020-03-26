@@ -43,6 +43,7 @@ def get_config():
   config.shell.ps_client_not_ready_sleep = 2
   config.shell.sync_period = 10  # in # steps.
   config.shell.use_gpu = False
+  config.shell.restore_from = None
 
   config.replay = ConfigDict()
   config.replay.class_path = 'liaison.replay.uniform_replay'
@@ -59,6 +60,7 @@ def get_config():
   config.replay.loggerplex.local_logger_level = 'info'
   config.replay.loggerplex.local_logger_time_format = 'hms'
   config.replay.compress_before_send = True
+  config.replay.max_times_sampled = 4
 
   config.loggerplex = ConfigDict()
   config.loggerplex.enable_local_logger = True
@@ -70,12 +72,8 @@ def get_config():
   config.loggerplex.show_level = True
 
   config.tensorplex = ConfigDict()
-  config.tensorplex.tensorboard_preferred_ports = [
-      6006 + i for i in range(100)
-  ]
-  config.tensorplex.systemboard_preferred_ports = [
-      7007 + i for i in range(100)
-  ]
+  config.tensorplex.tensorboard_preferred_ports = [6006 + i for i in range(100)]
+  config.tensorplex.systemboard_preferred_ports = [7007 + i for i in range(100)]
   config.tensorplex.max_processes = 1
   config.tensorplex.agent_bin_size = 64
   config.tensorplex.serializer = 'pickle'

@@ -62,20 +62,21 @@ class BatchedEnv(BaseBatchedEnv):
     self._make_step_spec(self._obs_spec)
     self.set_seed(seed)
 
-  def _send_to_workers(self, method, *args, **kwargs):
+  def _send_to_workers(self, method, argss=None, kwargss=None):
+    # argss should be list of args
 
     n_workers = self._n_workers
-    if len(args) == 0:
-      args = [[]] * n_workers
+    if argss is None:
+      argss = [[]] * n_workers
 
-    if len(kwargs) == 0:
-      kwargs = [{}] * n_workers
+    if kwargss is None:
+      kwargss = [{}] * n_workers
 
-    assert len(args) == n_workers
-    assert len(kwargs) == n_workers
+    assert len(argss) == n_workers
+    assert len(kwargss) == n_workers
 
     for i, s_q in enumerate(self._send_queues):
-      s_q.put([method, args[i], kwargs[i]])
+      s_q.put([method, argss[i], kwargss[i]])
 
     results = []
     for r_q in self._recv_queues:
@@ -92,10 +93,22 @@ class BatchedEnv(BaseBatchedEnv):
 
   def step(self, action):
     return self._stack_ts(
-        self._send_to_workers('step', *[(act, ) for act in action]))
+        self._send_to_workers('step', [(act, ) for act in action]))
 
   def reset(self):
     return self._stack_ts(self._send_to_workers('reset'))
 
   def set_seed(self, seed):
-    return self._send_to_workers('set_seed', *[(seed, )] * self._n_workers)
+    return self._send_to_workers('set_seed', [(seed, )] * self._n_workers)
+
+  def func_call_with_common_args(self, f_name: str, *args, **kwargs):
+    # call env.f with the provided arguments
+    # The arguments are *not* split across the environments
+    return self._stack_ts(
+        self._send_to_workers(f_name, [args] * self._n_workers,
+                              [kwargs] * self._n_workers))
+
+  def func_call_ith_env(self, func_name, i, *args, **kwargs):
+    # gets the attr_name of the ith environment
+    self._send_queues[i].put([func_name, args, kwargs])
+    return self._recv_queues[i].get()

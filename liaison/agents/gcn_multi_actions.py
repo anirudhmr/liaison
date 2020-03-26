@@ -20,6 +20,10 @@ class Agent(BaseAgent):
     self._action_spec = action_spec
     self._load_model(name, action_spec=action_spec, **(model or {}))
     self._global_step = tf.train.get_or_create_global_step()
+    self._total_steps = tf.Variable(0,
+                                    trainable=False,
+                                    collections=[tf.GraphKeys.LOCAL_VARIABLES],
+                                    name='total_steps')
 
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
@@ -46,14 +50,11 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       # flatten graph features for the policy network
       # convert dict to graphstuple
-      obs['graph_features'] = self._process_graph_features(
-          obs['graph_features'])
+      obs['graph_features'] = self._process_graph_features(obs['graph_features'])
 
-      logitss, actions = self._model.get_actions(
-          self._model.compute_graph_embeddings(obs), obs)
+      logitss, actions = self._model.get_actions(self._model.compute_graph_embeddings(obs), obs)
 
-      return StepOutput(actions, logitss,
-                        self._model.dummy_state(infer_shape(step_type)[0]))
+      return StepOutput(actions, logitss, self._model.dummy_state(infer_shape(step_type)[0]))
 
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
@@ -62,15 +63,13 @@ class Agent(BaseAgent):
   def _process_graph_features(self, graph_features):
     if set(graph_features.keys()) == set(gn.graphs.GraphsTuple._fields):
       return flatten_graphs(gn.graphs.GraphsTuple(**graph_features))
-    elif set(graph_features.keys()) == set(
-        gn.graphs.BipartiteGraphsTuple._fields):
-      return flatten_bipartite_graphs(
-          gn.graphs.BipartiteGraphsTuple(**graph_features))
+    elif set(graph_features.keys()) == set(gn.graphs.BipartiteGraphsTuple._fields):
+      return flatten_bipartite_graphs(gn.graphs.BipartiteGraphsTuple(**graph_features))
     else:
       raise Exception('Unknown graph features provided.')
 
-  def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
-                       observations, discounts):
+  def build_update_ops(self, step_outputs, prev_states, step_types, rewards, observations,
+                       discounts):
     """Use trajectories collected to update the policy.
 
     This function will only be called once to create a TF graph which
@@ -100,16 +99,13 @@ class Agent(BaseAgent):
       # flatten graph features for graph embeddings.
       with tf.variable_scope('flatten_graphs'):
         # merge time and batch dimensions
-        flattened_observations = nest.map_structure(merge_first_two_dims,
-                                                    observations)
+        flattened_observations = nest.map_structure(merge_first_two_dims, observations)
         # flatten by merging the batch and node, edge dimensions
-        flattened_observations[
-            'graph_features'] = self._process_graph_features(
-                flattened_observations['graph_features'])
+        flattened_observations['graph_features'] = self._process_graph_features(
+            flattened_observations['graph_features'])
 
       # compute graph_embeddings
-      graph_embeddings = self._model.compute_graph_embeddings(
-          flattened_observations)
+      graph_embeddings = self._model.compute_graph_embeddings(flattened_observations)
 
       # get logits
       # target_logits -> [T * B, ...]
@@ -120,14 +116,12 @@ class Agent(BaseAgent):
           tf.reshape(actions, [-1] + infer_shape(actions)[2:]),
           log_features=True)
       assert infer_shape(target_logits)[0] == bs_dim * t_dim
-      target_logits = tf.reshape(target_logits, [t_dim, bs_dim] +
-                                 infer_shape(behavior_logits)[2:])
+      target_logits = tf.reshape(target_logits, [t_dim, bs_dim] + infer_shape(behavior_logits)[2:])
 
       with tf.variable_scope('value'):
         # get value.
         # [(T+1)* B]
-        values = self._model.get_value(graph_embeddings,
-                                       flattened_observations)
+        values = self._model.get_value(graph_embeddings, flattened_observations)
 
       if config.loss.al_coeff.init_val > 0:
         raise Exception('Not supported just yet!')
@@ -142,18 +136,18 @@ class Agent(BaseAgent):
         # else:
         bootstrap_value = values[-1]
 
-        self.loss = VTraceMultiActionLoss(
-            step_types,
-            actions,
-            rewards,
-            discounts,
-            behavior_logits,
-            target_logits,
-            values,
-            config.discount_factor,
-            self._get_entropy_regularization_constant(),
-            bootstrap_value=bootstrap_value,
-            **config.loss)
+        self.loss = VTraceMultiActionLoss(step_types,
+                                          actions,
+                                          rewards,
+                                          discounts,
+                                          behavior_logits,
+                                          target_logits,
+                                          values,
+                                          config.discount_factor,
+                                          self._get_entropy_regularization_constant(),
+                                          bootstrap_value=bootstrap_value,
+                                          action_mask=,
+                                          **config.loss)
         loss = self.loss.loss
         if config.loss.al_coeff.init_val > 0:
           raise Exception('Not supported just yet!')
@@ -163,12 +157,12 @@ class Agent(BaseAgent):
         })
 
       with tf.variable_scope('optimize'):
-        opt_vals = self._optimize(loss)
+        with tf.control_dependencies([tf.assign_add(self._total_steps, t_dim * bs_dim)]):
+          opt_vals = self._optimize(loss)
 
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
-                                tf.float32)
+        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)), tf.float32)
 
         def f(x):
           """Computes the valid mean stat."""
@@ -181,9 +175,7 @@ class Agent(BaseAgent):
             'entropy/uniform_random_entropy':
             f(
                 tf.reduce_mean(
-                    compute_entropy(
-                        tf.cast(tf.greater(target_logits, -1e8), tf.float32)),
-                    -1)),
+                    compute_entropy(tf.cast(tf.greater(target_logits, -1e8), tf.float32)), -1)),
             'entropy/target_policy_entropy':
             f(tf.reduce_mean(compute_entropy(target_logits), -1)),
             'entropy/behavior_policy_entropy':
@@ -191,16 +183,18 @@ class Agent(BaseAgent):
             'entropy/is_ratio':
             f(
                 tf.reduce_mean(
-                    tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-                        labels=actions, logits=target_logits) +
-                           tf.nn.sparse_softmax_cross_entropy_with_logits(
-                               labels=actions, logits=behavior_logits)), -1)),
+                    tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
+                                                                           logits=target_logits) +
+                           tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
+                                                                          logits=behavior_logits)),
+                    -1)),
             # rewards
             'reward/avg_reward':
             f(rewards[1:]),
+            'steps/total_steps':
+            tf.reduce_mean(self._total_steps),
             **opt_vals,
-            **self._extract_logged_values(
-                nest.map_structure(lambda k: k[:-1], observations), f),
+            **self._extract_logged_values(nest.map_structure(lambda k: k[:-1], observations), f),
             **self.loss.logged_values
         }
 
@@ -218,9 +212,7 @@ class Agent(BaseAgent):
       ops += [self._logged_features]
       log_features = True
 
-    vals, *l = sess.run(ops + [self._train_op],
-                        feed_dict=feed_dict,
-                        **profile_kwargs)
+    vals, *l = sess.run(ops + [self._train_op], feed_dict=feed_dict, **profile_kwargs)
 
     if log_features:
       self._log_features(l[0], i)

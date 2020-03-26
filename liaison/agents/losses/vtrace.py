@@ -57,24 +57,21 @@ class Loss:
     # Ignore the timesteps that caused a reset to happen
     # [T, B]
     valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-    n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
-                            tf.float32)
+    n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)), tf.float32)
 
-    actions_logp = -tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=actions, logits=target_logits)
+    actions_logp = -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
+                                                                   logits=target_logits)
 
     # The policy gradients loss
     pi_loss = -tf.reduce_sum(
-        tf.boolean_mask(actions_logp * vtrace_returns.pg_advantages,
-                        valid_mask))
+        tf.boolean_mask(actions_logp * vtrace_returns.pg_advantages, valid_mask))
 
     # The baseline loss
     delta = tf.boolean_mask(values - vtrace_returns.vs, valid_mask)
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
     # The entropy for valid actions
-    entropy = tf.reduce_sum(
-        tf.boolean_mask(compute_entropy(target_logits), valid_mask))
+    entropy = tf.reduce_sum(tf.boolean_mask(compute_entropy(target_logits), valid_mask))
 
     # The summed weighted loss
     total_loss = (pi_loss + vf_loss * vf_loss_coeff - entropy * entropy_coeff)
@@ -122,6 +119,7 @@ class MultiActionLoss(Loss):
                bootstrap_value,
                clip_rho_threshold=1.0,
                clip_pg_rho_threshold=1.0,
+               action_mask=None,
                **kwargs):
     """Policy gradient loss with vtrace importance weighting.
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
@@ -146,18 +144,26 @@ class MultiActionLoss(Loss):
 
     with tf.name_scope('vtrace_from_logits',
                        values=[
-                           behavior_logits, target_logits, actions, discounts,
-                           rewards, values, bootstrap_value
+                           behavior_logits, target_logits, actions, discounts, rewards, values,
+                           bootstrap_value
                        ]):
       target_action_log_probs = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           logits=target_logits, labels=actions)
       # sum up logprobs of the sub-actions at each timestep.
-      target_action_log_probs = tf.reduce_sum(target_action_log_probs, -1)
+      if action_mask:
+        target_action_log_probs = tf.reduce_sum(
+            tf.boolean_mask(target_action_log_probs, action_mask), -1)
+      else:
+        target_action_log_probs = tf.reduce_sum(target_action_log_probs, -1)
 
       behaviour_action_log_probs = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           logits=behavior_logits, labels=actions)
-      behaviour_action_log_probs = tf.reduce_sum(behaviour_action_log_probs,
-                                                 -1)
+
+      if action_mask:
+        behaviour_action_log_probs = tf.reduce_sum(
+            tf.boolean_mask(behaviour_action_log_probs, action_mask), -1)
+      else:
+        behaviour_action_log_probs = tf.reduce_sum(behaviour_action_log_probs, -1)
 
       log_rhos = target_action_log_probs - behaviour_action_log_probs
       vtrace_returns = vtrace_ops.from_importance_weights(
@@ -168,6 +174,7 @@ class MultiActionLoss(Loss):
           bootstrap_value=bootstrap_value,
           clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
           clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold, tf.float32))
+
       vtrace_returns = vtrace_ops.VTraceFromLogitsReturns(
           log_rhos=log_rhos,
           behaviour_action_log_probs=behaviour_action_log_probs,
@@ -177,22 +184,24 @@ class MultiActionLoss(Loss):
     # Ignore the timesteps that caused a reset to happen
     # [T, B]
     valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-    n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
-                            tf.float32)
+    n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)), tf.float32)
 
     # The policy gradients loss
     pi_loss = -tf.reduce_sum(
-        tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages,
-                        valid_mask))
+        tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages, valid_mask))
 
     # The baseline loss
     delta = tf.boolean_mask(values - vtrace_returns.vs, valid_mask)
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
-    # The entropy for valid actions
-    entropy = tf.reduce_sum(
-        tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1),
-                        valid_mask))
+    if action_mask:
+      # The entropy for valid actions
+      entropy = tf.reduce_sum(
+          tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1),
+                          tf.logical_and(valid_mask, action_mask)))
+    else:
+      entropy = tf.reduce_sum(
+          tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))
 
     # The summed weighted loss
     total_loss = (pi_loss + vf_loss * vf_loss_coeff - entropy * entropy_coeff)

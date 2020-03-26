@@ -14,7 +14,7 @@ def get_config():
   config.model.num_blocks = 4
   config.model.d_ff = 32
   config.model.num_heads = 4
-  config.model.d_model = 128
+  config.model.d_model = 64
   config.model.dropout_rate = 0.
   config.model.use_mlp_value_func = False
 

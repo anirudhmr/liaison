@@ -17,6 +17,12 @@ from liaison.utils import ConfigDict
 from tensorflow.contrib.framework import nest
 
 
+class SyncNever:
+
+  def should_sync(self, *args):
+    return False
+
+
 class SyncEveryNSteps:
 
   def __init__(self, sync_period):
@@ -45,13 +51,19 @@ class Shell:
       agent_config,
       batch_size,
       agent_scope='shell',
+      restore_from=None,
       sync_period=None,
       use_gpu=False,
+      verbose=True,
       **kwargs):
     self.config = ConfigDict(kwargs)
+    self.verbose = verbose
     self._obs_spec = obs_spec
-    self._sync_checker = SyncEveryNSteps(sync_period)
-    assert self._sync_checker.should_sync(0)  # must sync at the beginning
+    if sync_period is not None:
+      self._sync_checker = SyncEveryNSteps(sync_period)
+      assert self._sync_checker.should_sync(0)  # must sync at the beginning
+    else:
+      self._sync_checker = SyncNever()
     self._step_number = 0
     self._agent_scope = agent_scope
 
@@ -98,8 +110,10 @@ class Shell:
         self._var_names_to_assign_ops[var.name] = tf.assign(var,
                                                             ph,
                                                             use_locking=True)
-    self._setup_ps_client()
+      if restore_from:
+        self.restore_from_checkpoint(restore_from)
     self._next_state = None
+    self._ps_client = None
 
   @property
   def next_state(self):
@@ -153,7 +167,35 @@ class Shell:
       logging.info("Synced weights.")
 
   def sync(self):
+    if self._ps_client is None:
+      self._setup_ps_client()
     return self._sync_variables()
+
+  def restore_from_checkpoint(self, restore_path):
+    l = tf.train.list_variables(restore_path)
+    restore_map = {}
+    # strip ":%d" out from variable names.
+    var_names = list(map(lambda k: k.split(':')[0], self._variable_names))
+    for v, _ in l:
+      # edit the scope.
+      v2 = f'{self._agent_scope}/{v.lstrip("learner/")}'
+      if v2 in var_names:
+        restore_map[v] = self._variables[var_names.index(v2)]
+
+    if len(restore_map) == 0:
+      print(
+          f'WARNING: No variables found to restore in checkpoint {restore_map}!'
+      )
+
+    if len(restore_map) != len(l):
+      print(
+          f'WARNING: Restoring only {len(restore_map)} variables from {len(l)} found in the checkpoint {restore_path}!'
+      )
+    saver = tf.train.Saver(var_list=restore_map)
+    saver.restore(self.sess, restore_path)
+    print(f'***********************************************')
+    print(f'Checkpt restored from {restore_path}')
+    print(f'***********************************************')
 
   def step(self, step_type, reward, observation):
     if self._sync_checker.should_sync(self._step_number):
@@ -176,7 +218,7 @@ class Shell:
                                     self._next_state_ph: next_state,
                                     **obs_feed_dict,
                                 })
-    if self._step_number % 100 == 0:
+    if self.verbose and self._step_number % 100 == 0:
       print(step_output)
     self._next_state = step_output.next_state
     self._step_number += 1

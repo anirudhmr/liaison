@@ -11,7 +11,7 @@ MILP = lambda: ConfigDict(
     problem_size=int,
     # Optimal objective achieved.
     optimal_objective=float,
-    optimal_solution=Dict[str, int],
+    optimal_solution=Dict[str, float],
     optimal_sol_metadata=ConfigDict(
         n_nodes=int,
         gap=float,
@@ -25,4 +25,11 @@ MILP = lambda: ConfigDict(
     feasible_objective=float,
     feasible_solution=Dict[str, int],
     seed=int,
+    optimal_lp_sol=Dict[str, int],
+)
+
+# add other featuers as things evolve.
+AUXILIARY_MILP = lambda: ConfigDict(
+    optimal_lp_sol=Dict[str, int],
+    mip_features=List[Dict],
 )

@@ -42,3 +42,14 @@ class BatchedEnv(BaseBatchedEnv):
   def set_seeds(self, seed):
     for env in self._envs:
       env.set_seed(seed)
+
+  def func_call_with_common_args(self, f_str: str, *args, **kwargs):
+    timesteps = []
+    for env in self._envs:
+      ts = getattr(env, f_str)(*args, **kwargs)
+      timesteps.append(ts)
+    return self._stack_ts(timesteps)
+
+  def func_call_ith_env(self, func_name, i, *args, **kwargs):
+    # gets the attr_name of the ith environment
+    return getattr(self._envs[i], func_name)(*args, **kwargs)

@@ -1,5 +1,4 @@
 import datetime
-import pdb
 import pickle
 
 import numpy as np
@@ -7,11 +6,7 @@ import pyscipopt as scip
 import scipy.sparse as sp
 
 
-def init_scip_params(model,
-                     seed,
-                     heuristics=True,
-                     presolving=True,
-                     separating=True,
+def init_scip_params(model, seed, heuristics=True, presolving=True, separating=True,
                      conflict=True):
 
   seed = seed % 2147483648  # SCIP seed range
@@ -92,8 +87,7 @@ def extract_state(model, buffer=None):
     col_feats = buffer['state']['col_feats']
   else:
     col_feats = {}
-    col_feats['type'] = np.zeros(
-        (n_cols, 4))  # BINARY INTEGER IMPLINT CONTINUOUS
+    col_feats['type'] = np.zeros((n_cols, 4))  # BINARY INTEGER IMPLINT CONTINUOUS
     col_feats['type'][np.arange(n_cols), s['col']['types']] = 1
     col_feats['coef_normalized'] = s['col']['coefs'].reshape(-1, 1) / obj_norm
 
@@ -102,20 +96,19 @@ def extract_state(model, buffer=None):
   col_feats['sol_is_at_lb'] = s['col']['sol_is_at_lb'].reshape(-1, 1)
   col_feats['sol_is_at_ub'] = s['col']['sol_is_at_ub'].reshape(-1, 1)
   col_feats['sol_frac'] = s['col']['solfracs'].reshape(-1, 1)
-  col_feats['sol_frac'][s['col']['types'] ==
-                        3] = 0  # continuous have no fractionality
+  col_feats['sol_frac'][s['col']['types'] == 3] = 0  # continuous have no fractionality
   col_feats['basis_status'] = np.zeros((n_cols, 4))  # LOWER BASIC UPPER ZERO
   col_feats['basis_status'][np.arange(n_cols), s['col']['basestats']] = 1
   col_feats['reduced_cost'] = s['col']['redcosts'].reshape(-1, 1) / obj_norm
   col_feats['age'] = s['col']['ages'].reshape(-1, 1) / (s['stats']['nlps'] + 5)
   col_feats['sol_val'] = s['col']['solvals'].reshape(-1, 1)
-  col_feats['inc_val'] = s['col']['incvals'].reshape(-1, 1)
-  col_feats['avg_inc_val'] = s['col']['avgincvals'].reshape(-1, 1)
+  # if np.any(np.nan(s['col']['incvals'])
+  # col_feats['inc_val'] = s['col']['incvals'].reshape(-1, 1)
+  # col_feats['avg_inc_val'] = s['col']['avgincvals'].reshape(-1, 1)
 
   col_feat_names = [[
       k,
-  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])]
-                    for k, v in col_feats.items()]
+  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])] for k, v in col_feats.items()]
   col_feat_names = [n for names in col_feat_names for n in names]
   col_feat_vals = np.concatenate(list(col_feats.values()), axis=-1)
 
@@ -142,19 +135,16 @@ def extract_state(model, buffer=None):
     has_lhs = np.nonzero(~np.isnan(s['row']['lhss']))[0]
     has_rhs = np.nonzero(~np.isnan(s['row']['rhss']))[0]
     row_feats['obj_cosine_similarity'] = np.concatenate(
-        (-s['row']['objcossims'][has_lhs],
-         +s['row']['objcossims'][has_rhs])).reshape(-1, 1)
-    row_feats['bias'] = np.concatenate(
-        (-(s['row']['lhss'] / row_norms)[has_lhs],
-         +(s['row']['rhss'] / row_norms)[has_rhs])).reshape(-1, 1)
+        (-s['row']['objcossims'][has_lhs], +s['row']['objcossims'][has_rhs])).reshape(-1, 1)
+    row_feats['bias'] = np.concatenate((-(s['row']['lhss'] / row_norms)[has_lhs],
+                                        +(s['row']['rhss'] / row_norms)[has_rhs])).reshape(-1, 1)
 
   row_feats['is_tight'] = np.concatenate(
-      (s['row']['is_at_lhs'][has_lhs],
-       s['row']['is_at_rhs'][has_rhs])).reshape(-1, 1)
+      (s['row']['is_at_lhs'][has_lhs], s['row']['is_at_rhs'][has_rhs])).reshape(-1, 1)
 
   row_feats['age'] = np.concatenate(
-      (s['row']['ages'][has_lhs], s['row']['ages'][has_rhs])).reshape(
-          -1, 1) / (s['stats']['nlps'] + 5)
+      (s['row']['ages'][has_lhs], s['row']['ages'][has_rhs])).reshape(-1,
+                                                                      1) / (s['stats']['nlps'] + 5)
 
   # # redundant with is_tight
   # tmp = s['row']['basestats']  # LOWER BASIC UPPER ZERO
@@ -176,8 +166,7 @@ def extract_state(model, buffer=None):
 
   row_feat_names = [[
       k,
-  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])]
-                    for k, v in row_feats.items()]
+  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])] for k, v in row_feats.items()]
   row_feat_names = [n for names in row_feat_names for n in names]
   row_feat_vals = np.concatenate(list(row_feats.values()), axis=-1)
 
@@ -192,12 +181,10 @@ def extract_state(model, buffer=None):
     edge_col_idxs = buffer['state']['edge_col_idxs']
     edge_feats = buffer['state']['edge_feats']
   else:
-    coef_matrix = sp.csr_matrix(
-        (s['nzrcoef']['vals'] / row_norms[s['nzrcoef']['rowidxs']],
-         (s['nzrcoef']['rowidxs'], s['nzrcoef']['colidxs'])),
-        shape=(len(s['row']['nnzrs']), len(s['col']['types'])))
-    coef_matrix = sp.vstack(
-        (-coef_matrix[has_lhs, :], coef_matrix[has_rhs, :])).tocoo(copy=False)
+    coef_matrix = sp.csr_matrix((s['nzrcoef']['vals'] / row_norms[s['nzrcoef']['rowidxs']],
+                                 (s['nzrcoef']['rowidxs'], s['nzrcoef']['colidxs'])),
+                                shape=(len(s['row']['nnzrs']), len(s['col']['types'])))
+    coef_matrix = sp.vstack((-coef_matrix[has_lhs, :], coef_matrix[has_rhs, :])).tocoo(copy=False)
 
     edge_row_idxs, edge_col_idxs = coef_matrix.row, coef_matrix.col
     edge_feats = {}
@@ -205,8 +192,7 @@ def extract_state(model, buffer=None):
 
   edge_feat_names = [[
       k,
-  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])]
-                     for k, v in edge_feats.items()]
+  ] if v.shape[1] == 1 else [f'{k}_{i}' for i in range(v.shape[1])] for k, v in edge_feats.items()]
   edge_feat_names = [n for names in edge_feat_names for n in names]
   edge_feat_indices = np.vstack([edge_row_idxs, edge_col_idxs])
   edge_feat_vals = np.concatenate(list(edge_feats.values()), axis=-1)
@@ -240,18 +226,13 @@ class SamplingAgent(scip.Branchrule):
     self.rng = np.random.RandomState(seed)
 
   def branchexeclp(self, allowaddcons):
-
     state = extract_state(self.model)
     cands, *_ = self.model.getPseudoBranchCands()
     result = self.model.executeBranchRule('vanillafullstrong', allowaddcons)
-    cands_, scores, npriocands, bestcand = self.model.getVanillafullstrongData(
-    )
+    cands_, scores, npriocands, bestcand = self.model.getVanillafullstrongData()
 
     assert result == scip.SCIP_RESULT.DIDNOTRUN
-    assert all([
-        c1.getCol().getLPPos() == c2.getCol().getLPPos()
-        for c1, c2 in zip(cands, cands_)
-    ])
+    assert all([c1.getCol().getLPPos() == c2.getCol().getLPPos() for c1, c2 in zip(cands, cands_)])
 
     action_set = [c.getCol().getLPPos() for c in cands]
     expert_action = action_set[bestcand]
@@ -267,8 +248,7 @@ class SamplingAgent(scip.Branchrule):
         'state': state,
     })
 
-    result = self.model.executeBranchRule(self.exploration_policy,
-                                          allowaddcons)
+    result = self.model.executeBranchRule(self.exploration_policy, allowaddcons)
     return {"result": result}
 
 
