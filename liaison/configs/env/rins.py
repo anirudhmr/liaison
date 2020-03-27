@@ -25,7 +25,7 @@ def get_config():
   config.dataset = ''
   config.dataset_type = 'train'
   config.graph_start_idx = 0
-  config.n_graphs = 1
+  config.n_graphs = 100000
 
   config.max_nodes = -1
   config.max_edges = -1
@@ -51,11 +51,21 @@ def get_config():
   # dataset schedule
   config.dataset_schedule = ConfigDict()
   config.dataset_schedule.enable = False
-  config.dataset_schedule.datasets = [
-      'milp-cauction-25-filtered', 'milp-cauction-100-filtered', 'milp-cauction-300-filtered'
-  ]
-  # should be len-1 where len is len of datasets.
-  config.dataset_schedule.start_steps = [50000, 100000]
+  config.dataset_schedule.datasets = ['milp-cauction-100-filtered', 'milp-cauction-300-filtered']
+  config.dataset_schedule.start_steps = [50000]  # should be len-1 where len is len of datasets.
+
+  config.k_schedule = ConfigDict()
+  config.k_schedule.enable = False
+  config.k_schedule.values = [5, 10]
+  config.k_schedule.start_steps = [50000]
+
+  config.n_local_move_schedule = ConfigDict()
+  # if enabled config.n_local_moves will be disabled
+  config.n_local_move_schedule.enable = False
+  config.n_local_move_schedule.start_step = 10000
+  config.n_local_move_schedule.start_value = 5
+  config.n_local_move_schedule.max_value = 25
+  config.n_local_move_schedule.dec_steps = 25000
 
   # add one hot node labels for debugging graphnet models.
   config.attach_node_labels = False

@@ -10,8 +10,7 @@ import networkx as nx
 import numpy as np
 import scipy
 import tree as nest
-from liaison.daper.dataset_constants import (DATASET_PATH, LENGTH_MAP,
-                                             NORMALIZATION_CONSTANTS)
+from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
                                            MIPInstance)
 from liaison.env import Env as BaseEnv
@@ -118,26 +117,19 @@ class Env(BaseEnv):
     self.config = ConfigDict(env_config)
     self.id = id
     self.k = k
-    if self.config.muldi_actions:
-      self._steps_per_episode = n_local_moves
-    else:
-      self._steps_per_episode = k * n_local_moves
+    self.max_local_moves = n_local_moves
     self.seed = seed
     self._max_nodes = max_nodes
+    assert self._max_nodes > 0
     self._max_edges = max_edges
     self.set_seed(seed)
     self._dataset = dataset
     self._dataset_type = dataset_type
-    if n_graphs > LENGTH_MAP[dataset][dataset_type]:
-      print(
-          f'WARNING: Specified number of graphs ({n_graphs}) exceeds whats available in dataset_constants.py ({LENGTH_MAP[dataset][dataset_type]})'
-      )
-      self._n_graphs = LENGTH_MAP[dataset][dataset_type]
-    else:
-      self._n_graphs = n_graphs
+    self._max_graphs = n_graphs
     self._graph_start_idx = graph_start_idx
 
-    self.config.update(NORMALIZATION_CONSTANTS[dataset])
+    if dataset:
+      self.config.update(NORMALIZATION_CONSTANTS[dataset])
     # call reset so that obs_spec can work without calling reset
     self._ep_return = None
     self._prev_ep_return = np.nan
@@ -154,9 +146,11 @@ class Env(BaseEnv):
     self._sample_lengths = None
     self.reset()
 
+  def _get_n_graphs(self):
+    return min(self._max_graphs, LENGTH_MAP[self._dataset][self._dataset_type])
+
   def _pick_sample_for_curriculum(self, choice):
     config = self.config
-    n_graphs = self._n_graphs
     graph_start_idx = self._graph_start_idx
 
     if config.starting_sol_schedule.enable or config.dataset_schedule.enable:
@@ -171,11 +165,12 @@ class Env(BaseEnv):
       for i, s in enumerate(config.dataset_schedule.start_steps):
         if step >= s:
           self._dataset = config.dataset_schedule.datasets[i + 1]
-
-    if choice:
+      self.config.update(NORMALIZATION_CONSTANTS[self._dataset])
+    if choice is not None:
       sample_idx = choice
     else:
-      sample_idx = self._rnd_state.choice(list(range(graph_start_idx, graph_start_idx + n_graphs)))
+      sample_idx = self._rnd_state.choice(
+          list(range(graph_start_idx, graph_start_idx + self._get_n_graphs())))
 
     starting_sol = None
     starting_obj = None
@@ -189,19 +184,38 @@ class Env(BaseEnv):
       hamming_dist_to_sol = get_hamming_dists(self._dataset, self._dataset_type, sample_idx)
       assert len(hamming_dist_to_sol) > 0
       for d in sorted(hamming_dist_to_sol.keys()):
-        starting_sol = hamming_dist_to_sol[d]
+        starting_sol, starting_obj = hamming_dist_to_sol[d]
         if d >= hamming_dist:
           break
+
+    if config.k_schedule.enable:
+      self.k = config.k_schedule.values[0]
+      for i, s in enumerate(config.k_schedule.start_steps):
+        if step >= s:
+          self.k = config.k_schedule.values[i + 1]
+
+    if config.n_local_move_schedule.enable:
+      self.max_local_moves = linear_interpolate_inc(
+          step,
+          config.n_local_move_schedule.start_step,
+          config.n_local_move_schedule.dec_steps,
+          config.n_local_move_schedule.start_value,
+          config.n_local_move_schedule.max_value,
+      )
+      for i, s in enumerate(config.k_schedule.start_steps):
+        if step >= s:
+          self.k = config.k_schedule.values[i + 1]
+
     return sample_idx, starting_sol, starting_obj
 
   def _sample(self, choice=None):
-    n_graphs = self._n_graphs
     graph_start_idx = self._graph_start_idx
     status = self._pick_sample_for_curriculum(choice)
     if status is not None:
-      self._milp_choice, sol, obj = status
+      choice, sol, obj = status
     elif choice is None:
-      choice = self._rnd_state.choice(range(graph_start_idx, graph_start_idx + n_graphs))
+      choice = self._rnd_state.choice(
+          range(graph_start_idx, graph_start_idx + self._get_n_graphs()))
       sol, obj = None, None
 
     self._milp_choice = choice
@@ -455,7 +469,7 @@ class Env(BaseEnv):
     self._optimal_lp_soln = np.float32([milp.optimal_lp_sol[v] for v in self._var_names])
 
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self._steps_per_episode)
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     self._globals = globals_
@@ -751,14 +765,14 @@ class Env(BaseEnv):
     # update the solution.
     self._change_sol(curr_sol, curr_obj, curr_lp_sol, curr_lp_obj)
 
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self._steps_per_episode)
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     globals_[Env.GLOBAL_LOCAL_SEARCH_STEP] = local_search_case
 
     self._globals = globals_
     self._variable_nodes = variable_nodes
 
-    if self._n_steps == self._steps_per_episode:
+    if self._n_steps == self.k * self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)

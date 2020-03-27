@@ -32,9 +32,7 @@ def get_config():
   config.model.model_kwargs.value_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.policy_summarize_hidden_layer_sizes = [16]
   config.model.model_kwargs.value_summarize_hidden_layer_sizes = [16]
-  config.model.model_kwargs.supervised_prediction_torso_hidden_layer_sizes = [
-      16, 16
-  ]
+  config.model.model_kwargs.supervised_prediction_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.sum_aggregation = False
   config.model.model_kwargs.use_layer_norm = True
 

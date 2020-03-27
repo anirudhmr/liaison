@@ -28,7 +28,7 @@ def get_config():
 
   # specify <= 0 here to disable grad clip
   config.grad_clip = 1.0
-  config.discount_factor = 0.99
+  config.discount_factor = 1.0
 
   config.optimizer = ConfigDict()
   # Options: Adam or RMSProp.

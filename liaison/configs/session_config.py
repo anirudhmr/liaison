@@ -8,7 +8,7 @@ def get_config():
   config.learner.publish_every = 100
   config.learner.checkpoint_every = int(1e9)
   config.learner.n_train_steps = int(1e9)
-  config.learner.use_gpu = False
+  config.learner.use_gpu = True
   config.learner.batch_size = 8
   # max number of samples (not batches) that could be waiting in the prefetch queue
   config.learner.max_prefetch_queue = 64
@@ -42,7 +42,7 @@ def get_config():
   config.shell.ps_client_timeout = 2
   config.shell.ps_client_not_ready_sleep = 2
   config.shell.sync_period = 10  # in # steps.
-  config.shell.use_gpu = False
+  config.shell.use_gpu = True
   config.shell.restore_from = None
 
   config.replay = ConfigDict()
@@ -60,7 +60,7 @@ def get_config():
   config.replay.loggerplex.local_logger_level = 'info'
   config.replay.loggerplex.local_logger_time_format = 'hms'
   config.replay.compress_before_send = True
-  config.replay.max_times_sampled = 4
+  config.replay.max_times_sampled = 5
 
   config.loggerplex = ConfigDict()
   config.loggerplex.enable_local_logger = True

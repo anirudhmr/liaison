@@ -28,6 +28,7 @@ from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
 from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from tensorflow.contrib.framework import nest
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import timeline
 
 TEMP_FOLDER = '/tmp/liaison/'
@@ -101,34 +102,33 @@ class Learner(object):
 
       self._mk_phs(self._traj_spec)
       traj_phs = self._traj_phs
-      self._agent.build_update_ops(
-          step_types=traj_phs['step_type'],
-          prev_states=traj_phs['step_output']['next_state'],
-          step_outputs=ConfigDict(traj_phs['step_output']),
-          observations=copy.copy(traj_phs['observation']),
-          rewards=traj_phs['reward'],
-          discounts=traj_phs['discount'])
+      self._agent.build_update_ops(step_types=traj_phs['step_type'],
+                                   prev_states=traj_phs['step_output']['next_state'],
+                                   step_outputs=ConfigDict(traj_phs['step_output']),
+                                   observations=copy.copy(traj_phs['observation']),
+                                   rewards=traj_phs['reward'],
+                                   discounts=traj_phs['discount'])
 
+      config = tf.ConfigProto()
+      # wierd issue with tensorflow :(
       if use_gpu:
-        config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         # config.intra_op_parallelism_threads = 1
         # config.inter_op_parallelism_threads = 1
         self.sess = tf.Session(config=config)
       else:
-        self.sess = tf.Session(config=tf.ConfigProto(device_count={'GPU': 0}))
+        config.graph_options.rewrite_options.memory_optimization = rewriter_config_pb2.RewriterConfig.OFF
+        config.device_count = {'GPU': 0}
+        self.sess = tf.Session(config=config)
 
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
       self._saver = tf.train.Saver()
 
-      self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
-                                          scope=agent_scope)
+      self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=agent_scope)
       self._variable_names = [var.name for var in self._variables]
-      logging.info('Number of Variables identified for publishing: %d',
-                   len(self._variables))
-      logging.info('Variable names for publishing: %s',
-                   ', '.join(self._variable_names))
+      logging.info('Number of Variables identified for publishing: %d', len(self._variables))
+      logging.info('Variable names for publishing: %s', ', '.join(self._variable_names))
 
       if restore_from:
         l = tf.train.list_variables(restore_from)
@@ -140,9 +140,7 @@ class Learner(object):
             to_restore.append(self._variables[var_names.index(v)])
 
         if len(to_restore) == 0:
-          print(
-              f'WARNING: No variables found to restore in checkpoint {restore_from}!'
-          )
+          print(f'WARNING: No variables found to restore in checkpoint {restore_from}!')
         elif len(to_restore) != len(l):
           print(
               f'WARNING: Restoring only {len(to_restore)} variables from {len(l)} found in the checkpoint {restore_from}!'
@@ -161,8 +159,7 @@ class Learner(object):
     def mk_ph(spec):
       return tf.placeholder(dtype=spec.dtype,
                             shape=spec.shape,
-                            name='learner/' + spec.name.replace(':', '_') +
-                            '_ph')
+                            name='learner/' + spec.name.replace(':', '_') + '_ph')
 
     self._traj_phs = nest.map_structure(mk_ph, traj_spec)
 
@@ -186,15 +183,14 @@ class Learner(object):
   def _batch_and_preprocess_trajs(self, l):
     traj = Trajectory.batch(l, self._traj_spec)
     # feed and overwrite the trajectory
-    traj['step_output'], traj['step_output']['next_state'], traj[
-        'step_type'], traj['reward'], traj['observation'], traj[
-            'discount'] = self._agent.update_preprocess(
-                step_outputs=ConfigDict(traj['step_output']),
-                prev_states=traj['step_output']['next_state'],
-                step_types=traj['step_type'],
-                rewards=traj['reward'],
-                observations=traj['observation'],
-                discounts=traj['discount'])
+    traj['step_output'], traj['step_output']['next_state'], traj['step_type'], traj[
+        'reward'], traj['observation'], traj['discount'] = self._agent.update_preprocess(
+            step_outputs=ConfigDict(traj['step_output']),
+            prev_states=traj['step_output']['next_state'],
+            step_types=traj['step_type'],
+            rewards=traj['reward'],
+            observations=traj['observation'],
+            discounts=traj['discount'])
     return traj
 
   def _setup_exp_fetcher(self):
@@ -224,10 +220,9 @@ class Learner(object):
                                       agent_scope=self._agent_scope)
 
   def _setup_ps_publisher(self):
-    self._ps_publisher = SimpleParameterPublisher(
-        host=os.environ['SYMPH_PS_PUBLISHING_HOST'],
-        port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
-        agent_scope=self._agent_scope)
+    self._ps_publisher = SimpleParameterPublisher(host=os.environ['SYMPH_PS_PUBLISHING_HOST'],
+                                                  port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
+                                                  agent_scope=self._agent_scope)
 
   def _initial_publish(self):
     self._publish_variables()
@@ -316,17 +311,14 @@ class Learner(object):
 
       with U.Timer() as step_timer:
         # run update step on the sampled batch
-        feed_dict = {
-            ph: val
-            for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(
-                batch))
-        }
+        feed_dict = {ph: val for ph, val in zip(nest.flatten(self._traj_phs), nest.flatten(batch))}
         profile_kwargs = {}
         if self.global_step == self._profile_step:
-          profile_kwargs = dict(
-              options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
-              run_metadata=tf.RunMetadata())
+          profile_kwargs = dict(options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                                run_metadata=tf.RunMetadata())
 
+        import pdb
+        pdb.set_trace()
         log_vals = self._agent.update(self.sess, feed_dict, profile_kwargs)
 
         if profile_kwargs:
@@ -357,12 +349,10 @@ class Learner(object):
         for logger in self._system_loggers:
           logger.write(
               dict(global_step=self.global_step,
-                   sps=self._batch_size * self._traj_length /
-                   float(step_timer.to_seconds()),
+                   sps=self._batch_size * self._traj_length / float(step_timer.to_seconds()),
                    per_step_time_sec=step_timer.to_seconds(),
                    batch_fetch_time_sec=batch_timer.to_seconds(),
                    **system_logs))
-      system_logs['log_time_sec'] = log_timer.to_seconds(
-      ) + system_log_timer.to_seconds()
+      system_logs['log_time_sec'] = log_timer.to_seconds() + system_log_timer.to_seconds()
 
     self._publish_queue.put(None)  # exit the thread once training ends.

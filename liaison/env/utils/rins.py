@@ -106,13 +106,15 @@ def np_slack_up(a):
 
 def linear_interpolate_inc(step, start_step, dec_steps, s_v, max_v):
   val = s_v
-  val += (step - start_step) * (max_v - s_v) / dec_steps
+  if step > start_step:
+    val += (step - start_step) * (max_v - s_v) / dec_steps
   val = min(val, max_v)
   return val
 
 
 def linear_interpolate_dec(step, start_step, dec_steps, s_v, min_v):
   val = s_v
-  val += (step - start_step) * (min_v - s_v) / dec_steps
+  if step > start_step:
+    val += (step - start_step) * (min_v - s_v) / dec_steps
   val = max(val, min_v)
   return val

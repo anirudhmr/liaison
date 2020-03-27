@@ -116,6 +116,17 @@ NORMALIZATION_CONSTANTS = {
         max_nodes=703,
         max_edges=8062,
     ),
+    'milp-cauction-300-filtered':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=344.7605158638172,
+        obj_normalizer=22124.905075999453,
+        var_normalizer=0.07412066666666665,
+        constraint_degree=61.024,
+        max_nodes=2104,
+        max_edges=22124,
+    ),
     'milp-corlat':
     dict(
         constraint_rhs_normalizer=0.82,

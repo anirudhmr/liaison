@@ -141,6 +141,8 @@ class MultiActionLoss(Loss):
     values = values[:-1]
 
     actions = tf.convert_to_tensor(actions, dtype=tf.int32)
+    if action_mask is not None:
+      action_mask = tf.cast(action_mask, tf.float32)
 
     with tf.name_scope('vtrace_from_logits',
                        values=[
@@ -150,18 +152,16 @@ class MultiActionLoss(Loss):
       target_action_log_probs = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           logits=target_logits, labels=actions)
       # sum up logprobs of the sub-actions at each timestep.
-      if action_mask:
-        target_action_log_probs = tf.reduce_sum(
-            tf.boolean_mask(target_action_log_probs, action_mask), -1)
+      if action_mask is not None:
+        target_action_log_probs = tf.reduce_sum(target_action_log_probs * action_mask, -1)
       else:
         target_action_log_probs = tf.reduce_sum(target_action_log_probs, -1)
 
       behaviour_action_log_probs = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           logits=behavior_logits, labels=actions)
 
-      if action_mask:
-        behaviour_action_log_probs = tf.reduce_sum(
-            tf.boolean_mask(behaviour_action_log_probs, action_mask), -1)
+      if action_mask is not None:
+        behaviour_action_log_probs = tf.reduce_sum(behaviour_action_log_probs * action_mask, -1)
       else:
         behaviour_action_log_probs = tf.reduce_sum(behaviour_action_log_probs, -1)
 
@@ -194,11 +194,10 @@ class MultiActionLoss(Loss):
     delta = tf.boolean_mask(values - vtrace_returns.vs, valid_mask)
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
-    if action_mask:
+    if action_mask is not None:
       # The entropy for valid actions
-      entropy = tf.reduce_sum(
-          tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1),
-                          tf.logical_and(valid_mask, action_mask)))
+      ent = action_mask * compute_entropy(target_logits)
+      entropy = tf.reduce_sum(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
     else:
       entropy = tf.reduce_sum(
           tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))

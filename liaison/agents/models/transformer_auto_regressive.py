@@ -64,15 +64,20 @@ class Model:
     xs, n_node = self._gcn_model.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
     node_mask = tf.reshape(obs['node_mask'], infer_shape(xs)[:-1])
     node_mask = tf.cast(node_mask, tf.bool)
+    n_actions = tf.reshape(obs['n_actions'], (infer_shape(xs)[0], ))
     if sampled_actions is not None:
       # Remove some of the samples from the batch to match the size of the
       # actions.
       # This happens because the graph_embeddings are calculated for T + 1
       # observations whereas actions are only avaiable for T steps.
       # (T + 1) * B -> T * B
-      xs = xs[:infer_shape(sampled_actions)[0]]
-      n_node = n_node[:infer_shape(sampled_actions)[0]]
-      node_mask = node_mask[:infer_shape(sampled_actions)[0]]
+      t_times_b = infer_shape(sampled_actions)[0]
+      xs = xs[:t_times_b]
+      n_node = n_node[:t_times_b]
+      node_mask = node_mask[:t_times_b]
+      n_actions = n_actions[:t_times_b]
+    N = infer_shape(xs)[0]
+    T1 = infer_shape(xs)[1]  # T1 and L1 used interchangebly.
 
     # compute src_mask to remove padding nodes interfering.
     indices = gn.utils_tf.sparse_to_dense_indices(n_node)
@@ -88,14 +93,16 @@ class Model:
     xs = snt.BatchApply(self._node_emb_mlp)(xs)  # (N, L1, d_model)
     memory = xs
 
-    N = infer_shape(xs)[0]
+    d = self.config.d_model
     # Feed in zero embedding as the start sentinel.
-    _decoder_inputs = tf.zeros((N, 1, infer_shape(xs)[-1]), tf.float32)  # (N, 1, d)
-    logitss = []
-    actions = []
+    _decoder_inputs = tf.zeros((N, 1, d), tf.float32)  # (N, 1, d)
 
-    for i in tqdm(range(self.k)):
-      dec = self._trans.decode(_decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
+    def cond_fn(i, *_):
+      # until all samples have n_actions sampled.
+      return i < tf.reduce_max(n_actions)
+
+    def body_fn(i, decoder_inputs, logitss, actions, node_mask):
+      dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
 
       with tf.variable_scope('attn_head', reuse=tf.AUTO_REUSE):
         # Q -> (N, d_model)
@@ -110,6 +117,7 @@ class Model:
       # scale
       outputs /= (Q.get_shape().as_list()[-1]**0.5)
 
+      # [N, T1]
       logits = tf.where(node_mask, outputs, tf.fill(tf.shape(node_mask), np.float32(-1e9)))
 
       if sampled_actions is None:
@@ -117,8 +125,8 @@ class Model:
       else:
         act = sampled_actions[:, i]
 
-      logitss.append(logits)
-      actions.append(act)
+      logitss = tf.concat([logitss, tf.expand_dims(logits, axis=1)], axis=1)
+      actions = tf.concat([actions, tf.expand_dims(act, axis=1)], axis=-1)
 
       # update node_masks to remove the current selected node for the next
       # decoding iteration.
@@ -128,10 +136,25 @@ class Model:
 
       embs = tf.gather_nd(xs, indices)  # (N, d)
       embs = tf.expand_dims(embs, 1)  # (N, 1, d)
-      _decoder_inputs = tf.concat((_decoder_inputs, embs), 1)
+      decoder_inputs = tf.concat((decoder_inputs, embs), 1)
+      return i + 1, decoder_inputs, logitss, actions, node_mask
 
-    logits = tf.stack(logitss, axis=1)  # (N, T2, T1)
-    actions = tf.stack(actions, axis=1)  # [N, T2]
+    i = tf.constant(0)
+    logitss = tf.constant([], shape=(N, 0, T1), dtype=tf.float32)
+    actions = tf.constant([], shape=(N, 0), dtype=tf.int32)
+    i, _, logits, actions, _ = tf.while_loop(cond_fn,
+                                             body_fn,
+                                             [i, _decoder_inputs, logitss, actions, node_mask],
+                                             shape_invariants=[
+                                                 i.get_shape(),
+                                                 tf.TensorShape([N, None, d]),
+                                                 tf.TensorShape([N, None, T1]),
+                                                 tf.TensorShape([N, None]),
+                                                 node_mask.get_shape(),
+                                             ])
+
+    # Finally logits -> (N, T2, T1)
+    # Finally actions -> (N, T2)
     if log_features:
       return logits, actions, log_features
     return logits, actions
@@ -163,6 +186,8 @@ class Model:
     collected_indices = collected_indices[:N_FIGS]
 
     fig, axes = plt.subplots(ncols=len(collected_indices), figsize=[8 * len(collected_indices), 8])
+    if len(collected_indices) == 1:
+      axes = [axes]
 
     for (t, b), ax in zip(collected_indices, axes):
       x = xs[t, b][src_masks[t, b]]

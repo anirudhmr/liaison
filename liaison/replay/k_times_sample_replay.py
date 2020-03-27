@@ -13,7 +13,7 @@ class Replay(BaseReplay):
   def __init__(self, seed, max_times_sampled, **kwargs):
     super().__init__(seed=seed, **kwargs)
     self._memory = deque(maxlen=self.config.memory_size)
-    self._freq_access = deque(maxlen=self.memory_size + 3)
+    self._freq_access = deque(maxlen=self.config.memory_size + 3)
     self.k = max_times_sampled
     self.lock = threading.Lock()
     self._next_idx = 0

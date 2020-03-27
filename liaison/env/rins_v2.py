@@ -47,7 +47,7 @@ class Env(RINSEnv):
     self._optimal_lp_soln = np.float32([milp.optimal_lp_sol[v] for v in self._var_names])
 
     globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self._steps_per_episode)
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     self._globals = globals_
@@ -89,6 +89,11 @@ class Env(RINSEnv):
                 senders=pad_first_dim(senders, self._max_edges),
                 receivers=pad_first_dim(receivers, self._max_edges),
                 n_edge=np.int32(len(e_f['values'])))
+
+  def _observation(self):
+    obs = super(Env, self)._observation()
+    obs['n_actions'] = np.int32(self.k)
+    return obs
 
   def reset(self):
     milp, sol, obj = self._sample()
@@ -180,14 +185,14 @@ class Env(RINSEnv):
     # update the solution.
     self._change_sol(curr_sol, curr_obj, curr_lp_sol, curr_lp_obj)
 
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self._steps_per_episode)
+    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     globals_[Env.GLOBAL_LOCAL_SEARCH_STEP] = True
 
     self._globals = globals_
     self._variable_nodes = variable_nodes
 
-    if self._n_steps == self._steps_per_episode:
+    if self._n_steps == self.k * self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)
@@ -206,14 +211,18 @@ class Env(RINSEnv):
 
   def action_spec(self):
     if self.config.muldi_actions:
-      return BoundedArraySpec((self.k, ),
+      if self.config.k_schedule.enable:
+        max_k = max(self.config.k_schedule.values)
+      else:
+        max_k = self.k
+      return BoundedArraySpec((max_k, ),
                               np.int32,
                               minimum=0,
-                              maximum=len(self._variable_nodes) - 1,
+                              maximum=self._max_nodes - 1,
                               name='action_spec')
     else:
       return BoundedArraySpec((),
                               np.int32,
                               minimum=0,
-                              maximum=len(self._variable_nodes) - 1,
+                              maximum=self._max_nodes - 1,
                               name='action_spec')

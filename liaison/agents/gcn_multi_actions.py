@@ -51,7 +51,6 @@ class Agent(BaseAgent):
       # flatten graph features for the policy network
       # convert dict to graphstuple
       obs['graph_features'] = self._process_graph_features(obs['graph_features'])
-
       logitss, actions = self._model.get_actions(self._model.compute_graph_embeddings(obs), obs)
 
       return StepOutput(actions, logitss, self._model.dummy_state(infer_shape(step_type)[0]))
@@ -109,12 +108,13 @@ class Agent(BaseAgent):
 
       # get logits
       # target_logits -> [T * B, ...]
-      target_logits, _, self._logged_features = self._model.get_actions(
-          graph_embeddings,
-          flattened_observations,
-          step_types,
-          tf.reshape(actions, [-1] + infer_shape(actions)[2:]),
-          log_features=True)
+      target_logits, _, self._logged_features = self._model.get_actions(graph_embeddings,
+                                                                        flattened_observations,
+                                                                        step_types,
+                                                                        sampled_actions=tf.reshape(
+                                                                            actions,
+                                                                            [t_dim * bs_dim, -1]),
+                                                                        log_features=True)
       assert infer_shape(target_logits)[0] == bs_dim * t_dim
       target_logits = tf.reshape(target_logits, [t_dim, bs_dim] + infer_shape(behavior_logits)[2:])
 
@@ -136,6 +136,13 @@ class Agent(BaseAgent):
         # else:
         bootstrap_value = values[-1]
 
+        # Ex: convert [1, 2] -> [[1,0], [1, 1]]
+        actions_flattened = tf.reshape(actions, [t_dim * bs_dim, infer_shape(actions)[-1]])
+        indices = gn.utils_tf.sparse_to_dense_indices(
+            merge_first_two_dims(observations['n_actions'][:-1]))
+        action_mask = tf.scatter_nd(indices, tf.ones(infer_shape(indices)[:1], dtype=tf.bool),
+                                    infer_shape(actions_flattened))
+        action_mask = tf.reshape(action_mask, [t_dim, bs_dim, -1])
         self.loss = VTraceMultiActionLoss(step_types,
                                           actions,
                                           rewards,
@@ -146,7 +153,7 @@ class Agent(BaseAgent):
                                           config.discount_factor,
                                           self._get_entropy_regularization_constant(),
                                           bootstrap_value=bootstrap_value,
-                                          action_mask=,
+                                          action_mask=action_mask,
                                           **config.loss)
         loss = self.loss.loss
         if config.loss.al_coeff.init_val > 0:
@@ -212,7 +219,10 @@ class Agent(BaseAgent):
       ops += [self._logged_features]
       log_features = True
 
+    import pdb
+    pdb.set_trace()
     vals, *l = sess.run(ops + [self._train_op], feed_dict=feed_dict, **profile_kwargs)
+    pdb.set_trace()
 
     if log_features:
       self._log_features(l[0], i)

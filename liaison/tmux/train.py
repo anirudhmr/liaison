@@ -16,14 +16,11 @@ parser = argon.ArgumentParser('Liaison trainer', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
 parser.add_argument('--bundle_actors', action='store_true')
 parser.add_config_file(name='cluster', default='ccc/config.py')
-parser.add_config_file(name='resource_req',
-                       default='liaison/configs/resource_req.py')
+parser.add_config_file(name='resource_req', default='liaison/configs/resource_req.py')
 parser.add_argument('--spy_measurement_interval', type=float, default=2.)
 parser.add_argument('--gpu_overload_obj_coeff', type=float, default=1)
 parser.add_argument('--gpu_load_balancing_obj_coeff', type=float, default=1)
-parser.add_argument('--gpu_wu_consolidation_obj_coeff',
-                    type=float,
-                    default=.25)
+parser.add_argument('--gpu_wu_consolidation_obj_coeff', type=float, default=.25)
 parser.add_argument('--cpu_overload_obj_coeff', type=float, default=1)
 parser.add_argument('--cpu_load_balancing_obj_coeff', type=float, default=1)
 parser.add_argument('--cpu_wu_consolidation_obj_coeff', type=float, default=10)
@@ -35,9 +32,7 @@ parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
     default=['os_csail', 'cloudlab_clemson_clnode_0'],
-    help=
-    'These nodes are always selected irrespective of the filter_nodes_regex specified.'
-)
+    help='These nodes are always selected irrespective of the filter_nodes_regex specified.')
 # placement constraints
 parser.add_argument('--pl_constraints',
                     type=str,
@@ -57,10 +52,7 @@ parser.add_argument('--coloc_constraints',
     then use the string:
       a;b;c p;q;r x;y;z
   ''')
-parser.add_argument('--disable_sweep',
-                    '--no_sweep',
-                    '--without_sweep',
-                    action='store_true')
+parser.add_argument('--disable_sweep', '--no_sweep', '--without_sweep', action='store_true')
 
 
 def validate_args(args):
@@ -89,21 +81,18 @@ def train(argv):
           # hyper.discrete('env_config.k', [10, 20]),
           hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
           # hyper.discrete('agent_config.lr_init', [5e-4]),
-          hyper.discrete('agent_config.ent_dec_init', [1e-2]),
+          hyper.discrete('agent_config.ent_dec_init', [2e-2]),
           # hyper.discrete('env_config.graph_start_idx', list(range(8))),
       )):
-    exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id),
-                                 env_name='liaison')
+    exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id), env_name='liaison')
     # start tensorboard only for the first work unit.
     build_program(exp,
                   args.n_actors,
                   ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
                   bundle_actors=args.bundle_actors,
-                  with_visualizers=(work_id == 0)
-                  and (not args.without_visualizers),
+                  with_visualizers=(work_id == 0) and (not args.without_visualizers),
                   with_evaluators=(not args.without_evaluators),
-                  without_valid_and_test_evaluators=args.
-                  without_valid_and_test_evaluators)
+                  without_valid_and_test_evaluators=args.without_valid_and_test_evaluators)
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += ['--hyper_configs', str(shlex.quote(json.dumps(params)))]
@@ -114,28 +103,27 @@ def train(argv):
     if args.disable_sweep:
       break
 
-  exp_procs = [[
-      proc for pg in exp.list_process_groups() for proc in pg.list_processes()
-  ] + [proc for proc in exp.list_processes()] for exp in exps]
+  exp_procs = [[proc for pg in exp.list_process_groups()
+                for proc in pg.list_processes()] + [proc for proc in exp.list_processes()]
+               for exp in exps]
   print('-----------exp stats-------------')
   print('Number of work units: %d' % len(exps))
   print('Number of processes total: %d' % sum(map(len, exp_procs)))
 
-  placer = LiaisonPlacer(
-      exps,
-      ConfigDict(argon.to_nested_dicts(args.cluster_config)),
-      args.filter_nodes_regex,
-      args.whitelist_nodes,
-      args.spy_measurement_interval,
-      pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
-      coloc_constraints=list(
-          map(lambda k: k.split(';'), args.coloc_constraints)),
-      gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
-      gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
-      gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,
-      cpu_overload_obj_coeff=args.cpu_overload_obj_coeff,
-      cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
-      cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff)
+  placer = LiaisonPlacer(exps,
+                         ConfigDict(argon.to_nested_dicts(args.cluster_config)),
+                         args.filter_nodes_regex,
+                         args.whitelist_nodes,
+                         args.spy_measurement_interval,
+                         pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
+                         coloc_constraints=list(map(lambda k: k.split(';'),
+                                                    args.coloc_constraints)),
+                         gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
+                         gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
+                         gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,
+                         cpu_overload_obj_coeff=args.cpu_overload_obj_coeff,
+                         cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
+                         cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff)
 
   tp.launch(exps, exp_flags, hyper_configs)
 
