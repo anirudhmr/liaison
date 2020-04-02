@@ -317,8 +317,6 @@ class Learner(object):
           profile_kwargs = dict(options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
                                 run_metadata=tf.RunMetadata())
 
-        import pdb
-        pdb.set_trace()
         log_vals = self._agent.update(self.sess, feed_dict, profile_kwargs)
 
         if profile_kwargs:

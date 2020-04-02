@@ -16,7 +16,6 @@ def get_config():
   # adds #variables * #constraints dimensions to the state space.
   config.mlp_embed_constraints = False
 
-  config.make_obs_for_self_attention = False
   config.make_obs_for_graphnet = False
   config.make_obs_for_bipartite_graphnet = True
 
@@ -33,7 +32,7 @@ def get_config():
   config.k = 5
   config.n_local_moves = 100
 
-  config.lp_features = True
+  config.lp_features = False
 
   config.delta_reward = False
   config.primal_gap_reward = True

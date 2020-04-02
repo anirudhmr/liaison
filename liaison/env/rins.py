@@ -4,11 +4,12 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
-import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
+import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -250,26 +251,6 @@ class Env(BaseEnv):
                globals=np.float32(self._globals))
     return obs
 
-  def _observation_self_attention(self, nodes):
-    mask = np.int32(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD])
-    features = np.hstack((nodes.flatten(), self._globals))
-    cv = []
-    for cid, c in enumerate(self.milp.mip.constraints):
-      c = c.cast_sense_to_le()
-      y = np.zeros(len(self._var_names), dtype=np.int32)
-      for var_name, coeff in zip(c.expr.var_names, c.expr.coeffs):
-        y[self._varnames2varidx[var_name]] = coeff
-      cv.append(y)
-
-    # var_embeddings[i][j] = c => ith variable uses jth constraint with coefficient c
-    var_embeddings = np.transpose(np.asarray(cv, dtype=np.float32))
-
-    obs = dict(mask=mask,
-               var_nodes=np.float32(self._variable_nodes),
-               var_embeddings=var_embeddings,
-               globals=np.float32(self._globals))
-    return obs
-
   def _observation_graphnet_inductive(self, nodes):
     graph_features = dict(nodes=nodes,
                           globals=np.array(self._globals, dtype=np.float32),
@@ -335,9 +316,6 @@ class Env(BaseEnv):
     obs = {}
     if self.config.make_obs_for_mlp:
       obs.update(self._observation_mlp(nodes))
-
-    if self.config.make_obs_for_self_attention:
-      obs.update(self._observation_self_attention(nodes))
 
     if self.config.make_obs_for_graphnet:
       obs.update(self._observation_graphnet_inductive(nodes))

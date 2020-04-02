@@ -1,10 +1,14 @@
 """Graphnet based model."""
+import sys
 import tempfile
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from tqdm import tqdm
 
 import graph_nets as gn
 import liaison.utils as U
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import sonnet as snt
 from liaison.agents.models.gcn_rins import make_mlp
 from liaison.agents.models.layers.transformer_auto_regressive_sampler import \
@@ -14,9 +18,7 @@ from liaison.agents.models.utils import *
 from liaison.agents.utils import infer_shape, sample_from_logits
 from liaison.env import StepType
 from liaison.utils import ConfigDict
-from sklearn.manifold import TSNE
 from sonnet.python.ops import initializers
-from tqdm import tqdm
 
 mpl.use('Agg')
 plt.style.use('seaborn')
@@ -24,9 +26,8 @@ plt.style.use('seaborn')
 
 class Model:
 
-  def __init__(self, seed, model_kwargs, action_spec=None, **kwargs):
+  def __init__(self, seed, model_kwargs, **kwargs):
     self.seed = seed
-    self.k = action_spec.shape[-1]
     self.config = ConfigDict(kwargs)
     with tf.variable_scope('gcn_model'):
       self._gcn_model = U.import_obj('Model', model_kwargs['class_path'])(seed=seed,
@@ -94,8 +95,6 @@ class Model:
     memory = xs
 
     d = self.config.d_model
-    # Feed in zero embedding as the start sentinel.
-    _decoder_inputs = tf.zeros((N, 1, d), tf.float32)  # (N, 1, d)
 
     def cond_fn(i, *_):
       # until all samples have n_actions sampled.
@@ -120,10 +119,9 @@ class Model:
       # [N, T1]
       logits = tf.where(node_mask, outputs, tf.fill(tf.shape(node_mask), np.float32(-1e9)))
 
-      if sampled_actions is None:
-        act = sample_from_logits(logits, self.seed)  # (N,)
-      else:
-        act = sampled_actions[:, i]
+      # dont sample if sampled_actions is provided.
+      assert sampled_actions is None
+      act = sample_from_logits(logits, self.seed)  # (N,)
 
       logitss = tf.concat([logitss, tf.expand_dims(logits, axis=1)], axis=1)
       actions = tf.concat([actions, tf.expand_dims(act, axis=1)], axis=-1)
@@ -139,19 +137,54 @@ class Model:
       decoder_inputs = tf.concat((decoder_inputs, embs), 1)
       return i + 1, decoder_inputs, logitss, actions, node_mask
 
-    i = tf.constant(0)
-    logitss = tf.constant([], shape=(N, 0, T1), dtype=tf.float32)
-    actions = tf.constant([], shape=(N, 0), dtype=tf.int32)
-    i, _, logits, actions, _ = tf.while_loop(cond_fn,
-                                             body_fn,
-                                             [i, _decoder_inputs, logitss, actions, node_mask],
-                                             shape_invariants=[
-                                                 i.get_shape(),
-                                                 tf.TensorShape([N, None, d]),
-                                                 tf.TensorShape([N, None, T1]),
-                                                 tf.TensorShape([N, None]),
-                                                 node_mask.get_shape(),
-                                             ])
+    if sampled_actions is None:
+      i = tf.constant(0)
+      logitss = tf.constant([], shape=(N, 0, T1), dtype=tf.float32)
+      actions = tf.constant([], shape=(N, 0), dtype=tf.int32)
+      # Feed in zero embedding as the start sentinel.
+      decoder_inputs = tf.zeros((N, 1, d), tf.float32)  # (N, 1, d)
+      i, _, logits, actions, _ = tf.while_loop(
+          cond_fn,
+          body_fn,
+          (i, decoder_inputs, logitss, actions, node_mask),
+          shape_invariants=(
+              i.get_shape(),
+              tf.TensorShape([N, None, d]),
+              tf.TensorShape([N, None, T1]),
+              tf.TensorShape([N, None]),
+              node_mask.get_shape(),
+          ),
+          return_same_structure=True,
+      )
+    else:
+
+      def calc_logits(decoder_inputs, node_mask):
+        # calculate logits with sampled actions.
+        dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
+
+        with tf.variable_scope('attn_head', reuse=tf.AUTO_REUSE):
+          l = infer_shape(dec)
+          dec = tf.reshape(dec, [-1] + l[2:])
+          Q = tf.layers.dense(dec, self.config.d_model, use_bias=True)
+          Q = tf.reshape(Q, l[:2] + infer_shape(Q)[1:])
+          # Q -> (N, T2, d_model)
+
+        # dot product
+        outputs = tf.matmul(Q, tf.transpose(xs, [0, 2, 1]))  # (N, T2, T1)
+        # scale
+        outputs /= (Q.get_shape().as_list()[-1]**0.5)
+
+        # (N, 1, T1)
+        node_mask = tf.expand_dims(node_mask, 1)
+        # (N, T2, T1)
+        node_mask = tf.tile(node_mask, [1, infer_shape(outputs)[1], 1])
+
+        # [N, T2, T1]
+        logits = tf.where(node_mask, outputs, tf.fill(tf.shape(node_mask), np.float32(-1e9)))
+        return logits
+        decoder_inputs = tf.gather_nd(xs, tf.expand_dims(sampled_actions, -1), batch_dims=1)
+        logits = calc_logits(decoder_inputs, node_mask)
+        actions = sampled_actions
 
     # Finally logits -> (N, T2, T1)
     # Finally actions -> (N, T2)

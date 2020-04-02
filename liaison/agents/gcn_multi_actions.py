@@ -208,21 +208,20 @@ class Agent(BaseAgent):
   def _log_features(self, features, step):
     # feature_dict -> collected Feature
     # logs t-SNE visualization of features to files.
-    self._model.log_features(features, step, self.config.vis_loggers)
+    if 'vis_loggers' in self.config:
+      self._model.log_features(features, step, self.config.vis_loggers)
 
   def update(self, sess, feed_dict, profile_kwargs):
     """profile_kwargs pass to sess.run for profiling purposes."""
     ops = [self._logged_values]
     i = sess.run(self._global_step)
     log_features = False
-    if i % self.config.log_features_every == 0:
-      ops += [self._logged_features]
-      log_features = True
+    if self.config.log_features_every > 0:
+      if i % self.config.log_features_every == 0:
+        ops += [self._logged_features]
+        log_features = True
 
-    import pdb
-    pdb.set_trace()
     vals, *l = sess.run(ops + [self._train_op], feed_dict=feed_dict, **profile_kwargs)
-    pdb.set_trace()
 
     if log_features:
       self._log_features(l[0], i)
