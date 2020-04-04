@@ -5,7 +5,7 @@ from collections import deque
 import liaison.utils as U
 from absl import logging
 from liaison.replay.base import Replay as BaseReplay
-from liaison.replay.base import ReplayUnderFlowException
+from liaison.replay.base import ReplayUnderFlowException, getsize
 
 
 class Replay(BaseReplay):
@@ -21,6 +21,7 @@ class Replay(BaseReplay):
 
   def insert(self, exp_dict):
     # appends to the right end of the queue
+    self.per_sample_size = getsize(exp_dict)
     with self.lock:
       self._memory.append(exp_dict)
 
@@ -29,10 +30,7 @@ class Replay(BaseReplay):
       if len(self._memory) < batch_size:
         raise ReplayUnderFlowException()
 
-      indices = [
-          random.randint(0,
-                         len(self._memory) - 1) for _ in range(batch_size)
-      ]
+      indices = [random.randint(0, len(self._memory) - 1) for _ in range(batch_size)]
       response = [self._memory[i] for i in indices]
       return response
 

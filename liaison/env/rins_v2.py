@@ -5,8 +5,9 @@ import copy
 import os
 import pickle
 
-import liaison.utils as U
 import numpy as np
+
+import liaison.utils as U
 from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
                                              LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
@@ -96,9 +97,15 @@ class Env(RINSEnv):
     return obs
 
   def reset(self):
-    milp, sol, obj = self._sample()
-    self.milp = milp
-    mip = self.mip = SCIPMIPInstance.fromMIPInstance(milp.mip)
+    # fix the graph for a few episodes to reduce load on the disk while loading datasets.
+    if self._n_resets % 10 == 0:
+      self.milp, self._sol, self._obj = self._sample()
+      self.mip = SCIPMIPInstance.fromMIPInstance(self.milp.mip)
+      # clean up previous scip model
+      if hasattr(self, '_sub_mip_model'):
+        del_scip_model(self._sub_mip_model)
+      self._sub_mip_model = self.mip.get_scip_model()
+    sol, obj, mip = self._sol, self._obj, self.mip
     c_f, e_f, v_f = load_pickled_features(self._dataset, self._dataset_type, self._milp_choice)
     self._var_names = var_names = list(map(lambda v: v.name.lstrip('t_'), mip.vars))
     self._init_ds()
@@ -118,6 +125,8 @@ class Env(RINSEnv):
       self._static_graph_features = self._encode_static_graph_features()
     elif self.config.make_obs_for_bipartite_graphnet:
       self._static_graph_features = self._encode_static_bipartite_graph_features(e_f)
+
+    self._n_resets += 1
     return restart(self._observation())
 
   def _step_multidimensional_actions(self, action):
@@ -134,6 +143,7 @@ class Env(RINSEnv):
     var_names = self._var_names
     globals_ = self._globals
     variable_nodes = self._variable_nodes
+    sub_mip_model = self._sub_mip_model
     mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
 
     # check if action is valid.
@@ -150,8 +160,9 @@ class Env(RINSEnv):
     assert len(fixed_assignment) == len(var_names) - len(unfixed_vars)
 
     # run sub-mip
-    sub_mip = mip.fix(fixed_assignment, relax_integral_constraints=False)
-    ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip.get_scip_model())
+    sub_mip_model.freeTransform()
+    mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
+    ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip_model)
     curr_sol = ass
     # # add back the newly found solutions for the sub-mip.
     # # this updates the current solution to the new local one.

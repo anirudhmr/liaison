@@ -5,7 +5,7 @@ from collections import deque
 import liaison.utils as U
 from absl import logging
 from liaison.replay.base import Replay as BaseReplay
-from liaison.replay.base import ReplayUnderFlowException
+from liaison.replay.base import ReplayUnderFlowException, getsize
 
 
 class Replay(BaseReplay):
@@ -23,6 +23,7 @@ class Replay(BaseReplay):
 
   def insert(self, exp_dict):
     # appends to the right end of the queue
+    self.per_sample_size = getsize(exp_dict)
     with self.lock:
       self._memory.append(exp_dict)
       self._freq_access.append(0)

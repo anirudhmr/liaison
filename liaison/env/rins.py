@@ -14,6 +14,7 @@ import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
                                            MIPInstance)
+from liaison.daper.milp.scip_utils import del_scip_model
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.rins import *
@@ -140,11 +141,12 @@ class Env(BaseEnv):
     self._prev_mean_work = np.nan
     self._reset_next_step = True
     if 'SYMPH_PS_SERVING_HOST' in os.environ:
-      self._global_step_fetcher = GlobalStepFetcher()
+      self._global_step_fetcher = GlobalStepFetcher(min_request_spacing=4)
     else:
       self._global_step_fetcher = None
     # map from sample to length of the mip
     self._sample_lengths = None
+    self._n_resets = 0
     self.reset()
 
   def _get_n_graphs(self):
@@ -621,7 +623,6 @@ class Env(BaseEnv):
                            solving_time=solver.getSolvingTime(),
                            pre_solving_time=solver.getPresolvingTime(),
                            time_elapsed=timer.to_seconds())
-    solver.freeProb()
     return ass, obj, mip_stats
 
   def _reset_mask(self, variable_nodes):

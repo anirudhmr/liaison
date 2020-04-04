@@ -100,9 +100,8 @@ class Actor:
           exps = self._traj.debatch_and_stack()
           self._traj.reset()
           self._send_experiences(exps)
-          self._traj.start(next_state=self._shell.next_state,
-                           **dict(ts._asdict()))
-        system_logs['send_experience_sec'] = send_experience_timer.to_seconds()
+          self._traj.start(next_state=self._shell.next_state, **dict(ts._asdict()))
+        system_logs['put_experience_async_sec'] = send_experience_timer.to_seconds()
 
       for logger in self._system_loggers:
         logger.write(
@@ -112,17 +111,28 @@ class Actor:
       i += 1
 
   def _setup_exp_sender(self):
-    self._exp_sender = ExpSender(
-        host=os.environ['SYMPH_COLLECTOR_FRONTEND_HOST'],
-        port=os.environ['SYMPH_COLLECTOR_FRONTEND_PORT'],
-        flush_iteration=None,
-        manual_flush=True,
-        compress_before_send=self.config.compress_before_send)
+    self._exp_sender = ExpSender(host=os.environ['SYMPH_COLLECTOR_FRONTEND_HOST'],
+                                 port=os.environ['SYMPH_COLLECTOR_FRONTEND_PORT'],
+                                 flush_iteration=None,
+                                 manual_flush=True,
+                                 compress_before_send=self.config.compress_before_send)
 
   def _send_experiences(self, exps):
-    for exp in exps:
-      self._exp_sender.send(hash_dict=exp)
-    self._exp_sender.flush()
+    if hasattr(self, 'send_exp_queue'):
+      q = self.send_exp_queue
+    else:
+      q = self.send_exp_queue = Queue(10)
+
+      def f():
+        while True:
+          exps = q.get()
+          for exp in exps:
+            self._exp_sender.send(hash_dict=exp)
+          self._exp_sender.flush()
+
+      self.exp_thread = U.start_thread(f, daemon=True)
+
+    q.put(exps)
 
   def _start_spec_server(self):
     logging.info("Starting spec server.")

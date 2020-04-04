@@ -110,14 +110,14 @@ class Learner(object):
                                    discounts=traj_phs['discount'])
 
       config = tf.ConfigProto()
-      # wierd issue with tensorflow :(
       if use_gpu:
         config.gpu_options.allow_growth = True
         # config.intra_op_parallelism_threads = 1
         # config.inter_op_parallelism_threads = 1
         self.sess = tf.Session(config=config)
       else:
-        config.graph_options.rewrite_options.memory_optimization = rewriter_config_pb2.RewriterConfig.OFF
+        # wierd issue with tensorflow :(
+        # config.graph_options.rewrite_options.memory_optimization = rewriter_config_pb2.RewriterConfig.OFF
         config.device_count = {'GPU': 0}
         self.sess = tf.Session(config=config)
 

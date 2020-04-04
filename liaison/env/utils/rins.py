@@ -4,8 +4,10 @@ import pickle
 import time
 
 import numpy as np
+
 from liaison.daper.dataset_constants import DATASET_INFO_PATH, DATASET_PATH
 from liaison.daper.milp.primitives import relax_integral_constraints
+from liaison.daper.milp.scip_utils import del_scip_model
 from liaison.distributed import ParameterClient
 from liaison.utils import ConfigDict
 from pyscipopt import Model
@@ -30,7 +32,7 @@ def pad_last_dim(features: np.ndarray, pad_to_len):
                 mode='constant')
 
 
-@functools.lru_cache(maxsize=100)
+# @functools.lru_cache(maxsize=100)
 def get_sample(dataset, dataset_type, graph_idx):
   dataset_path = DATASET_PATH[dataset]
 
@@ -53,10 +55,11 @@ def get_sample(dataset, dataset_type, graph_idx):
       ass = {var.name: solver.getVal(var) for var in solver.getVars()}
       milp = ConfigDict(milp)
       milp.optimal_lp_sol = ass
+      del_scip_model(solver)
   return milp
 
 
-@functools.lru_cache(maxsize=1000)
+# dont cache these to lower the memory footprint.
 def get_hamming_dists(dataset, dataset_type, graph_idx):
   with open(
       os.path.join(DATASET_INFO_PATH[dataset], 'hamming_distance', dataset_type,
@@ -64,7 +67,7 @@ def get_hamming_dists(dataset, dataset_type, graph_idx):
     return pickle.load(f)
 
 
-@functools.lru_cache(maxsize=1000)
+# dont cache these to lower the memory footprint.
 def load_pickled_features(dataset, dataset_type, graph_idx):
   with open(os.path.join(DATASET_INFO_PATH[dataset], 'aux_info', dataset_type, f'{graph_idx}.pkl'),
             'rb') as f:
@@ -75,7 +78,7 @@ class GlobalStepFetcher:
   # fetches global step value from the parameter server.
   # caches to avoid overloading the remote server.
 
-  def __init__(self, min_request_spacing=2):
+  def __init__(self, min_request_spacing=4):
     self._ps_client = ParameterClient(host=os.environ['SYMPH_PS_SERVING_HOST'],
                                       port=os.environ['SYMPH_PS_SERVING_PORT'],
                                       agent_scope=None,

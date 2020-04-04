@@ -1,8 +1,9 @@
-import liaison.utils as U
 import numpy as np
+from tqdm import trange
+
+import liaison.utils as U
 from absl import app
 from liaison.utils import ConfigDict
-from tqdm import trange
 
 
 def get_env_config():
@@ -78,10 +79,12 @@ def main(argv):
   env = make_env()
   ts = env.reset()
 
-  for i in trange(1000):
-    mask = ts.observation['mask']
-    act = np.random.choice(len(mask), env.k, replace=False, p=mask / sum(mask))
-    ts = env.step(act)
+  with U.Timer() as timer:
+    for i in trange(500):
+      mask = ts.observation['mask']
+      act = np.random.choice(len(mask), env.k, replace=False, p=mask / sum(mask))
+      ts = env.step(act)
+  print('Total time taken: ', timer.to_seconds())
 
 
 if __name__ == '__main__':

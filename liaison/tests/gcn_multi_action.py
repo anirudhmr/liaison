@@ -56,10 +56,10 @@ def get_env_config():
 
   # specify dataset by dataset_path or dataset
   config.dataset_path = ''
-  config.dataset = 'milp-cauction-100-filtered'
+  config.dataset = 'milp-cauction-300-filtered'
   config.dataset_type = 'train'
   config.graph_start_idx = 0
-  config.n_graphs = 1
+  config.n_graphs = 100
 
   config.max_nodes = 3000
   config.max_edges = 25000

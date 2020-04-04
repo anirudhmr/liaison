@@ -43,6 +43,13 @@ class Model:
                                     seed=seed,
                                     layer_norm=False)
 
+    with tf.variable_scope('out_projection'):
+      self._out_projection_mlp = snt.nets.MLP(
+          [self.config.d_model],
+          initializers=dict(w=glorot_uniform(seed), b=initializers.init_ops.Constant(0)),
+          activate_final=False,
+      )
+
   def compute_graph_embeddings(self, obs):
     return self._gcn_model.compute_graph_embeddings(obs)
 
@@ -101,13 +108,12 @@ class Model:
       return i < tf.reduce_max(n_actions)
 
     def body_fn(i, decoder_inputs, logitss, actions, node_mask):
-      dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
+      dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T2, d_model)
 
-      with tf.variable_scope('attn_head', reuse=tf.AUTO_REUSE):
-        # Q -> (N, d_model)
-        Q = tf.layers.dense(dec[:, -1], self.config.d_model, use_bias=True)
-        # Q -> (N, 1, d_model)
-        Q = tf.expand_dims(Q, 1)
+      # Q -> (N, d_model)
+      Q = self._out_projection_mlp(dec[:, -1])
+      # Q -> (N, 1, d_model)
+      Q = tf.expand_dims(Q, 1)
 
       # dot product
       outputs = tf.matmul(Q, tf.transpose(xs, [0, 2, 1]))  # (N, 1, T1)
@@ -155,20 +161,16 @@ class Model:
               node_mask.get_shape(),
           ),
           return_same_structure=True,
+          back_prop=False,
       )
     else:
 
       def calc_logits(decoder_inputs, node_mask):
         # calculate logits with sampled actions.
-        dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T1, d_model)
+        dec = self._trans.decode(decoder_inputs, memory, src_masks, True)  # (N, T2, d_model)
 
-        with tf.variable_scope('attn_head', reuse=tf.AUTO_REUSE):
-          l = infer_shape(dec)
-          dec = tf.reshape(dec, [-1] + l[2:])
-          Q = tf.layers.dense(dec, self.config.d_model, use_bias=True)
-          Q = tf.reshape(Q, l[:2] + infer_shape(Q)[1:])
-          # Q -> (N, T2, d_model)
-
+        # Q -> (N, T2, d_model)
+        Q = snt.BatchApply(self._out_projection_mlp)(dec)
         # dot product
         outputs = tf.matmul(Q, tf.transpose(xs, [0, 2, 1]))  # (N, T2, T1)
         # scale
@@ -182,9 +184,10 @@ class Model:
         # [N, T2, T1]
         logits = tf.where(node_mask, outputs, tf.fill(tf.shape(node_mask), np.float32(-1e9)))
         return logits
-        decoder_inputs = tf.gather_nd(xs, tf.expand_dims(sampled_actions, -1), batch_dims=1)
-        logits = calc_logits(decoder_inputs, node_mask)
-        actions = sampled_actions
+
+      decoder_inputs = tf.gather_nd(xs, tf.expand_dims(sampled_actions, -1), batch_dims=1)
+      logits = calc_logits(decoder_inputs, node_mask)
+      actions = sampled_actions
 
     # Finally logits -> (N, T2, T1)
     # Finally actions -> (N, T2)

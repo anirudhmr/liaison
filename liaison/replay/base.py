@@ -1,5 +1,8 @@
 import os
+import sys
 import time
+from collections import Mapping, Set, deque
+from numbers import Number
 
 import liaison.utils as U
 from absl import logging
@@ -8,6 +11,34 @@ from liaison.distributed import ExperienceCollectorServer
 from liaison.distributed.exp_serializer import get_deserializer, get_serializer
 from liaison.utils import ConfigDict
 from tensorplex import LoggerplexClient, TensorplexClient
+
+
+def getsize(obj_0):
+  """Recursively iterate to sum size of object & members."""
+  _seen_ids = set()
+  zero_depth_bases = (str, bytes, Number, range, bytearray)
+  iteritems = 'items'
+
+  def inner(obj):
+    obj_id = id(obj)
+    if obj_id in _seen_ids:
+      return 0
+    _seen_ids.add(obj_id)
+    size = sys.getsizeof(obj)
+    if isinstance(obj, zero_depth_bases):
+      pass  # bypass remaining control flow and return
+    elif isinstance(obj, (tuple, list, Set, deque)):
+      size += sum(inner(i) for i in obj)
+    elif isinstance(obj, Mapping) or hasattr(obj, iteritems):
+      size += sum(inner(k) + inner(v) for k, v in getattr(obj, iteritems)())
+    # Check for custom object instances - may subclass above too
+    if hasattr(obj, '__dict__'):
+      size += inner(vars(obj))
+    if hasattr(obj, '__slots__'):  # can have __slots__ with __dict__
+      size += sum(inner(getattr(obj, s)) for s in obj.__slots__ if hasattr(obj, s))
+    return size
+
+  return inner(obj_0)
 
 
 class ReplayUnderFlowException(Exception):
@@ -39,18 +70,16 @@ class Replay:
     else:
       collector_port = os.environ['SYMPH_COLLECTOR_FRONTEND_PORT']
       sampler_port = os.environ['SYMPH_SAMPLER_FRONTEND_PORT']
-    self._collector_server = ExperienceCollectorServer(
-        host='localhost' if load_balanced else '*',
-        port=collector_port,
-        exp_handler=self._insert_wrapper,
-        load_balanced=load_balanced,
-        compress_before_send=compress_before_send)
-    self._sampler_server = ZmqServer(
-        host='localhost' if load_balanced else '*',
-        port=sampler_port,
-        bind=not load_balanced,
-        serializer=get_serializer(compress_before_send),
-        deserializer=get_deserializer(compress_before_send))
+    self._collector_server = ExperienceCollectorServer(host='localhost' if load_balanced else '*',
+                                                       port=collector_port,
+                                                       exp_handler=self._insert_wrapper,
+                                                       load_balanced=load_balanced,
+                                                       compress_before_send=compress_before_send)
+    self._sampler_server = ZmqServer(host='localhost' if load_balanced else '*',
+                                     port=sampler_port,
+                                     bind=not load_balanced,
+                                     serializer=get_serializer(compress_before_send),
+                                     deserializer=get_deserializer(compress_before_send))
     self._sampler_server_thread = None
 
     self._evict_interval = evict_interval
@@ -157,18 +186,16 @@ class Replay:
   def _get_tensorplex_client(self, client_id):
     host = os.environ['SYMPH_TENSORPLEX_SYSTEM_HOST']
     port = os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']
-    return TensorplexClient(
-        client_id,
-        host=host,
-        port=port,
-        serializer=self.config.tensorplex_config.serializer,
-        deserializer=self.config.tensorplex_config.deserializer)
+    return TensorplexClient(client_id,
+                            host=host,
+                            port=port,
+                            serializer=self.config.tensorplex_config.serializer,
+                            deserializer=self.config.tensorplex_config.deserializer)
 
   def _setup_logging(self):
     # self.log = get_loggerplex_client('{}/{}'.format('replay', self.index),
     #                                  self.config)
-    self.tensorplex = self._get_tensorplex_client('{}/{}'.format(
-        'replay', self.index))
+    self.tensorplex = self._get_tensorplex_client('{}/{}'.format('replay', self.index))
     self._tensorplex_thread = None
     self._has_tensorplex = self.config.tensorboard_display
 
@@ -211,8 +238,7 @@ class Replay:
   def start_tensorplex_thread(self):
     if self._tensorplex_thread is not None:
       raise RuntimeError('tensorplex thread already running')
-    self._tensorplex_thread = U.PeriodicWakeUpWorker(
-        target=self.generate_tensorplex_report)
+    self._tensorplex_thread = U.PeriodicWakeUpWorker(target=self.generate_tensorplex_report)
     self._tensorplex_thread.start()
     return self._tensorplex_thread
 
@@ -237,10 +263,9 @@ class Replay:
     self.last_request_count = cum_count_requests
 
     exp_in_speed = self.exp_in_speed.add_value(new_exp_count / time_elapsed)
-    exp_out_speed = self.exp_out_speed.add_value(new_sample_count /
-                                                 time_elapsed)
-    handle_sample_request_speed = self.handle_sample_request_speed.add_value(
-        new_request_count / time_elapsed)
+    exp_out_speed = self.exp_out_speed.add_value(new_sample_count / time_elapsed)
+    handle_sample_request_speed = self.handle_sample_request_speed.add_value(new_request_count /
+                                                                             time_elapsed)
 
     insert_time = self.insert_time.avg
     sample_time = self.sample_time.avg
@@ -259,6 +284,8 @@ class Replay:
         'serialize_time_s': serialize_time,
     }
 
+    if hasattr(self, 'per_sample_size'):
+      core_metrics['per_sample_size_MB'] = self.per_sample_size / 1e6
     serialize_load = serialize_time * handle_sample_request_speed / time_elapsed
     collect_exp_load = insert_time * exp_in_speed / time_elapsed
     sample_exp_load = sample_time * handle_sample_request_speed / time_elapsed
@@ -266,14 +293,10 @@ class Replay:
     system_metrics = {
         'lifetime_experience_utilization_percent':
         cum_count_sampled / (cum_count_collected + 1) * 100,
-        'current_experience_utilization_percent':
-        exp_out_speed / (exp_in_speed + 1) * 100,
-        'serialization_load_percent':
-        serialize_load * 100,
-        'collect_exp_load_percent':
-        collect_exp_load * 100,
-        'sample_exp_load_percent':
-        sample_exp_load * 100,
+        'current_experience_utilization_percent': exp_out_speed / (exp_in_speed + 1) * 100,
+        'serialization_load_percent': serialize_load * 100,
+        'collect_exp_load_percent': collect_exp_load * 100,
+        'sample_exp_load_percent': sample_exp_load * 100,
         # 'exp_queue_occupancy_percent': self._exp_queue.occupancy() * 100,
     }
 

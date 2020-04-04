@@ -4,6 +4,7 @@ import pyscipopt as scip
 from liaison.daper.milp.dataset import MIPInstance
 from liaison.daper.milp.features import (get_features_from_scip_model,
                                          init_scip_params)
+from liaison.daper.milp.scip_utils import del_scip_model
 
 # Interface for MIP instances built on top of SCIP
 EPSILON = 1e-4
@@ -14,9 +15,6 @@ def get_model():
   m.hideOutput()
   m.setIntParam('display/verblevel', 0)
   init_scip_params(m, seed=42)
-  m.setIntParam('timing/clocktype', 2)
-  m.setRealParam('limits/time', 120)
-  m.setParam('limits/nodes', 1)
   return m
 
 
@@ -38,12 +36,14 @@ class SCIPMIPInstance:
     # create a copy to avoid polluting the current one.
     # returns constraint_features, edge_features, variable_features
     m = self._copy_model()
-    return get_features_from_scip_model(m)
+    ret = get_features_from_scip_model(m)
+    del_scip_model(m)
+    return ret
 
   def _copy_model(self):
     return scip.Model(sourceModel=self.model, origcopy=True)
 
-  def fix(self, fixed_ass, relax_integral_constraints=False):
+  def fix(self, fixed_ass, relax_integral_constraints=False, scip_model=None):
     """
       Args:
         fixed_vars_to_values: variables to fix and their values to fix to.
@@ -59,8 +59,12 @@ class SCIPMIPInstance:
       var = self.varname2var[v]
       assert var.getLbGlobal() - EPSILON <= val and val <= var.getUbGlobal() + EPSILON
 
-    # copy the original model
-    fixed_model = self._copy_model()
+    if scip_model is None:
+      # copy the original model
+      fixed_model = self._copy_model()
+    else:
+      fixed_model = scip_model
+
     fixed_model_vars = list(fixed_model.getVars(transformed=True))
     fixed_model_varname2var = {v.name.lstrip('t_'): v for v in fixed_model_vars}
 
@@ -73,9 +77,7 @@ class SCIPMIPInstance:
     if relax_integral_constraints:
       for v in fixed_model.getVars():
         fixed_model.chgVarType(v, 'CONTINUOUS')
-
-    m = SCIPMIPInstance(fixed_model)
-    return m
+    return fixed_model
 
   def get_feasible_solution(self):
     # get any feasible solution.
@@ -85,9 +87,15 @@ class SCIPMIPInstance:
     fixed_model.setObjective(scip.Expr())
 
     fixed_model.optimize()
+    assert fixed_model.getStatus() == 'optimal', fixed_model.getStatus()
 
     ass = {'t_' + var.name: fixed_model.getVal(var) for var in fixed_model.getVars()}
+    del_scip_model(fixed_model)
     return ass
 
   def get_scip_model(self):
     return self._copy_model()
+
+  def __del__(self):
+    if self.model is not None:
+      del_scip_model(self.model)
