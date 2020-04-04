@@ -10,6 +10,7 @@
 
 import logging
 import os
+from queue import Queue
 
 import liaison.utils as U
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
@@ -121,7 +122,7 @@ class Actor:
     if hasattr(self, 'send_exp_queue'):
       q = self.send_exp_queue
     else:
-      q = self.send_exp_queue = Queue(10)
+      q = self.send_exp_queue = Queue(20)
 
       def f():
         while True:
@@ -131,7 +132,6 @@ class Actor:
           self._exp_sender.flush()
 
       self.exp_thread = U.start_thread(f, daemon=True)
-
     q.put(exps)
 
   def _start_spec_server(self):

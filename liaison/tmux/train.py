@@ -79,20 +79,21 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           # hyper.discrete('env_config.k', [10, 20]),
-          hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
-          # hyper.discrete('agent_config.lr_init', [5e-4]),
+          # hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
+          hyper.discrete('agent_config.lr_init', [2e-4]),
           hyper.discrete('agent_config.ent_dec_init', [2e-2]),
           # hyper.discrete('env_config.graph_start_idx', list(range(8))),
       )):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id), env_name='liaison')
     # start tensorboard only for the first work unit.
-    build_program(exp,
-                  args.n_actors,
-                  ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
-                  bundle_actors=args.bundle_actors,
-                  with_visualizers=(work_id == 0) and (not args.without_visualizers),
-                  with_evaluators=(not args.without_evaluators),
-                  without_valid_and_test_evaluators=args.without_valid_and_test_evaluators)
+    coloc_constraints = build_program(
+        exp,
+        args.n_actors,
+        ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
+        bundle_actors=args.bundle_actors,
+        with_visualizers=(work_id == 0) and (not args.without_visualizers),
+        with_evaluators=(not args.without_evaluators),
+        without_valid_and_test_evaluators=args.without_valid_and_test_evaluators)
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += ['--hyper_configs', str(shlex.quote(json.dumps(params)))]
@@ -116,8 +117,9 @@ def train(argv):
                          args.whitelist_nodes,
                          args.spy_measurement_interval,
                          pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
-                         coloc_constraints=list(map(lambda k: k.split(';'),
-                                                    args.coloc_constraints)),
+                         coloc_constraints=list(
+                             map(lambda k: k.split(';'),
+                                 coloc_constraints + args.coloc_constraints)),
                          gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
                          gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
                          gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,

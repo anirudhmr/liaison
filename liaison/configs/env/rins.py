@@ -71,5 +71,6 @@ def get_config():
 
   # multi dimensional action space.
   config.muldi_actions = False
+  config.sample_every_n_resets = 10
 
   return config

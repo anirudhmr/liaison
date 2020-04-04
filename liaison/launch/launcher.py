@@ -54,9 +54,7 @@ class Launcher:
       parser_args = argv[:index]
       config_args = argv[index + 1:]
     parser = ArgumentParser(description='launch a surreal component')
-    parser.add_argument('component_name',
-                        type=str,
-                        help='which component to launch')
+    parser.add_argument('component_name', type=str, help='which component to launch')
     args, _ = parser.parse_known_args(parser_args)
 
     self.config_args = config_args
@@ -77,8 +75,8 @@ class Launcher:
 
     if component_name == 'actor':
       self.run_actor(actor_id=component_id)
-    elif component_name == 'actor_bundle':
-      self.run_actor_bundle()
+    elif component_name == 'bundled_actor':
+      self.run_bundled_actor()
     elif component_name == 'evaluator':
       self.run_evaluator(id=component_id)
     elif component_name == 'evaluators':
@@ -104,11 +102,10 @@ class Launcher:
     # note that redirecting to sys.stdout instead of subprocess.PIPE
     # would mean that U.wait_for_popen would not be capturing the stderr
     # and some printing could get broken.
-    return subprocess.Popen(
-        [sys.executable, '-u', sys.argv[0], component_name, '--'] +
-        self.config_args,
-        stdout=sys.stdout,
-        stderr=subprocess.STDOUT)
+    return subprocess.Popen([sys.executable, '-u', sys.argv[0], component_name, '--'] +
+                            self.config_args,
+                            stdout=sys.stdout,
+                            stderr=subprocess.STDOUT)
 
   def _setup_actor_system_loggers(self, id):
     loggers = []
@@ -131,13 +128,10 @@ class Launcher:
         actor_id (int): actor's id
     """
 
-    agent_config, env_config, sess_config = (self.agent_config,
-                                             self.env_config, self.sess_config)
-    agent_class = U.import_obj(agent_config.class_name,
-                               agent_config.class_path)
+    agent_config, env_config, sess_config = (self.agent_config, self.env_config, self.sess_config)
+    agent_class = U.import_obj(agent_config.class_name, agent_config.class_path)
 
-    shell_class = U.import_obj(sess_config.shell.class_name,
-                               sess_config.shell.class_path)
+    shell_class = U.import_obj(sess_config.shell.class_name, sess_config.shell.class_path)
 
     env_class = U.import_obj(env_config.class_name, env_config.class_path)
 
@@ -156,47 +150,38 @@ class Launcher:
         traj_length=self.traj_length,
         seed=self.seed + actor_id * self.batch_size,
         batch_size=self.batch_size,
-        system_loggers=self._setup_actor_system_loggers(actor_id)
-        if actor_id == 0 else [],
+        system_loggers=self._setup_actor_system_loggers(actor_id) if actor_id == 0 else [],
         **self.sess_config.actor)
 
-    actor_class = U.import_obj(sess_config.actor.class_name,
-                               sess_config.actor.class_path)
+    actor_class = U.import_obj(sess_config.actor.class_name, sess_config.actor.class_path)
     actor_class(**actor_config)  # blocking constructor.
 
-  def run_actor_bundle(self):
+  def run_bundled_actor(self):
     components = [
-        self.run_component(f'actor-{i}')
-        for i in range(self.sess_config.actor_bundle.n_actors)
+        self.run_component(f'actor-{i}') for i in range(self.sess_config.bundled_actor.n_actors)
     ]
     U.wait_for_popen(components)
 
   def _setup_evaluator_loggers(self, evaluator_name):
     loggers = []
-    loggers.append(
-        AvgPipeLogger(ConsoleLogger(print_every=1, name=evaluator_name)))
+    loggers.append(AvgPipeLogger(ConsoleLogger(print_every=1, name=evaluator_name)))
     if evaluator_name in ['train', 'valid', 'test']:
       loggers.append(
           AvgPipeLogger(
               TensorplexLogger(
-                  client_id=f'evaluator/%d' %
-                  ['train', 'valid', 'test'].index(evaluator_name),
+                  client_id=f'evaluator/%d' % ['train', 'valid', 'test'].index(evaluator_name),
                   serializer=self.sess_config.tensorplex.serializer,
                   deserializer=self.sess_config.tensorplex.deserializer,
               )))
-    loggers.append(
-        KVStreamLogger(stream_id=evaluator_name, client=IRSClient(timeout=20)))
+    loggers.append(KVStreamLogger(stream_id=evaluator_name, client=IRSClient(timeout=20)))
     return loggers
 
   def run_evaluator(self, id: str):
-    env_config, sess_config, agent_config = (self.env_config, self.sess_config,
-                                             self.agent_config)
+    env_config, sess_config, agent_config = (self.env_config, self.sess_config, self.agent_config)
     eval_config = self.eval_config
 
-    agent_class = U.import_obj(agent_config.class_name,
-                               agent_config.class_path)
-    shell_class = U.import_obj(sess_config.shell.class_name,
-                               sess_config.shell.class_path)
+    agent_class = U.import_obj(agent_config.class_name, agent_config.class_path)
+    shell_class = U.import_obj(sess_config.shell.class_name, sess_config.shell.class_path)
     env_class = U.import_obj(env_config.class_name, env_config.class_path)
     agent_config = copy.deepcopy(agent_config)
     agent_config.update(evaluation_mode=True)
@@ -215,22 +200,20 @@ class Launcher:
       })
       env_configs.append(env_config)
 
-    evaluator_config = dict(
-        shell_class=shell_class,
-        shell_config=shell_config,
-        env_class=env_class,
-        env_configs=env_configs,
-        loggers=self._setup_evaluator_loggers(id),
-        heuristic_loggers=self._setup_evaluator_loggers(f'heuristic-{id}'),
-        seed=self.seed,
-        **eval_config)
+    evaluator_config = dict(shell_class=shell_class,
+                            shell_config=shell_config,
+                            env_class=env_class,
+                            env_configs=env_configs,
+                            loggers=self._setup_evaluator_loggers(id),
+                            heuristic_loggers=self._setup_evaluator_loggers(f'heuristic-{id}'),
+                            seed=self.seed,
+                            **eval_config)
     from liaison.distributed import Evaluator
     Evaluator(**evaluator_config)
 
   def run_evaluators(self):
     components = [
-        self.run_component(f'evaluator-{eval_type}')
-        for eval_type in ['train', 'valid', 'test']
+        self.run_component(f'evaluator-{eval_type}') for eval_type in ['train', 'valid', 'test']
     ]
     U.wait_for_popen(components)
 
@@ -267,12 +250,10 @@ class Launcher:
         and publishes experience to parameter server
     """
 
-    agent_class = U.import_obj(self.agent_config.class_name,
-                               self.agent_config.class_path)
+    agent_class = U.import_obj(self.agent_config.class_name, self.agent_config.class_path)
     loggers, vis_loggers = self._setup_learner_loggers()
     learner = Learner(agent_class=agent_class,
-                      agent_config=dict(vis_loggers=vis_loggers,
-                                        **self.agent_config),
+                      agent_config=dict(vis_loggers=vis_loggers, **self.agent_config),
                       traj_length=self.traj_length,
                       seed=self.seed,
                       loggers=loggers,
@@ -285,9 +266,8 @@ class Launcher:
         Lauches the parameter server process.
         Serves parameters to agents
     """
-    server = SimpleParameterServer(
-        publish_port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
-        serving_port=os.environ['SYMPH_PS_SERVING_PORT'])
+    server = SimpleParameterServer(publish_port=os.environ['SYMPH_PS_PUBLISHING_PORT'],
+                                   serving_port=os.environ['SYMPH_PS_SERVING_PORT'])
     server.start()
     server.join()
 
@@ -359,8 +339,8 @@ class Launcher:
     # launch profile viewer
     cmd = [
         'python', '-m', 'profiler_ui.ui', '--profile_context_path',
-        os.path.join(self.results_folder, 'tensorflow_profiles',
-                     str(self.work_id), 'timeline.json'), '--port',
+        os.path.join(self.results_folder, 'tensorflow_profiles', str(self.work_id),
+                     'timeline.json'), '--port',
         str(os.environ['SYMPH_VISUALIZERS_PROFILER_UI_PORT'])
     ]
     procs += [subprocess.Popen(cmd)]
@@ -373,17 +353,14 @@ class Launcher:
         It receives data from multiple sources and
         send them to tensorboard.
     """
-    folder1 = os.path.join(self.results_folder, 'tensorplex_metrics',
-                           str(self.work_id))
-    folder2 = os.path.join(self.results_folder, 'tensorplex_system_profiles',
-                           str(self.work_id))
+    folder1 = os.path.join(self.results_folder, 'tensorplex_metrics', str(self.work_id))
+    folder2 = os.path.join(self.results_folder, 'tensorplex_system_profiles', str(self.work_id))
     tensorplex_config = self.sess_config.tensorplex
     threads = []
 
-    for folder, port in zip([folder1, folder2], [
-        os.environ['SYMPH_TENSORPLEX_PORT'],
-        os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']
-    ]):
+    for folder, port in zip(
+        [folder1, folder2],
+        [os.environ['SYMPH_TENSORPLEX_PORT'], os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']]):
       tensorplex = Tensorplex(
           folder,
           max_processes=tensorplex_config.max_processes,
@@ -397,8 +374,7 @@ class Launcher:
       """
       tensorplex.register_normal_group('learner').register_indexed_group(
           'actor', tensorplex_config.agent_bin_size).register_indexed_group(
-              'replay',
-              100).register_indexed_group('ps', 100).register_indexed_group(
+              'replay', 100).register_indexed_group('ps', 100).register_indexed_group(
                   'evaluator', tensorplex_config.agent_bin_size)
 
       thread = Thread(target=tensorplex.start_server,
@@ -412,32 +388,33 @@ class Launcher:
 
   def run_irs(self):
     tensorplex_threads = self._start_tensorplex()
-    self._irs_server = IRSServer(
-        results_folder=self.results_folder,
-        agent_config=self.agent_config,
-        env_config=self.env_config,
-        sess_config=self.sess_config,
-        exp_name=self.experiment_name,
-        exp_id=self.experiment_id,
-        work_id=self.work_id,
-        configs_folder=os.path.join(self.results_folder, 'config',
-                                    str(self.work_id)),
-        src_folder=os.path.join(self.results_folder, 'src', str(self.work_id)),
-        checkpoint_folder=os.path.join(self.results_folder, 'checkpoints',
-                                       str(self.work_id)),
-        profile_folder=os.path.join(self.results_folder, 'tensorflow_profiles',
-                                    str(self.work_id)),
-        cmd_folder=os.path.join(self.results_folder, 'cmds',
-                                str(self.work_id)),
-        kvstream_folder=os.path.join(self.results_folder, 'kvstream',
-                                     str(self.work_id)),
-        vis_files_folder=os.path.join(self.results_folder, 'vis_files',
-                                      str(self.work_id)),
-        hyper_param_config_file=os.path.join(self.results_folder,
-                                             'hyper_params', str(self.work_id),
-                                             'hyper_params.json'),
-        hyper_params=self.hyper_params,
-        **self.sess_config.irs)
+    self._irs_server = IRSServer(results_folder=self.results_folder,
+                                 agent_config=self.agent_config,
+                                 env_config=self.env_config,
+                                 sess_config=self.sess_config,
+                                 exp_name=self.experiment_name,
+                                 exp_id=self.experiment_id,
+                                 work_id=self.work_id,
+                                 configs_folder=os.path.join(self.results_folder, 'config',
+                                                             str(self.work_id)),
+                                 src_folder=os.path.join(self.results_folder, 'src',
+                                                         str(self.work_id)),
+                                 checkpoint_folder=os.path.join(self.results_folder, 'checkpoints',
+                                                                str(self.work_id)),
+                                 profile_folder=os.path.join(self.results_folder,
+                                                             'tensorflow_profiles',
+                                                             str(self.work_id)),
+                                 cmd_folder=os.path.join(self.results_folder, 'cmds',
+                                                         str(self.work_id)),
+                                 kvstream_folder=os.path.join(self.results_folder, 'kvstream',
+                                                              str(self.work_id)),
+                                 vis_files_folder=os.path.join(self.results_folder, 'vis_files',
+                                                               str(self.work_id)),
+                                 hyper_param_config_file=os.path.join(
+                                     self.results_folder, 'hyper_params', str(self.work_id),
+                                     'hyper_params.json'),
+                                 hyper_params=self.hyper_params,
+                                 **self.sess_config.irs)
     self._irs_server.launch()
     self._irs_server.join()
     for thread in tensorplex_threads:

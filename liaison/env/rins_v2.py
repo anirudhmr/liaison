@@ -14,6 +14,7 @@ from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
                                            MIPInstance)
 from liaison.daper.milp.scip_mip import SCIPMIPInstance
+from liaison.daper.milp.scip_utils import del_scip_model
 from liaison.env.environment import restart, termination, transition
 from liaison.env.rins import Env as RINSEnv
 from liaison.env.utils.rins import *
@@ -98,7 +99,7 @@ class Env(RINSEnv):
 
   def reset(self):
     # fix the graph for a few episodes to reduce load on the disk while loading datasets.
-    if self._n_resets % 10 == 0:
+    if self._n_resets % self._sample_every_n_resets == 0:
       self.milp, self._sol, self._obj = self._sample()
       self.mip = SCIPMIPInstance.fromMIPInstance(self.milp.mip)
       # clean up previous scip model

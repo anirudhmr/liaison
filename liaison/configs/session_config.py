@@ -23,7 +23,7 @@ def get_config():
   config.learner.compress_before_send = True
 
   config.actor = ConfigDict()
-  config.actor.class_path = 'liaison.distributed.actor_full_episode'
+  config.actor.class_path = 'liaison.distributed.actor'
   config.actor.class_name = 'Actor'
   config.actor.n_unrolls = None  # loop forever.
   config.actor.use_parallel_envs = True
@@ -31,8 +31,8 @@ def get_config():
   config.actor.discount_factor = 1.0
   config.actor.compress_before_send = True
 
-  config.actor_bundle = ConfigDict()
-  config.actor_bundle.n_actors = 64
+  config.bundled_actor = ConfigDict()
+  config.bundled_actor.n_actors = 64
 
   config.shell = ConfigDict()
   # shell class path is default to the distributed folder.

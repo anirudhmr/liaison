@@ -54,6 +54,6 @@ def get_config():
   # applicable for agent 'liaison.agents.gcn_large_batch'
   config.apply_grads_every = 1
 
-  config.log_features_every = 100
+  config.log_features_every = -1  # disable
 
   return config

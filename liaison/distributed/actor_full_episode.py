@@ -46,6 +46,7 @@ class Actor(BaseActor):
       use_threaded_envs=False,
       discount_factor=None,
       **sess_config):
+    raise Exception('Deprecated!!')
     assert isinstance(actor_id, int)
     self.config = ConfigDict(sess_config)
     self.batch_size = batch_size
@@ -69,12 +70,11 @@ class Actor(BaseActor):
         **shell_config,
     )
 
-    self._traj = FullEpisodeTrajectory(
-        obs_spec=self._obs_spec,
-        step_output_spec=self._shell.step_output_spec(),
-        batch_size=batch_size,
-        discount_factor=discount_factor,
-        traj_length=traj_length)
+    self._traj = FullEpisodeTrajectory(obs_spec=self._obs_spec,
+                                       step_output_spec=self._shell.step_output_spec(),
+                                       batch_size=batch_size,
+                                       discount_factor=discount_factor,
+                                       traj_length=traj_length)
 
     if actor_id == 0:
       self._start_spec_server()

@@ -97,5 +97,4 @@ class SCIPMIPInstance:
     return self._copy_model()
 
   def __del__(self):
-    if self.model is not None:
-      del_scip_model(self.model)
+    del_scip_model(self.model)

@@ -33,13 +33,10 @@ class LiaisonPlacer:
       coloc_constraints: List[List[str]]
     """
 
-    nodes, whitelist_nodes = self._make_nodes(cluster_config,
-                                              filter_nodes_regex,
-                                              whitelist_nodes)
+    nodes, whitelist_nodes = self._make_nodes(cluster_config, filter_nodes_regex, whitelist_nodes)
     wunits = self._get_wunits(exps)
     # use whitelist_nodes only for hard placements.
-    filtered_wunits = self._filter_out_hard_placements(wunits,
-                                                       nodes + whitelist_nodes)
+    filtered_wunits = self._filter_out_hard_placements(wunits, nodes + whitelist_nodes)
     filtered_wunits, slurm_or_lsf_nodes, filtered_nodes = self._filter_out_slurm_or_lsf_placements(
         filtered_wunits, nodes, pl_constraints)
 
@@ -54,15 +51,12 @@ class LiaisonPlacer:
           for proc in procs:
             self._set_placement(proc, slurm_or_lsf_nodes[0])
       else:
-        raise Exception(
-            'More than one slurm nodes remaining to assign to pending processes.'
-        )
+        raise Exception('More than one slurm nodes remaining to assign to pending processes.')
       return
 
     nodes = filtered_nodes
     with ThreadPool(len(nodes)) as pool:
-      pool.map(lambda node: node.collect_spy_stats(spy_measurement_interval),
-               nodes)
+      pool.map(lambda node: node.collect_spy_stats(spy_measurement_interval), nodes)
 
     wunits = filtered_wunits
     # convert pl_constraints to the following format:
@@ -97,11 +91,10 @@ class LiaisonPlacer:
               l2.append((wid, pid))
               break
         if l2:
-          coloc_constraints.append(l2)
+          coloc_constraints2.append(l2)
     del coloc_constraints
 
-    manager = ScheduleManager(nodes, wunits, sched_constraints,
-                              coloc_constraints2, **config)
+    manager = ScheduleManager(nodes, wunits, sched_constraints, coloc_constraints2, **config)
 
     ass, gpu_ass = manager.get_assignment()
     for wu_assignment, wu_gpu_assignment, procs in zip(ass, gpu_ass, wunits):
@@ -110,22 +103,19 @@ class LiaisonPlacer:
         if proc_id in wu_gpu_assignment:
           proc.set_gpus(wu_gpu_assignment[proc_id])
 
-  def _make_nodes(self, cluster_config, filter_nodes_regex,
-                  whitelist_node_list):
+  def _make_nodes(self, cluster_config, filter_nodes_regex, whitelist_node_list):
     nodes = NodeLoader(cluster_config, filter_nodes_regex).nodes
     print('Filtered nodes (%d): ' % len(nodes))
     for node in nodes:
       print(node.name)
 
-    whitelist_nodes = NodeLoader(cluster_config,
-                                 '|'.join(whitelist_node_list)).nodes
+    whitelist_nodes = NodeLoader(cluster_config, '|'.join(whitelist_node_list)).nodes
     print('Whitelisted nodes (%d): ' % len(whitelist_nodes))
     for node in whitelist_nodes:
       print(node.name)
 
     with ThreadPool(len(nodes) + len(whitelist_nodes)) as pool:
-      pool.map(lambda node: node.setup(res_dirs=RES_DIRS),
-               nodes + whitelist_nodes)
+      pool.map(lambda node: node.setup(res_dirs=RES_DIRS), nodes + whitelist_nodes)
     return nodes, whitelist_nodes
 
   def _set_placement(self, proc, node):
@@ -137,10 +127,9 @@ class LiaisonPlacer:
     proc.set_placement(node)
 
   def _get_wunits(self, exps):
-    return [[
-        proc for pg in exp.list_process_groups()
-        for proc in pg.list_processes()
-    ] + [proc for proc in exp.list_processes()] for exp in exps]
+    return [[proc for pg in exp.list_process_groups()
+             for proc in pg.list_processes()] + [proc for proc in exp.list_processes()]
+            for exp in exps]
 
   def _filter_out_hard_placements(self, wunits, nodes):
     """Filter out the procs that have a hard placement to one of the nodes."""
@@ -168,8 +157,7 @@ class LiaisonPlacer:
 
     if isinstance(node, SlurmNode):
       try:
-        s = node.exec_commands("bash -c 'env | grep CUDA'",
-                               allocation=proc.allocation)
+        s = node.exec_commands("bash -c 'env | grep CUDA'", allocation=proc.allocation)
       except Exception:
         s = ''
 
@@ -185,8 +173,7 @@ class LiaisonPlacer:
 
     return proc.set_gpus(s)
 
-  def _filter_out_slurm_or_lsf_placements(self, wunits, all_nodes,
-                                          pl_constraints):
+  def _filter_out_slurm_or_lsf_placements(self, wunits, all_nodes, pl_constraints):
     """Filter out the slurm, lsf nodes and the procs that go on to these nodes."""
     # slurm or lsf nodes
     nodes = []
@@ -221,9 +208,8 @@ class LiaisonPlacer:
               # TODO: It's okay when the previous constraint also matched to the
               # same slurm node. Don't raise exception in that case.
               if proc_matched:
-                raise Exception(
-                    'Process %s matches multiple slurm node placement constraints'
-                    % proc.name)
+                raise Exception('Process %s matches multiple slurm node placement constraints' %
+                                proc.name)
               else:
                 proc_matched = True
                 self._set_placement(proc, matches[0])

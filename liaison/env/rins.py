@@ -14,7 +14,6 @@ import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
                                            MIPInstance)
-from liaison.daper.milp.scip_utils import del_scip_model
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.rins import *
@@ -110,6 +109,7 @@ class Env(BaseEnv):
                n_local_moves=10,
                max_nodes=-1,
                max_edges=-1,
+               sample_every_n_resets=1,
                **env_config):
     """k -> Max number of variables to unfix at a time.
             Informally, this is a bound on the local search
@@ -129,6 +129,7 @@ class Env(BaseEnv):
     self._dataset_type = dataset_type
     self._max_graphs = n_graphs
     self._graph_start_idx = graph_start_idx
+    self._sample_every_n_resets = sample_every_n_resets
 
     if dataset:
       self.config.update(NORMALIZATION_CONSTANTS[dataset])
@@ -560,7 +561,8 @@ class Env(BaseEnv):
     self._curr_obj = obj_val
 
   def reset(self):
-    milp, sol, obj = self._sample()
+    if self._n_resets % self._sample_every_n_resets == 0:
+      milp, sol, obj = self._sample()
     self.milp = milp
     self._init_ds(milp)
     self._init_features()
@@ -577,6 +579,7 @@ class Env(BaseEnv):
       self._static_graph_features = self._encode_static_graph_features()
     elif self.config.make_obs_for_bipartite_graphnet:
       self._static_graph_features = self._encode_static_bipartite_graph_features()
+    self._n_resets += 1
     return restart(self._observation())
 
   def reset_solution(self, sol, obj_val):

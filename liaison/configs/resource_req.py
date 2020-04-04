@@ -21,16 +21,12 @@ def get_config():
   config.actor.mem = 0
   config.actor.gpu_compute = []
   config.actor.gpu_mem = []
-  # config.actor.gpu_compute = [.1]
-  # config.actor.gpu_mem = [8]
 
-  config.actor_bundle = ConfigDict()
-  config.actor_bundle.cpu = 32
-  config.actor_bundle.cpu = 0
-  config.actor_bundle.gpu_compute = []
-  config.actor_bundle.gpu_mem = []
-  config.actor_bundle.gpu_compute = [1]
-  config.actor_bundle.gpu_mem = [8.]
+  config.bundled_actor = ConfigDict()
+  config.bundled_actor.cpu = 32
+  config.bundled_actor.mem = 0
+  config.bundled_actor.gpu_compute = [1]
+  config.bundled_actor.gpu_mem = [11]
 
   config.evaluator = ConfigDict()
   config.evaluator.cpu = 1

@@ -25,16 +25,17 @@ def build_program(exp,
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
-  irs.set_hard_placement('cloudlab_clemson_clnode_0')
+  IRS_SERVER = 'cloudlab_clemson_clnode_0'
+  irs.set_hard_placement(IRS_SERVER)
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement('cloudlab_clemson_clnode_0')
+    visualizers.set_hard_placement(IRS_SERVER)
   else:
     visualizers = None
 
   actors = []
   if bundle_actors:
-    actors.append(exp.new_process('actor_bundle'))
+    actors.append(exp.new_process('bundled_actor'))
   else:
     actor_pg = exp.new_process_group('actor-*')
     for i in range(n_actors):
@@ -58,15 +59,12 @@ def build_program(exp,
     if proc:
       proc.set_costs(**get_fuzzy_match(res_req_config, proc.name))
 
+  # define coloc_constraints
+  coloc_constraints = ['learner;ps;replay_worker-0']
+  return coloc_constraints
 
-def setup_network(*,
-                  actors,
-                  ps,
-                  replay,
-                  learner,
-                  evaluator=None,
-                  visualizers=None,
-                  irs=None):
+
+def setup_network(*, actors, ps, replay, learner, evaluator=None, visualizers=None, irs=None):
   """
     Sets up the communication between surreal
     components using symphony
