@@ -3,9 +3,7 @@ import tensorflow as tf
 
 
 def sample_from_logits(logits, seed):
-  return tf.squeeze(tf.random.categorical(logits, 1, dtype=tf.int32,
-                                          seed=seed),
-                    axis=-1)
+  return tf.squeeze(tf.random.categorical(logits, 1, dtype=tf.int32, seed=seed), axis=-1)
 
 
 def compute_entropy(logits):
@@ -82,11 +80,9 @@ def get_decay_ops(init_val,
 
   def f2():
     if dec_approach == 'exponential':
-      return tf.train.exponential_decay(init_val, val_gstep, decay_steps,
-                                        dec_val)
+      return tf.train.exponential_decay(init_val, val_gstep, decay_steps, dec_val)
     elif dec_approach == 'linear':
-      return tf.train.polynomial_decay(init_val, val_gstep, decay_steps,
-                                       min_val)
+      return tf.train.polynomial_decay(init_val, val_gstep, decay_steps, min_val)
     elif dec_approach == 'constant':
       return tf.constant(init_val)
     else:
@@ -127,18 +123,18 @@ def flatten_graphs(graph_features):
   edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
 
   senders = tf.gather_nd(params=graph_features.senders, indices=edge_indices)
-  receivers = tf.gather_nd(params=graph_features.receivers,
-                           indices=edge_indices)
+  receivers = tf.gather_nd(params=graph_features.receivers, indices=edge_indices)
   cumsum = gn.utils_tf.gpu_cumsum(graph_features.n_node, exclusive=True)
   offsets = gn.utils_tf.repeat(cumsum, graph_features.n_edge)
   senders += offsets
   receivers += offsets
 
-  graph_features = graph_features.replace(
-      nodes=tf.gather_nd(params=graph_features.nodes, indices=node_indices),
-      edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
-      senders=senders,
-      receivers=receivers)
+  graph_features = graph_features.replace(nodes=tf.gather_nd(params=graph_features.nodes,
+                                                             indices=node_indices),
+                                          edges=tf.gather_nd(params=graph_features.edges,
+                                                             indices=edge_indices),
+                                          senders=senders,
+                                          receivers=receivers)
   return gn.utils_tf.stop_gradient(graph_features)
 
 
@@ -169,30 +165,30 @@ def flatten_bipartite_graphs(graph_features):
       graph_features.n_edge   => [B]
       graph_features.globals  => [B, ...]
   """
-  left_indices = gn.utils_tf.sparse_to_dense_indices(
-      graph_features.n_left_nodes)
-  right_indices = gn.utils_tf.sparse_to_dense_indices(
-      graph_features.n_right_nodes)
-  edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
+  left_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_left_nodes)
+  right_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_right_nodes)
 
-  senders = tf.gather_nd(params=graph_features.senders, indices=edge_indices)
-  receivers = tf.gather_nd(params=graph_features.receivers,
-                           indices=edge_indices)
-  senders += gn.utils_tf.repeat(
-      gn.utils_tf.gpu_cumsum(graph_features.n_left_nodes, exclusive=True),
-      graph_features.n_edge)
-  receivers += gn.utils_tf.repeat(
-      gn.utils_tf.gpu_cumsum(graph_features.n_right_nodes, exclusive=True),
-      graph_features.n_edge)
+  def f(graph, fields_to_stop):
+    return graph.map(tf.stop_gradient, fields_to_stop)
 
-  graph_features = graph_features.replace(
-      left_nodes=tf.gather_nd(params=graph_features.left_nodes,
-                              indices=left_indices),
-      right_nodes=tf.gather_nd(params=graph_features.right_nodes,
-                               indices=right_indices),
-      edges=tf.gather_nd(params=graph_features.edges, indices=edge_indices),
-      senders=senders,
-      receivers=receivers)
+  if graph_features.edges is not None:
+    edge_indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_edge)
+    senders = tf.gather_nd(params=graph_features.senders, indices=edge_indices)
+    receivers = tf.gather_nd(params=graph_features.receivers, indices=edge_indices)
+    senders += gn.utils_tf.repeat(
+        gn.utils_tf.gpu_cumsum(graph_features.n_left_nodes, exclusive=True), graph_features.n_edge)
+    receivers += gn.utils_tf.repeat(
+        gn.utils_tf.gpu_cumsum(graph_features.n_right_nodes, exclusive=True),
+        graph_features.n_edge)
+    graph_features = graph_features.replace(edges=tf.gather_nd(params=graph_features.edges,
+                                                               indices=edge_indices),
+                                            senders=senders,
+                                            receivers=receivers)
+    graph_features = f(graph_features, ['edges'])
 
-  with tf.name_scope('stop_gradient'):
-    return graph_features.map(tf.stop_gradient)
+  graph_features = graph_features.replace(left_nodes=tf.gather_nd(params=graph_features.left_nodes,
+                                                                  indices=left_indices),
+                                          right_nodes=tf.gather_nd(
+                                              params=graph_features.right_nodes,
+                                              indices=right_indices))
+  return f(graph_features, ['left_nodes', 'right_nodes', 'globals'])

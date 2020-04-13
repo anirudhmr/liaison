@@ -3,7 +3,7 @@ import os
 import pdb
 
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm, trange
 
 import liaison.utils as U
 import tensorflow as tf
@@ -143,10 +143,10 @@ def get_agent_config():
 
   config.model = ConfigDict()
   config.model.class_path = 'liaison.agents.models.transformer_auto_regressive'
-  config.model.num_blocks = 1
-  config.model.d_ff = 16
-  config.model.num_heads = 1
-  config.model.d_model = 32
+  config.model.num_blocks = 4
+  config.model.d_ff = 32
+  config.model.num_heads = 4
+  config.model.d_model = 64
   config.model.dropout_rate = 0.
   config.model.use_mlp_value_func = False
 
@@ -154,12 +154,12 @@ def get_agent_config():
   # Propagate any changes made as needed.
   config.model.model_kwargs = ConfigDict()
   config.model.model_kwargs.class_path = "liaison.agents.models.bipartite_gcn_rins"
-  config.model.model_kwargs.n_prop_layers = 1
+  config.model.model_kwargs.n_prop_layers = 4
   config.model.model_kwargs.edge_embed_dim = 16
-  config.model.model_kwargs.node_embed_dim = 16
-  config.model.model_kwargs.global_embed_dim = 16
-  config.model.model_kwargs.node_hidden_layer_sizes = [16]
-  config.model.model_kwargs.edge_hidden_layer_sizes = [16]
+  config.model.model_kwargs.node_embed_dim = 32
+  config.model.model_kwargs.global_embed_dim = 32
+  config.model.model_kwargs.node_hidden_layer_sizes = [16, 16]
+  config.model.model_kwargs.edge_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.policy_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.value_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.policy_summarize_hidden_layer_sizes = [16]
@@ -167,6 +167,8 @@ def get_agent_config():
   config.model.model_kwargs.supervised_prediction_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.sum_aggregation = False
   config.model.model_kwargs.use_layer_norm = True
+  config.model.model_kwargs.apply_gradient_to_graphnet_every = 1
+  config.model.model_kwargs.memory_hack = False
 
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0
@@ -186,6 +188,9 @@ def get_agent_config():
   # applicable for agent 'liaison.agents.gcn_large_batch'
   config.apply_grads_every = 1
   config.log_features_every = 0
+
+  config.freeze_graphnet_weights_step = 50 + 10
+
   return config
 
 
@@ -281,9 +286,17 @@ class VtraceAgentTest(absltest.TestCase):
     print('Starting....')
     print('***************')
 
-    for i in tqdm(range(100)):
+    update_times = []
+    N = 100
+    for _ in range(10):
       learner.update(batch)
+    for i in trange(N):
+      with U.Timer() as timer:
+        learner.update(batch)
+      update_times.append(timer.to_seconds())
 
+    print(f'\nPer update step time taken (First half): {np.mean(update_times[:N // 2])}')
+    print(f'Per update step time taken (Second half): {np.mean(update_times[N // 2:])}')
     print('Test complete!')
 
 

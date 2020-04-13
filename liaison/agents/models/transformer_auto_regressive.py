@@ -53,6 +53,40 @@ class Model:
   def compute_graph_embeddings(self, obs):
     return self._gcn_model.compute_graph_embeddings(obs)
 
+  def pack_graph_embeddings(self, graph_features, ge):
+    # Pack graph embeddings to be transported from actors to learners.
+    # For now we only handle BipartiteGraphs
+    if set(graph_features.keys()) != set(gn.graphs.BipartiteGraphsTuple._fields):
+      raise Exception(f'Not handled {graph_features.keys()}')
+
+    graph_features = gn.graphs.BipartiteGraphsTuple(**graph_features)
+
+    left_nodes = tf.scatter_nd(
+        gn.utils_tf.sparse_to_dense_indices(ge.n_left_nodes), ge.left_nodes,
+        infer_shape(graph_features.left_nodes)[:2] + [infer_shape(ge.left_nodes)[-1]])
+
+    right_nodes = tf.scatter_nd(
+        gn.utils_tf.sparse_to_dense_indices(ge.n_right_nodes), ge.right_nodes,
+        infer_shape(graph_features.right_nodes)[:2] + [infer_shape(ge.right_nodes)[-1]])
+
+    bs = infer_shape(graph_features.left_nodes)[0]
+    dummy_tensor = lambda: tf.fill(tf.expand_dims(bs, 0), 0)
+    return gn.graphs.BipartiteGraphsTuple(
+        left_nodes=left_nodes,
+        right_nodes=right_nodes,
+        globals=ge.globals,
+        n_left_nodes=ge.n_left_nodes,
+        n_right_nodes=ge.n_right_nodes,
+        # edges is dummy tensor -- not used
+        edges=tf.expand_dims(tf.expand_dims(dummy_tensor(), -1), -1),
+        senders=dummy_tensor(),
+        receivers=dummy_tensor(),
+        n_edge=dummy_tensor(),
+    )
+
+  def get_node_embeddings(self, obs, ge):
+    return self._gcn_model.get_node_embeddings(obs, ge)
+
   def get_actions(self,
                   graph_embeddings,
                   obs,
@@ -69,7 +103,7 @@ class Model:
                     decoding phase.
         action_mask: Masks where the previous action has taken place.
     """
-    xs, n_node = self._gcn_model.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
+    xs, n_node = self.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
     node_mask = tf.reshape(obs['node_mask'], infer_shape(xs)[:-1])
     node_mask = tf.cast(node_mask, tf.bool)
     n_actions = tf.reshape(obs['n_actions'], (infer_shape(xs)[0], ))
@@ -191,6 +225,13 @@ class Model:
 
     # Finally logits -> (N, T2, T1)
     # Finally actions -> (N, T2)
+    # now pad actions -> (N, max_k) and logits -> (N, max_k, T1)
+    pad_d = obs['max_k'][0] - infer_shape(logits)[1]
+    logits = tf.pad(logits, ([0, 0], [0, pad_d], [0, 0]))
+
+    pad_d = obs['max_k'][0] - infer_shape(actions)[1]
+    actions = tf.pad(actions, ([0, 0], [0, pad_d]))
+
     if log_features:
       return logits, actions, log_features
     return logits, actions
@@ -243,7 +284,7 @@ class Model:
   def get_value(self, graph_embeddings, obs):
     # Give this the optimal solution as well in the inputs?
     if self.config.use_mlp_value_func:
-      xs, _ = self._gcn_model.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
+      xs, _ = self.get_node_embeddings(obs, graph_embeddings)  # (N, L1, d)
       xs = tf.reshape(xs, [infer_shape(xs)[0], -1])
 
       with tf.variable_scope('value_network'):

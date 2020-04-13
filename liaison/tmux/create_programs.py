@@ -25,7 +25,7 @@ def build_program(exp,
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
-  IRS_SERVER = 'cloudlab_clemson_clnode_0'
+  IRS_SERVER = 'cloudlab_clemson_clgpu006'
   irs.set_hard_placement(IRS_SERVER)
   if with_visualizers:
     visualizers = exp.new_process('visualizers')

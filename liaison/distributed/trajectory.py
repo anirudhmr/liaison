@@ -1,11 +1,11 @@
 """Define trajectory class to keep track of what's being shipped to replay."""
 
-from __future__ import absolute_import, division, print_function
-
 import copy
 import functools
+import pdb
 
 import numpy as np
+
 from liaison.agents import StepOutput
 from liaison.specs import ArraySpec, BoundedArraySpec
 from tensorflow.contrib.framework import nest
@@ -36,31 +36,31 @@ class Trajectory(object):
   ):
     self._trajs = None
     # Don't use shape in the spec since it's unknown
-    self._traj_spec = dict(
-        step_type=ArraySpec(dtype=np.int8,
-                            shape=(None, None),
-                            name='traj_step_type_spec'),
-        reward=ArraySpec(dtype=np.float32,
-                         shape=(None, None),
-                         name='traj_reward_spec'),
-        discount=ArraySpec(dtype=np.float32,
-                           shape=(None, None),
-                           name='traj_discount_spec'),
-        observation=nest.map_structure(expand_spec, obs_spec),
-        step_output=nest.map_structure(expand_spec, step_output_spec))
+    self._traj_spec = dict(step_type=ArraySpec(dtype=np.int8,
+                                               shape=(None, None),
+                                               name='traj_step_type_spec'),
+                           reward=ArraySpec(dtype=np.float32,
+                                            shape=(None, None),
+                                            name='traj_reward_spec'),
+                           discount=ArraySpec(dtype=np.float32,
+                                              shape=(None, None),
+                                              name='traj_discount_spec'),
+                           observation=nest.map_structure(expand_spec, obs_spec),
+                           step_output=nest.map_structure(expand_spec, step_output_spec))
 
   def start(self, step_type, reward, discount, observation, next_state):
-    self.add(step_type, reward, discount, observation,
-             StepOutput(next_state=next_state, action=None, logits=None))
+    step_output = nest.map_structure(lambda *_: None, self._traj_spec['step_output'])
+    step_output.update(next_state=next_state)
+    self.add(step_type, reward, discount, observation, step_output)
 
   def add(self, step_type, reward, discount, observation, step_output):
-
-    traj = dict(step_type=step_type,
-                reward=reward,
-                discount=discount,
-                observation=observation,
-                step_output=step_output._asdict() if isinstance(
-                    step_output, StepOutput) else step_output)
+    traj = dict(
+        step_type=step_type,
+        reward=reward,
+        discount=discount,
+        observation=observation,
+        step_output=dict(
+            **step_output._asdict()) if isinstance(step_output, StepOutput) else step_output)
     self._trajs.append(traj)
 
   def reset(self):
@@ -103,10 +103,7 @@ class Trajectory(object):
       d = nest.map_structure_up_to(traj_spec, f, traj)
 
       # determine the batch size
-      lens = [
-          len(v) for v in filter(lambda k: k is not None,
-                                 nest.flatten_up_to(traj_spec, d))
-      ]
+      lens = [len(v) for v in filter(lambda k: k is not None, nest.flatten_up_to(traj_spec, d))]
       bs = lens[0]
       assert all(x == bs for x in lens)
 
@@ -117,12 +114,9 @@ class Trajectory(object):
 
       for i in range(bs):
         l[i].append(
-            nest.pack_sequence_as(
-                traj_spec, list(map(lambda k: k if k is None else k[i], d))))
+            nest.pack_sequence_as(traj_spec, list(map(lambda k: k if k is None else k[i], d))))
 
-    return list(
-        map(functools.partial(Trajectory._stack, traj_spec=self._traj_spec),
-            l))
+    return list(map(functools.partial(Trajectory._stack, traj_spec=self._traj_spec), l))
 
   @staticmethod
   def batch(trajs, traj_spec):
@@ -146,10 +140,7 @@ class Trajectory(object):
     """Fills in the missing shape fields of the traj spec."""
 
     # All keys starting with following should get traj_length first dimension
-    t_plus_one = [
-        'step_type', 'reward', 'discount', 'observation',
-        'step_output/next_state'
-    ]
+    t_plus_one = ['step_type', 'reward', 'discount', 'observation', 'step_output/next_state']
     t = ['step_output/action', 'step_output/logits']
 
     def f(path, v):

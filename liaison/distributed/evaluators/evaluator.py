@@ -9,6 +9,7 @@ from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
+
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.env import StepType
@@ -76,17 +77,15 @@ class Evaluator:
     self._run_loop()
     t.join()
 
-  def _collect_heuristics(self, env_class, env_configs, seed,
-                          heuristic_loggers):
+  def _collect_heuristics(self, env_class, env_configs, seed, heuristic_loggers):
 
     def f(i):
       """Run in parallel process."""
       config = copy.deepcopy(env_configs[i])
       config.update(lp_features=False, seed=seed, make_obs_for_mlp=False)
       env = env_class(id=i, **config)
-      return heuristic_run(
-          'random', env.k, self._n_trials,
-          [seed + i * self._n_trials + j for j in range(self._n_trials)], env)
+      return heuristic_run('random', env.k, self._n_trials,
+                           [seed + i * self._n_trials + j for j in range(self._n_trials)], env)
 
     with ThreadPool(8) as pool:
       l = pool.map(f, list(range(len(env_configs))))
@@ -99,8 +98,7 @@ class Evaluator:
       l[i] = nest.map_structure(lambda *l: np.stack(l), *l[i])
 
     # final output is (num_trials, num_envs, n_local_moves)
-    log_values = nest.map_structure(lambda *l: np.swapaxes(np.stack(l), 0, 1),
-                                    *l)
+    log_values = nest.map_structure(lambda *l: np.swapaxes(np.stack(l), 0, 1), *l)
     for logger in heuristic_loggers:
       logger.write(log_values)
 
@@ -122,7 +120,7 @@ class Evaluator:
         env_mask = np.ones(self.batch_size, dtype=bool)
 
         ts = self._env.reset()
-        log_values = [[] for _ in range(len(env_mask))]
+        log_values = [[] for _ in range(self.batch_size)]
         first_step = True
 
         while np.any(env_mask):
@@ -133,10 +131,8 @@ class Evaluator:
             else:
               globals_ = obs['globals']
 
-            if mask and (globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP]
-                         or first_step):
-              d = nest.map_structure(lambda v: v[i],
-                                     obs['curr_episode_log_values'])
+            if mask and (globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP] or first_step):
+              d = nest.map_structure(lambda v: v[i], obs['curr_episode_log_values'])
               d.update(
                   rew=ts.reward[i],
                   optimal_solution=obs['optimal_solution'][i],
@@ -157,10 +153,8 @@ class Evaluator:
 
         # done with all the local moves
         for i, _ in enumerate(log_values):
-          log_values[i] = nest.map_structure(lambda *l: np.stack(l),
-                                             *log_values[i])
-        eval_log_values.append(
-            nest.map_structure(lambda *l: np.stack(l), *log_values))
+          log_values[i] = nest.map_structure(lambda *l: np.stack(l), *log_values[i])
+        eval_log_values.append(nest.map_structure(lambda *l: np.stack(l), *log_values))
 
       # log_values[i] -> For the ith environment log values where each value
       # has a dimension (n_trials, n_envs) + added at its forefront.

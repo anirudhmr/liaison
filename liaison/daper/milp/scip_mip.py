@@ -69,10 +69,18 @@ class SCIPMIPInstance:
     fixed_model_varname2var = {v.name.lstrip('t_'): v for v in fixed_model_vars}
 
     # fix the upper and lower bounds for the variables.
-    for v, val in fixed_ass.items():
-      var = fixed_model_varname2var[v]
-      fixed_model.chgVarLbGlobal(var, val - EPSILON)
-      fixed_model.chgVarUbGlobal(var, val + EPSILON)
+    for v, var in self.varname2var.items():
+      if v in fixed_ass:
+        val = fixed_ass[v]
+        fixed_model.chgVarLbGlobal(fixed_model_varname2var[v], val - EPSILON)
+        fixed_model.chgVarUbGlobal(fixed_model_varname2var[v], val + EPSILON)
+      else:
+        # restore to the original -- needed when reusing submip model.
+        l, u = self.model.getLbOriginal(), self.model.getUbOriginal()
+        if fixed_model.getLbOriginal() != l:
+          fixed_model.chgVarLbGlobal(fixed_model_varname2var[v], l - EPSILON)
+        if fixed_model.getUbOriginal() != u:
+          fixed_model.chgVarUbGlobal(fixed_model_varname2var[v], u + EPSILON)
 
     if relax_integral_constraints:
       for v in fixed_model.getVars():

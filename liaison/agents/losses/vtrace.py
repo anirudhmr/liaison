@@ -159,7 +159,6 @@ class MultiActionLoss(Loss):
 
       behaviour_action_log_probs = -tf.nn.sparse_softmax_cross_entropy_with_logits(
           logits=behavior_logits, labels=actions)
-
       if action_mask is not None:
         behaviour_action_log_probs = tf.reduce_sum(behaviour_action_log_probs * action_mask, -1)
       else:

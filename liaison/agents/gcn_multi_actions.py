@@ -1,4 +1,5 @@
-# Multi-dimensional action space.
+import pdb
+
 import graph_nets as gn
 import tensorflow as tf
 import tree as nest
@@ -50,10 +51,14 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       # flatten graph features for the policy network
       # convert dict to graphstuple
+      pack_as_structure = dict(**obs['graph_features'])
       obs['graph_features'] = self._process_graph_features(obs['graph_features'])
-      logitss, actions = self._model.get_actions(self._model.compute_graph_embeddings(obs), obs)
-
-      return StepOutput(actions, logitss, self._model.dummy_state(infer_shape(step_type)[0]))
+      ge = self._model.compute_graph_embeddings(obs)
+      logitss, actions = self._model.get_actions(ge, obs)
+      # pack by padding to the max nodes.
+      packed_ge = self._model.pack_graph_embeddings(pack_as_structure, ge)
+      return StepOutput(actions, logitss, self._model.dummy_state(infer_shape(step_type)[0]),
+                        dict(**packed_ge._asdict()))
 
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
@@ -85,11 +90,11 @@ class Agent(BaseAgent):
       observations: [T + 1, B, ...] of env observations.
       discounts: [T + 1, B] of discount values at each step.
     """
-
     self._validate_observations(observations)
     config = self.config
     behavior_logits = step_outputs.logits  # [T, B, T2, T1]
     actions = step_outputs.action  # [T, B, T2]
+    packed_ge = dict(**step_outputs.graph_embeddings)  # [T, B, ...]
 
     with tf.variable_scope(self._name):
       t_dim = infer_shape(step_types)[0] - 1
@@ -103,9 +108,25 @@ class Agent(BaseAgent):
         flattened_observations['graph_features'] = self._process_graph_features(
             flattened_observations['graph_features'])
 
-      # compute graph_embeddings
-      graph_embeddings = self._model.compute_graph_embeddings(flattened_observations)
+      with tf.variable_scope('unpack_graph_embeddings'):
+        packed_ge = nest.map_structure(merge_first_two_dims, packed_ge)
+        packed_ge['edges'] = None
+        packed_ge = self._process_graph_features(packed_ge)
+        packed_ge = packed_ge.replace(edges=tf.fill(tf.expand_dims(bs_dim, 0), 0.))
 
+      def f(graph):
+        graph_dict = graph._asdict()
+        for k in ['n_left_nodes', 'n_right_nodes', 'n_node', 'globals']:
+          if k in graph_dict:
+            graph = graph.replace(**{k: graph_dict[k][:t_dim * bs_dim]})
+        return graph
+
+      # compute graph_embeddings or load from cache
+      graph_embeddings = tf.cond(
+          self._global_step < config.freeze_graphnet_weights_step,
+          lambda: f(self._model.compute_graph_embeddings(flattened_observations)),
+          lambda: packed_ge,
+      )
       # get logits
       # target_logits -> [T * B, ...]
       target_logits, _, self._logged_features = self._model.get_actions(graph_embeddings,
@@ -127,14 +148,20 @@ class Agent(BaseAgent):
         raise Exception('Not supported just yet!')
 
       with tf.variable_scope('loss'):
-        values = tf.reshape(values, [t_dim + 1, bs_dim])
         # bug in previous versions.
         # Note that the bootstrap value has to be according to the target policy.
         # Hence it cannot be computed from the actor's policy.
         # if 'bootstrap_value' in observations:
         #   bootstrap_value = observations['bootstrap_value'][-1]
         # else:
-        bootstrap_value = values[-1]
+        last_obs = nest.map_structure(lambda v: v[-1], observations)
+        last_obs['graph_features'] = self._process_graph_features(last_obs['graph_features'])
+        ge = self._model.compute_graph_embeddings(last_obs)
+        ge = tf.cond(self._global_step < config.freeze_graphnet_weights_step, lambda: ge,
+                     lambda: ge.map(tf.stop_gradient))
+        bootstrap_value = self._model.get_value(ge, last_obs)
+        values = tf.concat([values, bootstrap_value], axis=0)
+        values = tf.reshape(values, [t_dim + 1, bs_dim])
 
         # Ex: convert [1, 2] -> [[1,0], [1, 1]]
         actions_flattened = tf.reshape(actions, [t_dim * bs_dim, infer_shape(actions)[-1]])
@@ -175,6 +202,10 @@ class Agent(BaseAgent):
           """Computes the valid mean stat."""
           return tf.reduce_sum(tf.boolean_mask(x, valid_mask)) / n_valid_steps
 
+        def f2(x):
+          y = tf.cast(action_mask, x.dtype)
+          return tf.reduce_sum(y * x, -1) / tf.reduce_sum(y, -1)
+
         # TODO: Add histogram summaries
         # https://github.com/google-research/batch-ppo/blob/master/agents/algorithms/ppo/utility.py
         self._logged_values = {
@@ -184,17 +215,16 @@ class Agent(BaseAgent):
                 tf.reduce_mean(
                     compute_entropy(tf.cast(tf.greater(target_logits, -1e8), tf.float32)), -1)),
             'entropy/target_policy_entropy':
-            f(tf.reduce_mean(compute_entropy(target_logits), -1)),
+            f(f2(compute_entropy(target_logits))),
             'entropy/behavior_policy_entropy':
-            f(tf.reduce_mean(compute_entropy(behavior_logits), -1)),
+            f(f2(compute_entropy(behavior_logits))),
             'entropy/is_ratio':
             f(
-                tf.reduce_mean(
+                f2(
                     tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
                                                                            logits=target_logits) +
-                           tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
-                                                                          logits=behavior_logits)),
-                    -1)),
+                           tf.nn.sparse_softmax_cross_entropy_with_logits(
+                               labels=actions, logits=behavior_logits)))),
             # rewards
             'reward/avg_reward':
             f(rewards[1:]),

@@ -122,7 +122,7 @@ class Actor:
     if hasattr(self, 'send_exp_queue'):
       q = self.send_exp_queue
     else:
-      q = self.send_exp_queue = Queue(20)
+      q = self.send_exp_queue = Queue(10)
 
       def f():
         while True:

@@ -134,7 +134,8 @@ class Env(RINSEnv):
     if self._reset_next_step:
       return self.reset()
 
-    assert len(action) == self.k
+    assert len(action) == self.max_k
+    action = action[:self.k]
 
     self._n_steps += 1
     milp = self.milp

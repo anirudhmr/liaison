@@ -31,7 +31,7 @@ parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail', 'cloudlab_clemson_clnode_0'],
+    default=['os_csail', 'cloudlab_clemson_clgpu006'],
     help='These nodes are always selected irrespective of the filter_nodes_regex specified.')
 # placement constraints
 parser.add_argument('--pl_constraints',

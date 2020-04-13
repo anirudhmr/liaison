@@ -23,11 +23,9 @@ def get_config():
   config.model.model_kwargs = ConfigDict()
   config.model.model_kwargs.class_path = "liaison.agents.models.bipartite_gcn_rins"
   config.model.model_kwargs.n_prop_layers = 4
-  config.model.model_kwargs.edge_embed_dim = 16
-  config.model.model_kwargs.node_embed_dim = 16
-  config.model.model_kwargs.global_embed_dim = 16
-  config.model.model_kwargs.node_hidden_layer_sizes = [16]
-  config.model.model_kwargs.edge_hidden_layer_sizes = [16]
+  config.model.model_kwargs.edge_embed_dim = 32
+  config.model.model_kwargs.node_embed_dim = 32
+  config.model.model_kwargs.global_embed_dim = 32
   config.model.model_kwargs.policy_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.value_torso_hidden_layer_sizes = [16, 16]
   config.model.model_kwargs.policy_summarize_hidden_layer_sizes = [16]
@@ -55,5 +53,6 @@ def get_config():
   config.apply_grads_every = 1
 
   config.log_features_every = -1  # disable
+  config.freeze_graphnet_weights_step = int(1e9)
 
   return config

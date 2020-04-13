@@ -4,12 +4,11 @@ import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
+import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
-import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -119,6 +118,10 @@ class Env(BaseEnv):
     self.config = ConfigDict(env_config)
     self.id = id
     self.k = k
+    if self.config.k_schedule.enable:
+      self.max_k = max(self.config.k_schedule.values)
+    else:
+      self.max_k = k
     self.max_local_moves = n_local_moves
     self.seed = seed
     self._max_nodes = max_nodes
@@ -157,13 +160,14 @@ class Env(BaseEnv):
     config = self.config
     graph_start_idx = self._graph_start_idx
 
-    if config.starting_sol_schedule.enable or config.dataset_schedule.enable:
+    if config.starting_sol_schedule.enable or config.dataset_schedule.enable or config.k_schedule.enable or config.n_local_move_schedule.enable:
       if self._global_step_fetcher is None:
         raise Exception('step fetcher not found!')
       step = self._global_step_fetcher.get()
     else:
       return None
 
+    # Schedule for the dataset
     if config.dataset_schedule.enable:
       self._dataset = config.dataset_schedule.datasets[0]
       for i, s in enumerate(config.dataset_schedule.start_steps):
@@ -178,7 +182,7 @@ class Env(BaseEnv):
 
     starting_sol = None
     starting_obj = None
-    # First find the starting_solution
+    # Schedule for starting solution's hamming distance
     if config.starting_sol_schedule.enable:
       hamming_dist = linear_interpolate_inc(step, config.starting_sol_schedule.start_step,
                                             config.starting_sol_schedule.dec_steps,
@@ -192,12 +196,14 @@ class Env(BaseEnv):
         if d >= hamming_dist:
           break
 
+    # Schedule for k
     if config.k_schedule.enable:
       self.k = config.k_schedule.values[0]
       for i, s in enumerate(config.k_schedule.start_steps):
         if step >= s:
           self.k = config.k_schedule.values[i + 1]
 
+    # Schedule for the # local moves
     if config.n_local_move_schedule.enable:
       self.max_local_moves = linear_interpolate_inc(
           step,
@@ -206,10 +212,6 @@ class Env(BaseEnv):
           config.n_local_move_schedule.start_value,
           config.n_local_move_schedule.max_value,
       )
-      for i, s in enumerate(config.k_schedule.start_steps):
-        if step >= s:
-          self.k = config.k_schedule.values[i + 1]
-
     return sample_idx, starting_sol, starting_obj
 
   def _sample(self, choice=None):
@@ -328,6 +330,7 @@ class Env(BaseEnv):
 
     obs = dict(
         **obs,
+        max_k=np.int32(self.max_k),
         n_local_moves=self._globals[Env.GLOBAL_N_LOCAL_MOVES],
         optimal_solution=pad_last_dim(self._optimal_soln, self._max_nodes),
         optimal_lp_solution=pad_last_dim(self._optimal_lp_soln, self._max_nodes),

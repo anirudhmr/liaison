@@ -3,16 +3,18 @@
 import collections
 import random  # set seed
 
-import liaison.utils as U
 import numpy as np  # set seed
 import six
+
+import liaison.utils as U
 import tensorflow as tf  # set seed
 import tree as nest
 from liaison.agents.utils import *
 
 # action, logits, next_state all have to be flat structures (list/nparrays/scalars.)
 StepOutput = collections.namedtuple('StepOutput',
-                                    ['action', 'logits', 'next_state'])
+                                    ['action', 'logits', 'next_state', 'graph_embeddings'])
+StepOutput.__new__.__defaults__ = (None, ) * len(StepOutput._fields)
 
 
 class Agent(object):
@@ -40,15 +42,13 @@ class Agent(object):
 
   def _lr_schedule(self):
     config = self.config
-    return get_decay_ops(config.lr_init, config.lr_min,
-                         config.lr_start_dec_step, config.lr_dec_steps,
-                         config.lr_dec_val, config.lr_dec_approach)
+    return get_decay_ops(config.lr_init, config.lr_min, config.lr_start_dec_step,
+                         config.lr_dec_steps, config.lr_dec_val, config.lr_dec_approach)
 
   def _get_entropy_regularization_constant(self):
     config = self.config
-    return get_decay_ops(config.ent_dec_init, config.ent_dec_min,
-                         config.ent_start_dec_step, config.ent_dec_steps,
-                         config.ent_dec_val, config.ent_dec_approach)
+    return get_decay_ops(config.ent_dec_init, config.ent_dec_min, config.ent_start_dec_step,
+                         config.ent_dec_steps, config.ent_dec_val, config.ent_dec_approach)
 
   def _init_optimizer(self, lr_op):
     config = self.config
@@ -74,9 +74,7 @@ class Agent(object):
     global_norm = tf.linalg.global_norm(grads, 'grad_norm')
     if config.grad_clip > 0:
       # clip_by_global_norm does t_list[i] <- t_list[i] * clip_norm / max(global_norm, clip_norm)
-      cli_grads, _ = tf.clip_by_global_norm(grads,
-                                            config.grad_clip,
-                                            name='clip_by_global_norm')
+      cli_grads, _ = tf.clip_by_global_norm(grads, config.grad_clip, name='clip_by_global_norm')
     else:
       cli_grads = grads
     clipped_grads_and_vars = list(zip(cli_grads, variables))
@@ -116,8 +114,7 @@ class Agent(object):
     Returns:
       tensor corresponding to the initial state of the agent.
     """
-    raise NotImplementedError(
-        "initial_state is not implemented by the agent. ")
+    raise NotImplementedError("initial_state is not implemented by the agent. ")
 
   def step(self, step_type, reward, obs, prev_state):
     """Step through and return an action.
@@ -138,8 +135,8 @@ class Agent(object):
       """
     raise NotImplementedError("Agent step function is not implemented.")
 
-  def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
-                       observations, discounts):
+  def build_update_ops(self, step_outputs, prev_states, step_types, rewards, observations,
+                       discounts):
     """Use trajectories collected to update the policy.
 
     This function will only be called once to create a TF graph which
@@ -155,8 +152,7 @@ class Agent(object):
       observations: [T + 1, B, ...] of env observations.
       discounts: [T + 1, B] of discount values at each step.
     """
-    raise NotImplementedError(
-        "Agent build_update_ops function is not implemented.")
+    raise NotImplementedError("Agent build_update_ops function is not implemented.")
 
   def step_preprocess(self, step_type, reward, obs, prev_state):
     """The batch that is fed to step is preprocessed using this function.
@@ -174,8 +170,8 @@ class Agent(object):
       return self._model.step_preprocess(step_type, reward, obs, prev_state)
     return step_type, reward, obs, prev_state
 
-  def update_preprocess(self, step_outputs, prev_states, step_types, rewards,
-                        observations, discounts):
+  def update_preprocess(self, step_outputs, prev_states, step_types, rewards, observations,
+                        discounts):
     """
     The batch that is fed to build_update_ops is preprocessed using this function
     first.
@@ -191,9 +187,8 @@ class Agent(object):
 
     # call model.update_preprocess if that method exists
     if callable(getattr(self._model, 'update_preprocess', None)):
-      return self._model.update_preprocess(step_outputs, prev_states,
-                                           step_types, rewards, observations,
-                                           discounts)
+      return self._model.update_preprocess(step_outputs, prev_states, step_types, rewards,
+                                           observations, discounts)
     return step_outputs, prev_states, step_types, rewards, observations, discounts
 
   def update(self, sess, feed_dict):
