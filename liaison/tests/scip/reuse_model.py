@@ -1,12 +1,11 @@
 import pickle
 
-import numpy as np
-from tqdm import tqdm
-
 import liaison.utils as U
+import numpy as np
 from absl import app
 from liaison.daper.milp.scip_mip import SCIPMIPInstance
 from liaison.env.utils.rins import get_sample
+from tqdm import tqdm
 
 EPSILON = 1e-3
 
@@ -31,6 +30,12 @@ def fix_and_solve(model, fixed_ass):
 
   fixed_model_vars = list(model.getVars(transformed=True))
   fixed_model_varname2var = {v.name.lstrip('t_'): v for v in fixed_model_vars}
+
+  # restore to the original -- needed when reusing submip model.
+  for v, var in fixed_model_varname2var.items():
+    l, u = var.getLbOriginal(), var.getUbOriginal()
+    model.chgVarLbGlobal(var, l - EPSILON)
+    model.chgVarUbGlobal(var, u + EPSILON)
 
   for v, val in fixed_ass.items():
     var = fixed_model_varname2var[v]

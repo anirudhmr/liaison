@@ -5,9 +5,8 @@ import copy
 import os
 import pickle
 
-import numpy as np
-
 import liaison.utils as U
+import numpy as np
 from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
                                              LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
@@ -205,7 +204,7 @@ class Env(RINSEnv):
     self._globals = globals_
     self._variable_nodes = variable_nodes
 
-    if self._n_steps == self.k * self.max_local_moves:
+    if self._n_steps == self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)

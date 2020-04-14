@@ -160,6 +160,7 @@ class Agent(BaseAgent):
         ge = tf.cond(self._global_step < config.freeze_graphnet_weights_step, lambda: ge,
                      lambda: ge.map(tf.stop_gradient))
         bootstrap_value = self._model.get_value(ge, last_obs)
+        bootstrap_value = tf.stop_gradient(bootstrap_value)
         values = tf.concat([values, bootstrap_value], axis=0)
         values = tf.reshape(values, [t_dim + 1, bs_dim])
 

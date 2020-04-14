@@ -24,6 +24,7 @@ class SCIPMIPInstance:
     model.presolve()
     self.vars = list(model.getVars(transformed=True))
     self.varname2var = {v.name: v for v in self.vars}
+    self.originalVarBounds = {v.name: (v.getLbGlobal(), v.getUbGlobal()) for v in self.vars}
     self.model = model
 
   @staticmethod
@@ -68,23 +69,22 @@ class SCIPMIPInstance:
     fixed_model_vars = list(fixed_model.getVars(transformed=True))
     fixed_model_varname2var = {v.name.lstrip('t_'): v for v in fixed_model_vars}
 
-    # fix the upper and lower bounds for the variables.
+    # reset all variable bounds to the original
     for v, var in self.varname2var.items():
-      if v in fixed_ass:
-        val = fixed_ass[v]
-        fixed_model.chgVarLbGlobal(fixed_model_varname2var[v], val - EPSILON)
-        fixed_model.chgVarUbGlobal(fixed_model_varname2var[v], val + EPSILON)
+      fixed_model_var = fixed_model_varname2var[v.lstrip('t_')]
+
+      if v.lstrip('t_') in fixed_ass:
+        l = u = fixed_ass[v.lstrip('t_')]
       else:
-        # restore to the original -- needed when reusing submip model.
-        l, u = self.model.getLbOriginal(), self.model.getUbOriginal()
-        if fixed_model.getLbOriginal() != l:
-          fixed_model.chgVarLbGlobal(fixed_model_varname2var[v], l - EPSILON)
-        if fixed_model.getUbOriginal() != u:
-          fixed_model.chgVarUbGlobal(fixed_model_varname2var[v], u + EPSILON)
+        l, u = self.originalVarBounds[v]
+
+      fixed_model.chgVarLbGlobal(fixed_model_var, l - EPSILON)
+      fixed_model.chgVarUbGlobal(fixed_model_var, u + EPSILON)
 
     if relax_integral_constraints:
       for v in fixed_model.getVars():
         fixed_model.chgVarType(v, 'CONTINUOUS')
+
     return fixed_model
 
   def get_feasible_solution(self):
