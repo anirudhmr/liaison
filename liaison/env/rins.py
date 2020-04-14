@@ -205,13 +205,14 @@ class Env(BaseEnv):
 
     # Schedule for the # local moves
     if config.n_local_move_schedule.enable:
-      self.max_local_moves = linear_interpolate_inc(
-          step,
-          config.n_local_move_schedule.start_step,
-          config.n_local_move_schedule.dec_steps,
-          config.n_local_move_schedule.start_value,
-          config.n_local_move_schedule.max_value,
-      )
+      self.max_local_moves = int(
+          linear_interpolate_inc(
+              step,
+              config.n_local_move_schedule.start_step,
+              config.n_local_move_schedule.dec_steps,
+              config.n_local_move_schedule.start_value,
+              config.n_local_move_schedule.max_value,
+          ))
     return sample_idx, starting_sol, starting_obj
 
   def _sample(self, choice=None):
