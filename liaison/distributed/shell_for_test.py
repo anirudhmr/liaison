@@ -114,3 +114,6 @@ class Shell:
       return ArraySpec(dtype=tensor.dtype.as_numpy_dtype, shape=tensor.shape, name=tensor.name)
 
     return dict(nest.map_structure(mk_spec, self._step_output)._asdict())
+
+  def sync(self):
+    pass

@@ -197,44 +197,49 @@ class Agent(BaseAgent):
 
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)), tf.float32)
 
-        def f(x):
-          """Computes the valid mean stat."""
-          return tf.reduce_sum(tf.boolean_mask(x, valid_mask)) / n_valid_steps
+        for statistic in ('mean', 'std'):
 
-        def f2(x):
-          y = tf.cast(action_mask, x.dtype)
-          return tf.reduce_sum(y * x, -1) / tf.reduce_sum(y, -1)
+          def f(x):
+            """Computes the valid mean stat."""
+            if statistic == 'mean':
+              return tf.reduce_mean(tf.boolean_mask(x, valid_mask))
+            else:
+              return tf.reduce_std(tf.boolean_mask(x, valid_mask))
 
-        # TODO: Add histogram summaries
-        # https://github.com/google-research/batch-ppo/blob/master/agents/algorithms/ppo/utility.py
-        self._logged_values = {
-            # entropy
-            'entropy/uniform_random_entropy':
-            f(
-                tf.reduce_mean(
-                    compute_entropy(tf.cast(tf.greater(target_logits, -1e8), tf.float32)), -1)),
-            'entropy/target_policy_entropy':
-            f(f2(compute_entropy(target_logits))),
-            'entropy/behavior_policy_entropy':
-            f(f2(compute_entropy(behavior_logits))),
-            'entropy/is_ratio':
-            f(
-                f2(
-                    tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
-                                                                           logits=target_logits) +
-                           tf.nn.sparse_softmax_cross_entropy_with_logits(
-                               labels=actions, logits=behavior_logits)))),
-            # rewards
-            'reward/avg_reward':
-            f(rewards[1:]),
-            'steps/total_steps':
-            tf.reduce_mean(self._total_steps),
-            **opt_vals,
-            **self._extract_logged_values(nest.map_structure(lambda k: k[:-1], observations), f),
-            **self.loss.logged_values
-        }
+          def f2(x):
+            y = tf.cast(action_mask, x.dtype)
+            return tf.reduce_sum(y * x, -1) / tf.reduce_sum(y, -1)
+
+          logged_values = {
+              # entropy
+              'entropy/uniform_random_entropy':
+              f(f2(compute_entropy(tf.cast(tf.greater(target_logits, -1e8), tf.float32)))),
+              'entropy/target_policy_entropy':
+              f(f2(compute_entropy(target_logits))),
+              'entropy/behavior_policy_entropy':
+              f(f2(compute_entropy(behavior_logits))),
+              'entropy/is_ratio':
+              f(
+                  f2(
+                      tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
+                          labels=actions, logits=target_logits) +
+                             tf.nn.sparse_softmax_cross_entropy_with_logits(
+                                 labels=actions, logits=behavior_logits)))),
+              # rewards
+              'reward/reward':
+              f(rewards[1:]),
+              **self._extract_logged_values(nest.map_structure(lambda k: k[:-1], observations), f),
+          }
+          if statistic == 'mean':
+            self._logged_values_mean = {
+                **logged_values,
+                'steps/total_steps': tf.reduce_mean(self._total_steps),
+                **self.loss.logged_values,
+                **opt_vals,
+            }
+          else:
+            self._logged_values_std = {**logged_values, **self.loss.logged_values_std}
 
   def _log_features(self, features, step):
     # feature_dict -> collected Feature
@@ -244,7 +249,7 @@ class Agent(BaseAgent):
 
   def update(self, sess, feed_dict, profile_kwargs):
     """profile_kwargs pass to sess.run for profiling purposes."""
-    ops = [self._logged_values]
+    ops = [self._logged_values_mean, self._logged_values_std]
     i = sess.run(self._global_step)
     log_features = False
     if self.config.log_features_every > 0:
@@ -252,8 +257,10 @@ class Agent(BaseAgent):
         ops += [self._logged_features]
         log_features = True
 
-    vals, *l = sess.run(ops + [self._train_op], feed_dict=feed_dict, **profile_kwargs)
+    mean_vals, var_vals, *l = sess.run(ops + [self._train_op],
+                                       feed_dict=feed_dict,
+                                       **profile_kwargs)
 
     if log_features:
       self._log_features(l[0], i)
-    return vals
+    return mean_vals, var_vals

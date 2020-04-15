@@ -9,7 +9,6 @@ from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
-
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.env import StepType
@@ -34,7 +33,6 @@ class Evaluator:
       loggers,
       heuristic_loggers,
       seed,
-      max_evaluations=int(1e6),
       n_trials=2,
       eval_sleep_time=15 * 60,
       batch_size=1,  # num_envs
@@ -44,38 +42,43 @@ class Evaluator:
     del unused_config
     self.batch_size = batch_size
     self._loggers = loggers
-    self.max_evaluations = max_evaluations
     self._n_trials = n_trials
     self._eval_sleep_time = eval_sleep_time
-    if use_parallel_envs:
-      self._env = ParallelBatchedEnv(batch_size,
-                                     env_class,
-                                     env_configs,
-                                     seed,
-                                     use_threads=use_threaded_envs)
-    else:
-      self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
-    self._action_spec = self._env.action_spec()
-    self._obs_spec = self._env.observation_spec()
 
-    if 'sync_period' in shell_config:
-      del shell_config['sync_period']
+    # Create environment.
+    def create_env():
+      if use_parallel_envs:
+        self._env = ParallelBatchedEnv(batch_size,
+                                       env_class,
+                                       env_configs,
+                                       seed,
+                                       use_threads=use_threaded_envs)
+      else:
+        self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
+      self._action_spec = self._env.action_spec()
+      self._obs_spec = self._env.observation_spec()
 
-    self._shell = shell_class(
-        action_spec=self._action_spec,
-        obs_spec=self._obs_spec,
-        batch_size=batch_size,
-        seed=seed,
-        sync_period=int(1e20),  # don't sync unless asked to do so explicitly.
-        **shell_config,
-    )
+    def create_shell():
+      if 'sync_period' in shell_config:
+        del shell_config['sync_period']
 
-    t = Thread(target=self._collect_heuristics,
-               args=(env_class, env_configs, seed, heuristic_loggers))
-    t.start()
-    # blocking call -- runs forever
-    self._run_loop()
-    t.join()
+      # create shell
+      self._shell = shell_class(
+          action_spec=self._action_spec,
+          obs_spec=self._obs_spec,
+          batch_size=batch_size,
+          seed=seed,
+          sync_period=int(1e20),  # don't sync unless asked to do so explicitly.
+          **shell_config,
+      )
+
+    def _get_heuristic_thread():
+      return Thread(target=self._collect_heuristics,
+                    args=(env_class, env_configs, seed, heuristic_loggers))
+
+    self.get_heuristic_thread = _get_heuristic_thread
+    create_env()
+    create_shell()
 
   def _collect_heuristics(self, env_class, env_configs, seed, heuristic_loggers):
 
@@ -84,8 +87,12 @@ class Evaluator:
       config = copy.deepcopy(env_configs[i])
       config.update(lp_features=False, seed=seed, make_obs_for_mlp=False)
       env = env_class(id=i, **config)
-      return heuristic_run('random', env.k, self._n_trials,
-                           [seed + i * self._n_trials + j for j in range(self._n_trials)], env)
+      return heuristic_run('random',
+                           env.k,
+                           self._n_trials,
+                           [seed + i * self._n_trials + j for j in range(self._n_trials)],
+                           env,
+                           muldi_actions=config.muldi_actions)
 
     with ThreadPool(8) as pool:
       l = pool.map(f, list(range(len(env_configs))))
@@ -102,9 +109,9 @@ class Evaluator:
     for logger in heuristic_loggers:
       logger.write(log_values)
 
-  def _run_loop(self):
+  def run_loop(self, n_evaluations):
     # performs n_evaluations before exiting
-    for eval_id in range(self.max_evaluations):
+    for eval_id in range(n_evaluations):
       self._shell.sync()
       print(f'Starting evaluation {eval_id}')
       # eval_log_values -> List[List[Dict[str, numeric]]]
@@ -120,27 +127,16 @@ class Evaluator:
         env_mask = np.ones(self.batch_size, dtype=bool)
 
         ts = self._env.reset()
-        log_values = [[] for _ in range(self.batch_size)]
-        first_step = True
+        log_values = []
 
         while np.any(env_mask):
           obs = ts.observation
-          for i, mask in enumerate(env_mask):
-            if 'graph_features' in obs:
-              globals_ = obs['graph_features']['globals']
-            else:
-              globals_ = obs['globals']
-
-            if mask and (globals_[i][Env.GLOBAL_LOCAL_SEARCH_STEP] or first_step):
-              d = nest.map_structure(lambda v: v[i], obs['curr_episode_log_values'])
-              d.update(
-                  rew=ts.reward[i],
-                  optimal_solution=obs['optimal_solution'][i],
-                  optimal_lp_solution=obs['optimal_lp_solution'][i],
-                  current_solution=obs['current_solution'][i],
-              )
-              log_values[i].append(d)
-              first_step = False
+          log_values.append(
+              dict(rew=ts.reward,
+                   optimal_solution=obs['optimal_solution'],
+                   current_solution=obs['current_solution'],
+                   step_type=ts.step_type,
+                   **obs['curr_episode_log_values']))
 
           for i in range(len(env_mask)):
             if ts.step_type[i] == StepType.LAST:
@@ -151,10 +147,10 @@ class Evaluator:
                                          observation=ts.observation)
           ts = self._env.step(step_output.action)
 
-        # done with all the local moves
-        for i, _ in enumerate(log_values):
-          log_values[i] = nest.map_structure(lambda *l: np.stack(l), *log_values[i])
-        eval_log_values.append(nest.map_structure(lambda *l: np.stack(l), *log_values))
+        # done with a trial
+        # stack all the timesteps.
+        # Result: (n_envs, T)
+        eval_log_values.append(nest.map_structure(lambda *l: np.stack(l, axis=1), *log_values))
 
       # log_values[i] -> For the ith environment log values where each value
       # has a dimension (n_trials, n_envs) + added at its forefront.
@@ -162,7 +158,7 @@ class Evaluator:
       for logger in self._loggers:
         logger.write(log_values)
 
-      if i != self.max_evaluations - 1:
+      if i != n_evaluations - 1:
         time.sleep(self._eval_sleep_time)
 
     print('Evaluator is done!!')

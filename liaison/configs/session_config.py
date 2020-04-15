@@ -21,6 +21,7 @@ def get_config():
   config.learner.profile_step = 5
   config.learner.restore_from = ''
   config.learner.compress_before_send = True
+  config.learner.log_variance = False
 
   config.actor = ConfigDict()
   config.actor.class_path = 'liaison.distributed.actor'

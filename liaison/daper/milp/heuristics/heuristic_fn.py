@@ -86,7 +86,7 @@ def choose_heuristic(heuristic):
     raise Exception(f'Unknown heuristic: {heuristic}')
 
 
-def run(heuristic, k, n_trials, seeds, env):
+def run(heuristic, k, n_trials, seeds, env, muldi_actions=False):
   assert len(seeds) == n_trials
 
   heuristic_fn = choose_heuristic(heuristic)
@@ -98,12 +98,16 @@ def run(heuristic, k, n_trials, seeds, env):
     log_vals[trial_i].append(dict(obs.curr_episode_log_values))
 
     while ts.step_type != StepType.LAST:
-      var_names = heuristic_fn(env._curr_soln, env.milp.mip, rng, k)
-      for i, var_name in enumerate(var_names):
-        act = env._var_names.index(var_name)
+      var_names = heuristic_fn(env.get_curr_soln(), env.milp.mip, rng, k)
+      if muldi_actions:
+        act = [env._var_names.index(var_name) for var_name in var_names]
         ts = env.step(act)
-        if i != len(var_names) - 1:
-          assert ts.step_type != StepType.LAST
+      else:
+        for i, var_name in enumerate(var_names):
+          act = env._var_names.index(var_name)
+          ts = env.step(act)
+          if i != len(var_names) - 1:
+            assert ts.step_type != StepType.LAST
       obs = ConfigDict(ts.observation)
       assert obs.graph_features.globals[Env.GLOBAL_LOCAL_SEARCH_STEP]
       log_vals[trial_i].append(dict(obs.curr_episode_log_values))

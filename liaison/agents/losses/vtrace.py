@@ -102,6 +102,10 @@ class Loss:
   def logged_values(self):
     return self._logged_values
 
+  @property
+  def logged_values_std(self):
+    return self._logged_values_std
+
 
 class MultiActionLoss(Loss):
 
@@ -188,23 +192,30 @@ class MultiActionLoss(Loss):
     # The policy gradients loss
     pi_loss = -tf.reduce_sum(
         tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages, valid_mask))
+    pi_loss_std = tf.reduce_std(
+        tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages, valid_mask))
 
     # The baseline loss
     delta = tf.boolean_mask(values - vtrace_returns.vs, valid_mask)
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+    vf_loss_std = 0.5 * tf.reduce_std(tf.square(delta))
 
     if action_mask is not None:
       # The entropy for valid actions
       ent = action_mask * compute_entropy(target_logits)
       entropy = tf.reduce_sum(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
+      entropy_std = tf.reduce_std(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
     else:
       entropy = tf.reduce_sum(
+          tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))
+      entropy_std = tf.reduce_std(
           tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))
 
     # The summed weighted loss
     total_loss = (pi_loss + vf_loss * vf_loss_coeff - entropy * entropy_coeff)
     # scale it for per step units.
     total_loss /= n_valid_steps
+    self.total_loss = total_loss
 
     def f(x):
       """Computes the valid mean stat."""
@@ -212,7 +223,7 @@ class MultiActionLoss(Loss):
 
     self._logged_values = {
         # loss
-        'loss/entropy_loss': -entropy * entropy_coeff / n_valid_steps,
+        'loss/entropy_loss': entropy * entropy_coeff / n_valid_steps,
         'loss/pg_loss': pi_loss / n_valid_steps,
         'loss/vf_loss': vf_loss * vf_loss_coeff / n_valid_steps,
         'loss/total_loss': total_loss,
@@ -220,4 +231,25 @@ class MultiActionLoss(Loss):
         'reward/advantage': f(vtrace_returns.pg_advantages),
         'reward/vtrace_returns': f(vtrace_returns.vs),
     }
-    self.total_loss = total_loss
+
+    def f2(x):
+      """Computes the valid mean stat."""
+      return tf.reduce_std(tf.boolean_mask(x, valid_mask))
+
+    self._logged_values_std = {
+        # loss
+        'loss/entropy_loss':
+        entropy_std * tf.abs(entropy_coeff),
+        'loss/pg_loss':
+        pi_loss_std,
+        'loss/vf_loss':
+        vf_loss_std * tf.abs(vf_loss_coeff),
+        'loss/total_loss':
+        tf.sqrt((entropy_std * entropy_coeff)**2 + pi_loss_std**2 +
+                (vf_loss_std * vf_loss_coeff)**2),
+        # rewards
+        'reward/advantage':
+        f2(vtrace_returns.pg_advantages),
+        'reward/vtrace_returns':
+        f2(vtrace_returns.vs),
+    }

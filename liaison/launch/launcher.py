@@ -209,7 +209,11 @@ class Launcher:
                             seed=self.seed,
                             **eval_config)
     from liaison.distributed import Evaluator
-    Evaluator(**evaluator_config)
+    evaluator = Evaluator(**evaluator_config)
+    t = evaluator.get_heuristic_thread()
+    t.start()
+    evaluator.run_loop(evaluator_config.max_evaluations)
+    t.join()
 
   def run_evaluators(self):
     components = [

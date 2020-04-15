@@ -204,7 +204,7 @@ class Env(RINSEnv):
     self._globals = globals_
     self._variable_nodes = variable_nodes
 
-    if self._n_steps == self.max_local_moves:
+    if self._n_steps >= self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)

@@ -317,7 +317,13 @@ class Learner(object):
           profile_kwargs = dict(options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
                                 run_metadata=tf.RunMetadata())
 
-        log_vals = self._agent.update(self.sess, feed_dict, profile_kwargs)
+        ret = self._agent.update(self.sess, feed_dict, profile_kwargs)
+
+        if self.config.log_variance:
+          log_vals, val_log_vals = ret
+        else:
+          log_vals = ret
+          val_log_vals = None
 
         if profile_kwargs:
           self._save_profile(**profile_kwargs)
@@ -325,6 +331,10 @@ class Learner(object):
       with U.Timer() as log_timer:
         for logger in self._loggers:
           logger.write(log_vals)
+
+        if val_log_vals:
+          for logger in self._var_loggers:
+            logger.write(val_log_vals)
 
       # after first sess.run finishes send the metagraph.
       if self.global_step == 1:

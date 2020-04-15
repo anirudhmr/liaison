@@ -343,7 +343,7 @@ class Env(BaseEnv):
             best_quality=np.float32(self._prev_best_quality),
             final_quality=np.float32(self._prev_final_quality),
             mip_work=np.float32(self._prev_mean_work),
-        ),
+            ep_length=np.float32(self._n_steps)),
         curr_episode_log_values=dict(ep_return=np.float32(self._ep_return),
                                      avg_quality=np.float32(np.mean(self._qualities)),
                                      best_quality=np.float32(self._best_quality),
@@ -758,7 +758,7 @@ class Env(BaseEnv):
     self._globals = globals_
     self._variable_nodes = variable_nodes
 
-    if self._n_steps == self.k * self.max_local_moves:
+    if self._n_steps >= self.k * self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)
@@ -800,4 +800,8 @@ class Env(BaseEnv):
     self._rnd_state = np.random.RandomState(seed=seed + self.id)
 
   def get_curr_soln(self):
-    return self._curr_soln
+    sol = dict(self._curr_soln)
+    # remove variables from sol which are pruned by pre-solving step.
+    for k in set(sol.keys()) - set(self._var_names):
+      del sol[k]
+    return sol

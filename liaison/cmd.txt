@@ -220,8 +220,9 @@ python liaison/tmux/train.py --pdb_post_mortem -- \
 python liaison/tmux/train.py --pdb_post_mortem -- \
   create -r /data/nms/tfp/results/{exp_id}/{experiment_name} \
   -e curriculum-300 \
-  --filter='.*clgpu003.*' \
+  --filter='.*clgpu006.*' \
   --bundle_actors \
+  --without_evaluators \
   -- \
   --batch_size=8 \
   --sess_config.bundled_actor.n_actors=8 \
@@ -267,12 +268,10 @@ python liaison/tmux/train.py --pdb_post_mortem -- \
   --env_config.k_schedule.enable=True \
   --env_config.k_schedule.values 5 10 \
   --env_config.k_schedule.start_steps=10000 \
+      self.max_local_moves = int(self.max_local_moves)
   \
   --env_config.dataset_schedule.enable=True \
   --env_config.dataset_schedule.datasets 'milp-cauction-100-filtered' 'milp-cauction-300-filtered' \
   --env_config.dataset_schedule.start_steps=10000 \
   \
   --eval_config.env_config.n_local_moves=25
-
-
-
