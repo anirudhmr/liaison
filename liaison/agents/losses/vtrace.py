@@ -192,23 +192,23 @@ class MultiActionLoss(Loss):
     # The policy gradients loss
     pi_loss = -tf.reduce_sum(
         tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages, valid_mask))
-    pi_loss_std = tf.reduce_std(
+    pi_loss_std = tf.math.reduce_std(
         tf.boolean_mask(target_action_log_probs * vtrace_returns.pg_advantages, valid_mask))
 
     # The baseline loss
     delta = tf.boolean_mask(values - vtrace_returns.vs, valid_mask)
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
-    vf_loss_std = 0.5 * tf.reduce_std(tf.square(delta))
+    vf_loss_std = 0.5 * tf.math.reduce_std(tf.square(delta))
 
     if action_mask is not None:
       # The entropy for valid actions
       ent = action_mask * compute_entropy(target_logits)
       entropy = tf.reduce_sum(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
-      entropy_std = tf.reduce_std(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
+      entropy_std = tf.math.reduce_std(tf.boolean_mask(tf.reduce_mean(ent, -1), valid_mask))
     else:
       entropy = tf.reduce_sum(
           tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))
-      entropy_std = tf.reduce_std(
+      entropy_std = tf.math.reduce_std(
           tf.boolean_mask(tf.reduce_mean(compute_entropy(target_logits), -1), valid_mask))
 
     # The summed weighted loss
@@ -234,7 +234,7 @@ class MultiActionLoss(Loss):
 
     def f2(x):
       """Computes the valid mean stat."""
-      return tf.reduce_std(tf.boolean_mask(x, valid_mask))
+      return tf.math.reduce_std(tf.boolean_mask(x, valid_mask))
 
     self._logged_values_std = {
         # loss

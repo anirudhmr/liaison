@@ -48,6 +48,7 @@ class Learner(object):
                traj_length,
                seed,
                loggers,
+               var_loggers,
                system_loggers,
                restore_from,
                agent_scope='learner',
@@ -73,6 +74,7 @@ class Learner(object):
     """
     self.config = ConfigDict(**session_config)
     self._loggers = loggers
+    self._var_loggers = var_loggers
     self._system_loggers = system_loggers
     self._batch_size = batch_size
     self._traj_length = traj_length
@@ -319,11 +321,11 @@ class Learner(object):
 
         ret = self._agent.update(self.sess, feed_dict, profile_kwargs)
 
-        if self.config.log_variance:
-          log_vals, val_log_vals = ret
-        else:
+        if isinstance(ret, dict):
           log_vals = ret
-          val_log_vals = None
+          var_log_vals = None
+        else:
+          log_vals, var_log_vals = ret
 
         if profile_kwargs:
           self._save_profile(**profile_kwargs)
@@ -332,9 +334,9 @@ class Learner(object):
         for logger in self._loggers:
           logger.write(log_vals)
 
-        if val_log_vals:
+        if var_log_vals:
           for logger in self._var_loggers:
-            logger.write(val_log_vals)
+            logger.write(var_log_vals)
 
       # after first sess.run finishes send the metagraph.
       if self.global_step == 1:

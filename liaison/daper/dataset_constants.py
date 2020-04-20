@@ -13,6 +13,7 @@ DATASET_PATH = {
     'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',
     'milp-cauction-300': '/data/nms/tfp/datasets/milp/cauction/size-300',
     'milp-cauction-300-filtered': '/data/nms/tfp/datasets/milp/cauction/size-300-filtered',
+    'milp-cauction-300-filtered-2': '/data/nms/tfp/datasets/milp/cauction/size-300-filtered-2',
     'milp-cauction-25': '/data/nms/tfp/datasets/milp/cauction/size-25',
     'milp-cauction-25-filtered': '/data/nms/tfp/datasets/milp/cauction/size-25-filtered',
     'milp-cauction-50-filtered': '/data/nms/tfp/datasets/milp/cauction/size-50-filtered',
@@ -41,6 +42,7 @@ LENGTH_MAP = {
     'milp-cauction-200': dict(train=1000, valid=100, test=100),
     'milp-cauction-300': dict(train=512, valid=16, test=16),
     'milp-cauction-300-filtered': dict(train=1000, valid=200, test=200),
+    'milp-cauction-300-filtered-2': dict(train=100, valid=50, test=49),
     'milp-setcover-10': dict(train=10000, valid=1000, test=1000),
     'milp-setcover-100': dict(train=1000, valid=100, test=100),
     'milp-indset-10': dict(train=10000, valid=1000, test=1000),
@@ -52,6 +54,7 @@ DATASET_INFO_PATH = {
     'milp-cauction-25-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-25-filtered',
     'milp-cauction-100-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-100-filtered',
     'milp-cauction-300-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-300-filtered',
+    'milp-cauction-300-filtered-2': '/data/nms/tfp/dataset_infos/milp-cauction-300-filtered-2',
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -126,6 +129,15 @@ NORMALIZATION_CONSTANTS = {
         constraint_degree=61.024,
         max_nodes=2104,
         max_edges=22124,
+    ),
+    'milp-cauction-300-filtered-2':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=347.0727424227314,
+        obj_normalizer=22010.436985601842,
+        var_normalizer=0.07254,
+        constraint_degree=61.15,
     ),
     'milp-corlat':
     dict(

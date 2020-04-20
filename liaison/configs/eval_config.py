@@ -20,9 +20,4 @@ def get_config():
   config.env_config.primal_gap_reward = True
   config.env_config.n_graphs = 1
 
-  config.starting_sol_schedule = ConfigDict(enable=False)
-  config.dataset_schedule = ConfigDict(enable=False)
-  config.k_schedule = ConfigDict(enable=False)
-  config.n_local_move_schedule = ConfigDict(enable=False)
-
   return config

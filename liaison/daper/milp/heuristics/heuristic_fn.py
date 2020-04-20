@@ -21,7 +21,7 @@ def scip_solve(mip):
   return ass
 
 
-def integral(curr_sol, mip, rng, k, least_integral=True):
+def integral(curr_sol, mip, rng, k, *args, least_integral=True):
   errs = []
   for var_name, var in mip.varname2var.items():
     if isinstance(var, IntegerVariable):
@@ -46,7 +46,7 @@ def integral(curr_sol, mip, rng, k, least_integral=True):
   return rng.choice(var_names, size=k, replace=False)
 
 
-def rins(curr_sol, mip, rng, k):
+def rins(curr_sol, mip, rng, k, *args):
   continuous_sol = scip_solve(relax_integral_constraints(mip))
   errs = []
   for var, val in curr_sol.items():
@@ -63,12 +63,11 @@ def rins(curr_sol, mip, rng, k):
   return rng.choice(var_names, size=k, replace=False)
 
 
-def random(curr_sol, mip, rng, k):
-  var_names = []
-  for var, val in curr_sol.items():
-    if isinstance(mip.varname2var[var], IntegerVariable):
-      var_names.append(var)
-  return rng.choice(var_names, size=k, replace=False)
+def random(curr_sol, mip, rng, k, env):
+  mask = env._variable_nodes[:, Env.VARIABLE_IS_INTEGER_FIELD]
+  assert np.sum(mask) > 0
+  indices = rng.choice(len(mask), size=k, replace=False, p=np.float32(mask) / np.sum(mask))
+  return [env._var_names[i] for i in indices]
 
 
 def choose_heuristic(heuristic):
@@ -98,7 +97,7 @@ def run(heuristic, k, n_trials, seeds, env, muldi_actions=False):
     log_vals[trial_i].append(dict(obs.curr_episode_log_values))
 
     while ts.step_type != StepType.LAST:
-      var_names = heuristic_fn(env.get_curr_soln(), env.milp.mip, rng, k)
+      var_names = heuristic_fn(env.get_curr_soln(), env.milp.mip, rng, k, env)
       if muldi_actions:
         act = [env._var_names.index(var_name) for var_name in var_names]
         ts = env.step(act)

@@ -133,8 +133,8 @@ class Env(RINSEnv):
     if self._reset_next_step:
       return self.reset()
 
-    assert len(action) == self.max_k
     action = action[:self.k]
+    assert len(action) == self.k
 
     self._n_steps += 1
     milp = self.milp
@@ -150,7 +150,10 @@ class Env(RINSEnv):
     # check if action is valid.
     # check if the previous step's mask was successfully applied
     for act in action:
-      assert mask[act], mask
+      if not mask[act]:
+        import pdb
+        pdb.set_trace()
+      assert mask[act], (act, mask)
     # no duplicates
     assert len(set(action)) == len(action)
 
@@ -191,8 +194,6 @@ class Env(RINSEnv):
 
     ## update the node features.
     variable_nodes = self._reset_mask(variable_nodes)
-    for node in unfixed_vars:
-      variable_nodes[self._varnames2varidx[node], Env.VARIABLE_MASK_FIELD] = 0
 
     # update the solution.
     self._change_sol(curr_sol, curr_obj, curr_lp_sol, curr_lp_obj)

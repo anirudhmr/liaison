@@ -170,10 +170,11 @@ class Env(BaseEnv):
     # Schedule for the dataset
     if config.dataset_schedule.enable:
       self._dataset = config.dataset_schedule.datasets[0]
-      for i, s in enumerate(config.dataset_schedule.start_steps):
+      for i, s in enumerate(map(int, config.dataset_schedule.start_steps)):
         if step >= s:
           self._dataset = config.dataset_schedule.datasets[i + 1]
       self.config.update(NORMALIZATION_CONSTANTS[self._dataset])
+
     if choice is not None:
       sample_idx = choice
     else:

@@ -27,6 +27,7 @@ def build_program(exp,
   irs = exp.new_process('irs')
   IRS_SERVER = 'cloudlab_clemson_clgpu006'
   irs.set_hard_placement(IRS_SERVER)
+
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
     visualizers.set_hard_placement(IRS_SERVER)
@@ -94,11 +95,13 @@ def setup_network(*, actors, ps, replay, learner, evaluator=None, visualizers=No
   learner.binds('prefetch-queue')
 
   irs.binds('tensorplex')
+  irs.binds('tensorplex-var')
   irs.binds('tensorplex-system')
   irs.binds('irs')
 
   for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
+    proc.connects('tensorplex-var')
     proc.connects('tensorplex-system')
     proc.connects('irs')
 
@@ -110,4 +113,5 @@ def setup_network(*, actors, ps, replay, learner, evaluator=None, visualizers=No
   if visualizers:
     visualizers.binds('visualizers-tb')
     visualizers.binds('visualizers-system-tb')
+    visualizers.binds('visualizers-var-tb')
     visualizers.binds('visualizers-profiler-ui')

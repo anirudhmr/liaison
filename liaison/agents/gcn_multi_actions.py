@@ -205,7 +205,7 @@ class Agent(BaseAgent):
             if statistic == 'mean':
               return tf.reduce_mean(tf.boolean_mask(x, valid_mask))
             else:
-              return tf.reduce_std(tf.boolean_mask(x, valid_mask))
+              return tf.math.reduce_std(tf.boolean_mask(x, valid_mask))
 
           def f2(x):
             y = tf.cast(action_mask, x.dtype)
@@ -243,13 +243,13 @@ class Agent(BaseAgent):
 
   def _log_features(self, features, step):
     # feature_dict -> collected Feature
-    # logs t-SNE visualization of features to files.
+    # logs t-SNE visualization of features to files
     if 'vis_loggers' in self.config:
       self._model.log_features(features, step, self.config.vis_loggers)
 
   def update(self, sess, feed_dict, profile_kwargs):
     """profile_kwargs pass to sess.run for profiling purposes."""
-    ops = [self._logged_values_mean, self._logged_values_std]
+    ops = []
     i = sess.run(self._global_step)
     log_features = False
     if self.config.log_features_every > 0:
@@ -257,9 +257,10 @@ class Agent(BaseAgent):
         ops += [self._logged_features]
         log_features = True
 
-    mean_vals, var_vals, *l = sess.run(ops + [self._train_op],
-                                       feed_dict=feed_dict,
-                                       **profile_kwargs)
+    mean_vals, var_vals, _, *l = sess.run(
+        [self._logged_values_mean, self._logged_values_std, self._train_op] + ops,
+        feed_dict=feed_dict,
+        **profile_kwargs)
 
     if log_features:
       self._log_features(l[0], i)

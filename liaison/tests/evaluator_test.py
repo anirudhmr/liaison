@@ -273,32 +273,32 @@ def create_evaluator():
 
 class EvaluatorTest(unittest.TestCase):
 
-  # def testHeuristic(self):
-  #   evaluator = create_evaluator()
-  #   print('***************')
-  #   print('Starting....')
-  #   print('***************')
-
-  #   t = evaluator.get_heuristic_thread()
-  #   t.start()
-  #   t.join()
-
-  #   print('==============')
-  #   print('Done!')
-  #   print('==============')
-
-  def testLoop(self):
+  def testHeuristic(self):
     evaluator = create_evaluator()
     print('***************')
     print('Starting....')
     print('***************')
 
-    for _ in trange(5):
-      evaluator.run_loop(1)
+    t = evaluator.get_heuristic_thread()
+    t.start()
+    t.join()
 
     print('==============')
     print('Done!')
     print('==============')
+
+  # def testLoop(self):
+  #   evaluator = create_evaluator()
+  #   print('***************')
+  #   print('Starting....')
+  #   print('***************')
+
+  #   for _ in trange(5):
+  #     evaluator.run_loop(1)
+
+  #   print('==============')
+  #   print('Done!')
+  #   print('==============')
 
 
 if __name__ == '__main__':

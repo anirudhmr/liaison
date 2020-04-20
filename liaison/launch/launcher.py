@@ -212,7 +212,7 @@ class Launcher:
     evaluator = Evaluator(**evaluator_config)
     t = evaluator.get_heuristic_thread()
     t.start()
-    evaluator.run_loop(evaluator_config.max_evaluations)
+    evaluator.run_loop(int(1e9))
     t.join()
 
   def run_evaluators(self):
@@ -230,9 +230,20 @@ class Launcher:
             serializer=self.sess_config.tensorplex.serializer,
             deserializer=self.sess_config.tensorplex.deserializer,
         ))
+
     vis_loggers = []
     vis_loggers.append(FileStreamLogger(client=IRSClient(timeout=20)))
-    return loggers, vis_loggers
+
+    var_loggers = []
+    var_loggers.append(
+        TensorplexLogger(
+            client_id='learner/learner',
+            host=os.environ['SYMPH_TENSORPLEX_VAR_HOST'],
+            port=os.environ['SYMPH_TENSORPLEX_VAR_PORT'],
+            serializer=self.sess_config.tensorplex.serializer,
+            deserializer=self.sess_config.tensorplex.deserializer,
+        ))
+    return loggers, var_loggers, vis_loggers
 
   def _setup_learner_system_loggers(self):
     loggers = []
@@ -255,12 +266,13 @@ class Launcher:
     """
 
     agent_class = U.import_obj(self.agent_config.class_name, self.agent_config.class_path)
-    loggers, vis_loggers = self._setup_learner_loggers()
+    loggers, var_loggers, vis_loggers = self._setup_learner_loggers()
     learner = Learner(agent_class=agent_class,
                       agent_config=dict(vis_loggers=vis_loggers, **self.agent_config),
                       traj_length=self.traj_length,
                       seed=self.seed,
                       loggers=loggers,
+                      var_loggers=var_loggers,
                       system_loggers=self._setup_learner_system_loggers(),
                       **self.sess_config.learner)
     learner.main()
@@ -333,6 +345,14 @@ class Launcher:
     procs += [subprocess.Popen(cmd)]
 
     # launch systemboard
+    folder = os.path.join(self.results_folder, 'tensorplex_var_profiles')
+    cmd = [
+        'tensorboard', '--logdir', folder, '--port',
+        str(os.environ['SYMPH_VISUALIZERS_VAR_TB_PORT'])
+    ]
+    procs += [subprocess.Popen(cmd)]
+
+    # launch systemboard
     folder = os.path.join(self.results_folder, 'tensorplex_system_profiles')
     cmd = [
         'tensorboard', '--logdir', folder, '--port',
@@ -359,12 +379,15 @@ class Launcher:
     """
     folder1 = os.path.join(self.results_folder, 'tensorplex_metrics', str(self.work_id))
     folder2 = os.path.join(self.results_folder, 'tensorplex_system_profiles', str(self.work_id))
+    folder3 = os.path.join(self.results_folder, 'tensorplex_var_profiles', str(self.work_id))
     tensorplex_config = self.sess_config.tensorplex
     threads = []
 
-    for folder, port in zip(
-        [folder1, folder2],
-        [os.environ['SYMPH_TENSORPLEX_PORT'], os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT']]):
+    for folder, port in zip([folder1, folder2, folder3], [
+        os.environ['SYMPH_TENSORPLEX_PORT'],
+        os.environ['SYMPH_TENSORPLEX_SYSTEM_PORT'],
+        os.environ['SYMPH_TENSORPLEX_VAR_PORT'],
+    ]):
       tensorplex = Tensorplex(
           folder,
           max_processes=tensorplex_config.max_processes,
@@ -387,7 +410,6 @@ class Launcher:
                                   deserializer=tensorplex_config.deserializer))
       thread.start()
       threads.append(thread)
-
     return threads
 
   def run_irs(self):
