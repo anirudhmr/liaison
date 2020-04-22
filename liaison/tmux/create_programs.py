@@ -14,23 +14,34 @@ def get_fuzzy_match(config, name):
   raise Exception('No fuzzy match found for key %s' % name)
 
 
-def build_program(exp,
-                  n_actors,
-                  res_req_config,
-                  bundle_actors,
-                  with_visualizers=True,
-                  with_evaluators=True,
-                  without_valid_and_test_evaluators=False):
+def build_program(
+    exp,
+    n_actors,
+    res_req_config,
+    bundle_actors,
+    irs_placement,
+    visualizer_placement,
+    with_visualizers=True,
+    with_evaluators=True,
+    without_valid_and_test_evaluators=False,
+    with_irs_proxy=False,
+    irs_proxy_placement=None,
+):
   learner = exp.new_process('learner')
   replay = exp.new_process('replay_worker-0')
   ps = exp.new_process('ps')
   irs = exp.new_process('irs')
-  IRS_SERVER = 'cloudlab_clemson_clgpu006'
-  irs.set_hard_placement(IRS_SERVER)
+  irs.set_hard_placement(irs_placement)
+
+  if with_irs_proxy:
+    irs_proxy = exp.new_process('irs_proxy')
+    irs_proxy.set_hard_placement(irs_proxy_placement)
+  else:
+    irs_proxy = None
 
   if with_visualizers:
     visualizers = exp.new_process('visualizers')
-    visualizers.set_hard_placement(IRS_SERVER)
+    visualizers.set_hard_placement(visualizer_placement)
   else:
     visualizers = None
 
@@ -55,8 +66,9 @@ def build_program(exp,
       evaluator=evaluator,
       visualizers=visualizers,
       irs=irs,
+      irs_proxy=irs_proxy,
   )
-  for proc in [learner, replay, ps, irs, visualizers] + actors + [evaluator]:
+  for proc in [learner, replay, ps, irs, irs_proxy, visualizers] + actors + [evaluator]:
     if proc:
       proc.set_costs(**get_fuzzy_match(res_req_config, proc.name))
 
@@ -65,7 +77,15 @@ def build_program(exp,
   return coloc_constraints
 
 
-def setup_network(*, actors, ps, replay, learner, evaluator=None, visualizers=None, irs=None):
+def setup_network(*,
+                  actors,
+                  ps,
+                  replay,
+                  learner,
+                  evaluator=None,
+                  visualizers=None,
+                  irs=None,
+                  irs_proxy=None):
   """
     Sets up the communication between surreal
     components using symphony
@@ -99,15 +119,23 @@ def setup_network(*, actors, ps, replay, learner, evaluator=None, visualizers=No
   irs.binds('tensorplex-system')
   irs.binds('irs')
 
+  if irs_proxy:
+    irs_proxy.binds('irs-proxy')
+    irs_proxy.connects('irs')
+
   for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
     proc.connects('tensorplex-var')
     proc.connects('tensorplex-system')
     proc.connects('irs')
+    if irs_proxy:
+      proc.connects('irs-proxy')
 
   if evaluator:
     evaluator.connects('tensorplex')
     evaluator.connects('irs')
+    if irs_proxy:
+      evaluator.connects('irs-proxy')
     evaluator.connects('ps-serving')
 
   if visualizers:

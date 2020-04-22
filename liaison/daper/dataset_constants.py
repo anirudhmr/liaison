@@ -1,29 +1,35 @@
+from pathlib import Path
+
+DATASET_DIR = '/data/nms/tfp'
+if not Path(DATASET_DIR).is_dir():
+  DATASET_DIR = '/home/gridsan/addanki/data/nms/tfp/'
+
 DATASET_PATH = {
-    'tsp-20': '/data/nms/tfp/datasets/tsp/n-20',
-    'tsp-50': '/data/nms/tfp/datasets/tsp/n-50',
-    'tsp-100': '/data/nms/tfp/datasets/tsp/n-100',
-    'milp-facilities-3': '/data/nms/tfp/datasets/milp/facilities/size-3',
-    'milp-facilities-10': '/data/nms/tfp/datasets/milp/facilities/size-10',
-    'milp-cauction-10': '/data/nms/tfp/datasets/milp/cauction/size-10',
-    'milp-cauction-100': '/data/nms/tfp/datasets/milp/cauction/size-100',
-    'milp-cauction-100-filtered': '/data/nms/tfp/datasets/milp/cauction/size-100-gap-.01',
+    'tsp-20': f'{DATASET_DIR}/datasets/tsp/n-20',
+    'tsp-50': f'{DATASET_DIR}/datasets/tsp/n-50',
+    'tsp-100': f'{DATASET_DIR}/datasets/tsp/n-100',
+    'milp-facilities-3': f'{DATASET_DIR}/datasets/milp/facilities/size-3',
+    'milp-facilities-10': f'{DATASET_DIR}/datasets/milp/facilities/size-10',
+    'milp-cauction-10': f'{DATASET_DIR}/datasets/milp/cauction/size-10',
+    'milp-cauction-100': f'{DATASET_DIR}/datasets/milp/cauction/size-100',
+    'milp-cauction-100-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-100-gap-.01',
     # 'milp-cauction-100-filtered':
     # '/nobackup/users/addanki/datasets/milp/cauction/size-100-gap-.01',
-    'milp-cauction-mixed': '/data/nms/tfp/datasets/milp/cauction/size-mixed-small',
-    'milp-cauction-200': '/data/nms/tfp/datasets/milp/cauction/size-200',
-    'milp-cauction-300': '/data/nms/tfp/datasets/milp/cauction/size-300',
-    'milp-cauction-300-filtered': '/data/nms/tfp/datasets/milp/cauction/size-300-filtered',
-    'milp-cauction-300-filtered-2': '/data/nms/tfp/datasets/milp/cauction/size-300-filtered-2',
-    'milp-cauction-25': '/data/nms/tfp/datasets/milp/cauction/size-25',
-    'milp-cauction-25-filtered': '/data/nms/tfp/datasets/milp/cauction/size-25-filtered',
-    'milp-cauction-50-filtered': '/data/nms/tfp/datasets/milp/cauction/size-50-filtered',
-    'milp-setcover-10': '/data/nms/tfp/datasets/milp/setcover/size-10',
-    'milp-setcover-100': '/data/nms/tfp/datasets/milp/setcover/size-100',
-    'milp-indset-10': '/data/nms/tfp/datasets/milp/indset/size-10',
-    'milp-indset-100': '/data/nms/tfp/datasets/milp/indset/size-100',
-    'milp-bcol': '/data/nms/tfp/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
-    'milp-corlat': '/data/nms/tfp/datasets/milp/corlat',
-    'milp-regions': '/data/nms/tfp/datasets/milp/mip_datasets/Regions200-mps'
+    'milp-cauction-mixed': f'{DATASET_DIR}/datasets/milp/cauction/size-mixed-small',
+    'milp-cauction-200': f'{DATASET_DIR}/datasets/milp/cauction/size-200',
+    'milp-cauction-300': f'{DATASET_DIR}/datasets/milp/cauction/size-300',
+    'milp-cauction-300-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-300-filtered',
+    'milp-cauction-300-filtered-2': f'{DATASET_DIR}/datasets/milp/cauction/size-300-filtered-2',
+    'milp-cauction-25': f'{DATASET_DIR}/datasets/milp/cauction/size-25',
+    'milp-cauction-25-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-25-filtered',
+    'milp-cauction-50-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-50-filtered',
+    'milp-setcover-10': f'{DATASET_DIR}/datasets/milp/setcover/size-10',
+    'milp-setcover-100': f'{DATASET_DIR}/datasets/milp/setcover/size-100',
+    'milp-indset-10': f'{DATASET_DIR}/datasets/milp/indset/size-10',
+    'milp-indset-100': f'{DATASET_DIR}/datasets/milp/indset/size-100',
+    'milp-bcol': f'{DATASET_DIR}/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
+    'milp-corlat': f'{DATASET_DIR}/datasets/milp/corlat',
+    'milp-regions': f'{DATASET_DIR}/datasets/milp/mip_datasets/Regions200-mps'
 }
 
 LENGTH_MAP = {
@@ -51,10 +57,10 @@ LENGTH_MAP = {
 }
 
 DATASET_INFO_PATH = {
-    'milp-cauction-25-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-25-filtered',
-    'milp-cauction-100-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-100-filtered',
-    'milp-cauction-300-filtered': '/data/nms/tfp/dataset_infos/milp-cauction-300-filtered',
-    'milp-cauction-300-filtered-2': '/data/nms/tfp/dataset_infos/milp-cauction-300-filtered-2',
+    'milp-cauction-25-filtered': f'{DATASET_DIR}/dataset_infos/milp-cauction-25-filtered',
+    'milp-cauction-100-filtered': f'{DATASET_DIR}/dataset_infos/milp-cauction-100-filtered',
+    'milp-cauction-300-filtered': f'{DATASET_DIR}/dataset_infos/milp-cauction-300-filtered',
+    'milp-cauction-300-filtered-2': f'{DATASET_DIR}/dataset_infos/milp-cauction-300-filtered-2',
 }
 
 NORMALIZATION_CONSTANTS = {

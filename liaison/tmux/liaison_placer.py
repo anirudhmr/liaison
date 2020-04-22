@@ -1,8 +1,11 @@
+import pdb
 import re
 from multiprocessing.pool import ThreadPool
 
+import numpy as np
 from ccc.src import LSFNode, NodeLoader, SlurmNode
 from liaison.scheduling import ScheduleManager
+from liaison.utils import ConfigDict
 
 RES_DIRS = [
     '/'.join(__file__.split('/')[:-2]),  # liaison directory
@@ -13,6 +16,7 @@ RES_DIRS = [
 class LiaisonPlacer:
 
   def __init__(self,
+               xid,
                exps,
                cluster_config,
                filter_nodes_regex,
@@ -32,7 +36,8 @@ class LiaisonPlacer:
               str2 regex of node names
       coloc_constraints: List[List[str]]
     """
-
+    self.config = ConfigDict(config)
+    self.xid = xid
     nodes, whitelist_nodes = self._make_nodes(cluster_config, filter_nodes_regex, whitelist_nodes)
     wunits = self._get_wunits(exps)
     # use whitelist_nodes only for hard placements.
@@ -122,9 +127,76 @@ class LiaisonPlacer:
     allocation = node.allocate(cpu=proc.cpu_cost,
                                mem=proc.mem_cost,
                                n_gpus=len(proc.gpu_mem_cost),
-                               name=f'Allocation_for_{proc.name}')
+                               name=f'{self.xid}_{proc.name}')
     proc.set_allocation(allocation)
     proc.set_placement(node)
+
+  def _slurm_wunit_based_allocation(self, wunit_matches):
+    # colocate all procs of a work-unit on a *single* slurm
+    # allocation (single slurm worker node)
+    # determine the # of gpus needed.
+    procs, nodes = list(zip(*wunit_matches))
+    if len(procs) == 0:
+      return
+    # assert only one node selected
+    assert len(set(nodes)) == 1
+    node = nodes[0]
+
+    exclusive_procs = list(filter(lambda p: p.slurm_exclusive_gpu, procs))
+    non_exclusive_procs = list(filter(lambda p: not p.slurm_exclusive_gpu, procs))
+
+    if self.config.slurm_colocate_wunit:
+      # all the non-exclusive procs share gpus
+      # gpus for the exclusive gpu procs.
+      n_gpus = sum(len(p.gpu_mem_cost) for p in exclusive_procs)
+      # gpus for all the non-exclusive-procs
+      n_gpus += max(len(p.gpu_mem_cost) for p in non_exclusive_procs)
+      # colocate an entire workunit on a single slurm node.
+      allocation = node.allocate(cpu=sum([p.cpu_cost for p in procs]),
+                                 mem=sum([p.mem_cost for p in procs]),
+                                 n_gpus=n_gpus,
+                                 name=f'{self.xid}')
+      for proc in procs:
+        proc.set_allocation(allocation)
+
+      # assign gpus to procs.
+      gpu_id = 0
+      for proc in exclusive_procs:
+        n_gpus = len(proc.gpu_mem_cost)
+        proc.set_gpus(allocation.gpu_visible_ids[gpu_id:gpu_id + n_gpus])
+        gpu_id += n_gpus
+
+      for proc in non_exclusive_procs:
+        proc.set_gpus(allocation.gpu_visible_ids[gpu_id:gpu_id + len(proc.gpu_mem_cost)])
+
+    elif self.config.slurm_per_gpu_allocation:
+      # create one slurm allocation for each exclusive gpu
+      # all other non-exclusive procs share a *single* allocation
+      # all the other non-gpu procs assigned an arbitrary allocation (no new allocation created).
+      allocation = None
+      for proc in exclusive_procs:
+        allocation = node.allocate(cpu=proc.cpu_cost,
+                                   mem=proc.mem_cost,
+                                   n_gpus=len(proc.gpu_mem_cost),
+                                   name=f'{self.xid}_{proc.name}')
+        proc.set_allocation(allocation)
+        proc.set_gpus(allocation.gpu_visible_ids)
+      # n_gpus required for non_exclusive allocation
+      n_gpus = max([len(p.gpu_mem_cost) for p in non_exclusive_procs])
+      if allocation is None or n_gpus > 0:
+        allocation = node.allocate(cpu=sum([p.cpu_cost for p in non_exclusive_procs]),
+                                   mem=sum([p.mem_cost for p in non_exclusive_procs]),
+                                   n_gpus=n_gpus,
+                                   name=f'{self.xid}_non_exclusive_allocation')
+      for proc in non_exclusive_procs:
+        proc.set_allocation(allocation)
+        proc.set_gpus(allocation.gpu_visible_ids[:len(proc.gpu_mem_cost)])
+
+    else:
+      raise Exception('Unknown case encountered.')
+
+    for proc in procs:
+      proc.set_placement(node)
 
   def _get_wunits(self, exps):
     return [[proc for pg in exp.list_process_groups()
@@ -152,7 +224,7 @@ class LiaisonPlacer:
 
     return filtered_wunits
 
-  def _set_gpus_for_slurm_or_lsf_node(self, node, proc):
+  def _set_gpus_for_slurm_or_lsf_node(self, proc, node):
     assert isinstance(node, (LSFNode, SlurmNode))
 
     if isinstance(node, SlurmNode):
@@ -186,10 +258,11 @@ class LiaisonPlacer:
 
     filtered_wunits = []
     for procs in wunits:
+      slurm_or_lsf_matches = []
       filtered_wunit = []
       for proc in procs:
         # If proc matched already with slurm node in a previous pl constraint.
-        proc_matched = False
+        proc_matched = None
         for proc_regex, node_regex in pl_constraints:
           if re.search(proc_regex, proc.name):
             matches = []
@@ -211,22 +284,27 @@ class LiaisonPlacer:
                 raise Exception('Process %s matches multiple slurm node placement constraints' %
                                 proc.name)
               else:
-                proc_matched = True
-                self._set_placement(proc, matches[0])
-                self._set_gpus_for_slurm_or_lsf_node(matches[0], proc)
+                proc_matched = matches[0]
             elif len(matches) > 1:
               # Not clear which node should be used for this proc
               # raise an exception to avoid this input.
               raise Exception('Following nodes match for proc %s: %s' %
                               (proc.name, ' '.join(matches)))
-
         if proc_matched:
           # dont include it in filtered procs
-          pass
+          slurm_or_lsf_matches.append((proc, matches[0]))
         else:
           filtered_wunit.append(proc)
 
-      if filtered_wunit:
-        filtered_wunits.append(filtered_wunit)
+      if self.config.slurm_colocate_wunit or self.config.slurm_per_gpu_allocation:
+        # process wunit at a time.
+        self._slurm_wunit_based_allocation(slurm_or_lsf_matches)
+      else:
+        for proc, match in slurm_or_lsf_matches:
+          self._set_placement(proc, match)
+          self._set_gpus_for_slurm_or_lsf_node(proc, match)
+      filtered_wunits.append(filtered_wunit)
 
+    # remove empty wunits.
+    filtered_wunits = list(filter(lambda l: len(l) > 0, filtered_wunits))
     return filtered_wunits, nodes, filtered_nodes

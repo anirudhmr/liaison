@@ -12,6 +12,11 @@ from liaison.tmux.liaison_placer import LiaisonPlacer
 from liaison.tmux.surreal_tmux import TurrealParser
 from liaison.utils import ConfigDict
 
+IRS_NODE = 'lincoln_supercloud_control'
+IRS_PROXY_NODE = 'lincoln_supercloud_control'
+VISUALIZER_NODE = 'cloudlab_clemson_clgpu003'
+WHITELIST_NODES = list(set((IRS_NODE, IRS_PROXY_NODE, VISUALIZER_NODE)))
+
 parser = argon.ArgumentParser('Liaison trainer', add_help=False)
 parser.add_argument('--n_actors', type=int, default=1)
 parser.add_argument('--bundle_actors', action='store_true')
@@ -31,7 +36,7 @@ parser.add_argument('--without_visualizers', action='store_true')
 parser.add_argument(
     '--whitelist_nodes',
     nargs='+',
-    default=['os_csail', 'cloudlab_clemson_clgpu006'],
+    default=WHITELIST_NODES,
     help='These nodes are always selected irrespective of the filter_nodes_regex specified.')
 # placement constraints
 parser.add_argument('--pl_constraints',
@@ -53,6 +58,9 @@ parser.add_argument('--coloc_constraints',
       a;b;c p;q;r x;y;z
   ''')
 parser.add_argument('--disable_sweep', '--no_sweep', '--without_sweep', action='store_true')
+parser.add_argument('--slurm_colocate_wunit', action='store_true')
+parser.add_argument('--slurm_per_gpu_allocation', action='store_true')
+parser.add_argument('--use_irs_proxy', action='store_true')
 
 
 def validate_args(args):
@@ -79,8 +87,8 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           # hyper.discrete('env_config.k', [10, 20]),
-          # hyper.discrete('agent_config.lr_init', [5e-5, 1e-4, 2e-4, 4e-4]),
-          hyper.discrete('agent_config.lr_init', [2e-4]),
+          # hyper.discrete('agent_config.lr_init', [2e-4]),
+          hyper.discrete('agent_config.lr_init', [1e-4, 2e-4, 3e-4, 4e-4]),
           hyper.discrete('agent_config.ent_dec_init', [2e-2]),
           # hyper.discrete('env_config.graph_start_idx', list(range(8))),
       )):
@@ -91,9 +99,13 @@ def train(argv):
         args.n_actors,
         ConfigDict(argon.to_nested_dicts(args.resource_req_config)),
         bundle_actors=args.bundle_actors,
+        irs_placement=IRS_NODE,
+        visualizer_placement=VISUALIZER_NODE,
         with_visualizers=(work_id == 0) and (not args.without_visualizers),
         with_evaluators=(not args.without_evaluators),
-        without_valid_and_test_evaluators=args.without_valid_and_test_evaluators)
+        without_valid_and_test_evaluators=args.without_valid_and_test_evaluators,
+        with_irs_proxy=args.use_irs_proxy,
+        irs_proxy_placement=IRS_PROXY_NODE)
 
     exp_flag = ['--work_id', str(work_id)]
     exp_flag += ['--hyper_configs', str(shlex.quote(json.dumps(params)))]
@@ -111,21 +123,25 @@ def train(argv):
   print('Number of work units: %d' % len(exps))
   print('Number of processes total: %d' % sum(map(len, exp_procs)))
 
-  placer = LiaisonPlacer(exps,
-                         ConfigDict(argon.to_nested_dicts(args.cluster_config)),
-                         args.filter_nodes_regex,
-                         args.whitelist_nodes,
-                         args.spy_measurement_interval,
-                         pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
-                         coloc_constraints=list(
-                             map(lambda k: k.split(';'),
-                                 coloc_constraints + args.coloc_constraints)),
-                         gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
-                         gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
-                         gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,
-                         cpu_overload_obj_coeff=args.cpu_overload_obj_coeff,
-                         cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
-                         cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff)
+  placer = LiaisonPlacer(
+      tp.exp_id,
+      exps,
+      ConfigDict(argon.to_nested_dicts(args.cluster_config)),
+      args.filter_nodes_regex,
+      args.whitelist_nodes,
+      args.spy_measurement_interval,
+      pl_constraints=list(map(lambda k: k.split(':'), args.pl_constraints)),
+      coloc_constraints=list(
+          map(lambda k: k.split(';'), coloc_constraints + args.coloc_constraints)),
+      gpu_overload_obj_coeff=args.gpu_overload_obj_coeff,
+      gpu_load_balancing_obj_coeff=args.gpu_load_balancing_obj_coeff,
+      gpu_wu_consolidation_obj_coeff=args.gpu_wu_consolidation_obj_coeff,
+      cpu_overload_obj_coeff=args.cpu_overload_obj_coeff,
+      cpu_load_balancing_obj_coeff=args.cpu_load_balancing_obj_coeff,
+      cpu_wu_consolidation_obj_coeff=args.cpu_wu_consolidation_obj_coeff,
+      slurm_colocate_wunit=args.slurm_colocate_wunit,
+      slurm_per_gpu_allocation=args.slurm_per_gpu_allocation,
+  )
 
   tp.launch(exps, exp_flags, hyper_configs)
 

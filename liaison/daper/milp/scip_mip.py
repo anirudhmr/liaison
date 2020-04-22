@@ -25,6 +25,7 @@ class SCIPMIPInstance:
     self.vars = list(model.getVars(transformed=True))
     self.varname2var = {v.name: v for v in self.vars}
     self.originalVarBounds = {v.name: (v.getLbGlobal(), v.getUbGlobal()) for v in self.vars}
+    self.originalVarTypes = {v.name: v.vtype() for v in self.vars}
     self.model = model
 
   @staticmethod
@@ -69,14 +70,15 @@ class SCIPMIPInstance:
     fixed_model_vars = list(fixed_model.getVars(transformed=True))
     fixed_model_varname2var = {v.name.lstrip('t_'): v for v in fixed_model_vars}
 
-    # reset all variable bounds to the original
     for v, var in self.varname2var.items():
       fixed_model_var = fixed_model_varname2var[v.lstrip('t_')]
 
       if v.lstrip('t_') in fixed_ass:
         l = u = fixed_ass[v.lstrip('t_')]
       else:
+        # set all other variable bounds to the original
         l, u = self.originalVarBounds[v]
+        fixed_model.chgVarType(fixed_model_var, self.originalVarTypes[v])
 
       fixed_model.chgVarLbGlobal(fixed_model_var, l - EPSILON)
       fixed_model.chgVarUbGlobal(fixed_model_var, u + EPSILON)

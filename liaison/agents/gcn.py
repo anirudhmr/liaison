@@ -43,15 +43,18 @@ class Agent(BaseAgent):
     with tf.variable_scope(self._name):
       # flatten graph features for the policy network
       # convert dict to graphstuple
-      obs['graph_features'] = self._process_graph_features(
-          obs['graph_features'])
+      obs['graph_features'] = self._process_graph_features(obs['graph_features'])
 
-      logits, _ = self._model.get_logits(
-          self._model.compute_graph_embeddings(obs), obs['node_mask'])
+      logits, _ = self._model.get_logits(self._model.compute_graph_embeddings(obs),
+                                         obs['node_mask'])
 
       action = sample_from_logits(logits, self.seed)
-      return StepOutput(action, logits,
-                        self._model.dummy_state(infer_shape(step_type)[0]))
+      return StepOutput(
+          action,
+          logits,
+          self._model.dummy_state(infer_shape(step_type)[0]),
+          self._model.dummy_state(infer_shape(step_type)[0]),
+      )
 
   def _validate_observations(self, obs):
     if 'graph_features' not in obs:
@@ -60,15 +63,13 @@ class Agent(BaseAgent):
   def _process_graph_features(self, graph_features):
     if set(graph_features.keys()) == set(gn.graphs.GraphsTuple._fields):
       return flatten_graphs(gn.graphs.GraphsTuple(**graph_features))
-    elif set(graph_features.keys()) == set(
-        gn.graphs.BipartiteGraphsTuple._fields):
-      return flatten_bipartite_graphs(
-          gn.graphs.BipartiteGraphsTuple(**graph_features))
+    elif set(graph_features.keys()) == set(gn.graphs.BipartiteGraphsTuple._fields):
+      return flatten_bipartite_graphs(gn.graphs.BipartiteGraphsTuple(**graph_features))
     else:
       raise Exception('Unknown graph features provided.')
 
-  def build_update_ops(self, step_outputs, prev_states, step_types, rewards,
-                       observations, discounts):
+  def build_update_ops(self, step_outputs, prev_states, step_types, rewards, observations,
+                       discounts):
     """Use trajectories collected to update the policy.
 
     This function will only be called once to create a TF graph which
@@ -98,16 +99,13 @@ class Agent(BaseAgent):
       # flatten graph features for graph embeddings.
       with tf.variable_scope('flatten_graphs'):
         # merge time and batch dimensions
-        flattened_observations = nest.map_structure(merge_first_two_dims,
-                                                    observations)
+        flattened_observations = nest.map_structure(merge_first_two_dims, observations)
         # flatten by merging the batch and node, edge dimensions
-        flattened_observations[
-            'graph_features'] = self._process_graph_features(
-                flattened_observations['graph_features'])
+        flattened_observations['graph_features'] = self._process_graph_features(
+            flattened_observations['graph_features'])
 
       with tf.variable_scope('graph_embeddings'):
-        graph_embeddings = self._model.compute_graph_embeddings(
-            flattened_observations)
+        graph_embeddings = self._model.compute_graph_embeddings(flattened_observations)
 
       with tf.variable_scope('target_logits'):
         # get logits
@@ -115,8 +113,8 @@ class Agent(BaseAgent):
         target_logits, logits_logged_vals = self._model.get_logits(
             graph_embeddings, flattened_observations['node_mask'])
         # reshape to [T + 1, B ...]
-        target_logits = tf.reshape(target_logits, [t_dim + 1, bs_dim] +
-                                   infer_shape(behavior_logits)[2:])
+        target_logits = tf.reshape(target_logits,
+                                   [t_dim + 1, bs_dim] + infer_shape(behavior_logits)[2:])
         # reshape to [T, B ...]
         target_logits = target_logits[:-1]
 
@@ -127,8 +125,7 @@ class Agent(BaseAgent):
 
       if config.loss.al_coeff.init_val > 0:
         with tf.variable_scope('auxiliary_supervised_loss'):
-          auxiliary_loss = self._model.get_auxiliary_loss(
-              graph_embeddings, flattened_observations)
+          auxiliary_loss = self._model.get_auxiliary_loss(graph_embeddings, flattened_observations)
 
       with tf.variable_scope('loss'):
         values = tf.reshape(values, [t_dim + 1, bs_dim])
@@ -167,8 +164,7 @@ class Agent(BaseAgent):
 
       with tf.variable_scope('logged_vals'):
         valid_mask = ~tf.equal(step_types[1:], StepType.FIRST)
-        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)),
-                                tf.float32)
+        n_valid_steps = tf.cast(tf.reduce_sum(tf.cast(valid_mask, tf.int32)), tf.float32)
 
         def f(x):
           """Computes the valid mean stat."""
@@ -179,26 +175,23 @@ class Agent(BaseAgent):
         self._logged_values = {
             # entropy
             'entropy/uniform_random_entropy':
-            f(
-                compute_entropy(
-                    tf.cast(tf.greater(target_logits, -1e8), tf.float32))),
+            f(compute_entropy(tf.cast(tf.greater(target_logits, -1e8), tf.float32))),
             'entropy/target_policy_entropy':
             f(compute_entropy(target_logits)),
             'entropy/behavior_policy_entropy':
             f(compute_entropy(behavior_logits)),
             'entropy/is_ratio':
             f(
-                tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=actions, logits=target_logits) +
-                       tf.nn.sparse_softmax_cross_entropy_with_logits(
-                           labels=actions, logits=behavior_logits))),
+                tf.exp(-tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
+                                                                       logits=target_logits) +
+                       tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions,
+                                                                      logits=behavior_logits))),
             # rewards
             'reward/avg_reward':
             f(rewards[1:]),
             **opt_vals,
             **logits_logged_vals,
-            **self._extract_logged_values(
-                nest.map_structure(lambda k: k[:-1], observations), f),
+            **self._extract_logged_values(nest.map_structure(lambda k: k[:-1], observations), f),
             **self.loss.logged_values
         }
 

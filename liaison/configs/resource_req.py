@@ -13,6 +13,8 @@ def get_config():
   config.learner.mem = 0
   config.learner.gpu_compute = [10]
   config.learner.gpu_mem = [14]
+  # directive only applies to slurm allocations
+  config.learner.slurm_exclusive_gpu = True
 
   config.bundled_actor = ConfigDict()
   config.bundled_actor.cpu = 1

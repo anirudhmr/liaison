@@ -344,7 +344,7 @@ class Env(BaseEnv):
             best_quality=np.float32(self._prev_best_quality),
             final_quality=np.float32(self._prev_final_quality),
             mip_work=np.float32(self._prev_mean_work),
-            ep_length=np.float32(self._n_steps)),
+        ),
         curr_episode_log_values=dict(ep_return=np.float32(self._ep_return),
                                      avg_quality=np.float32(np.mean(self._qualities)),
                                      best_quality=np.float32(self._best_quality),
@@ -566,6 +566,7 @@ class Env(BaseEnv):
     self._curr_obj = obj_val
 
   def reset(self):
+    raise Exception('Deprecated: Use rins_v2 module instead.')
     if self._n_resets % self._sample_every_n_resets == 0:
       milp, sol, obj = self._sample()
     self.milp = milp
@@ -665,15 +666,16 @@ class Env(BaseEnv):
 
     self._n_steps += 1
     milp = self.milp
+    mip = self.mip
     curr_sol = self._curr_soln
     curr_obj = self._curr_obj
     var_names = self._var_names
-    # update graph features based on the action.
     globals_ = self._globals
     variable_nodes = self._variable_nodes
+    sub_mip_model = self._sub_mip_model
+    mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
     # action is the next node to unfix.
     action = int(action)
-    mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
     # check if the previous step's mask was successfully applied
     assert mask[action], mask
 
@@ -690,8 +692,9 @@ class Env(BaseEnv):
     if globals_[Env.GLOBAL_UNFIX_LEFT] == 0:
       # run mip
       local_search_case = True
-      mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=False)
-      ass, curr_obj, mip_stats = self._scip_solve(mip)
+      sub_mip_model.freeTransform()
+      mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
+      ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip_model)
       curr_sol = ass
       # # add back the newly found solutions for the sub-mip.
       # # this updates the current solution to the new local one.
@@ -711,19 +714,14 @@ class Env(BaseEnv):
       # run lp
       local_search_case = False
       if self.config.lp_features:
-        mip = milp.mip.fix(fixed_assignment, relax_integral_constraints=True)
-        ass, curr_lp_obj, _ = self._scip_solve(mip)
+        sub_mip_model.freeTransform()
+        mip = mip.fix(fixed_assignment, relax_integral_constraints=True, scip_model=sub_mip_model)
+        ass, curr_lp_obj, _ = self._scip_solve(mip=None, solver=sub_mip_model)
         curr_lp_sol = ass
       else:
         curr_lp_sol = curr_sol
         curr_lp_obj = curr_obj
-      # for var, val in fixed_assignment.items():
-      #   # ass should only contain unfixed variables.
-      #   assert var not in ass
-      #   curr_lp_sol[var] = val
 
-      # # add back the newly found variable assignments for the lp.
-      # curr_lp_sol.update(ass)
     # }
     ###################################################
 

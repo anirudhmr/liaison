@@ -128,15 +128,20 @@ class Evaluator:
 
         ts = self._env.reset()
         log_values = []
+        step_output = None
 
         while np.any(env_mask):
           obs = ts.observation
-          log_values.append(
-              dict(rew=ts.reward,
+          d = dict(rew=ts.reward,
                    optimal_solution=obs['optimal_solution'],
                    current_solution=obs['current_solution'],
                    step_type=ts.step_type,
-                   **obs['curr_episode_log_values']))
+                   **obs['curr_episode_log_values'])
+          if step_output:
+            d.update(action=step_output.action)
+          else:
+            d.update(action=None)
+          log_values.append(d)
 
           for i in range(len(env_mask)):
             if ts.step_type[i] == StepType.LAST:
@@ -150,7 +155,19 @@ class Evaluator:
         # done with a trial
         # stack all the timesteps.
         # Result: (n_envs, T)
-        eval_log_values.append(nest.map_structure(lambda *l: np.stack(l, axis=1), *log_values))
+        def f(*l):
+          # filter out Nones and stack
+          # note axis=1 stacks after the n_envs axis.
+
+          def f2(el):
+            if len(el.shape) == 1:
+              # add newaxis at the end if required.
+              return el[..., np.newaxis]
+            return el
+
+          return np.stack([f2(el) for el in l if el is not None], axis=1)
+
+        eval_log_values.append(nest.map_structure(f, *log_values))
 
       # log_values[i] -> For the ith environment log values where each value
       # has a dimension (n_trials, n_envs) + added at its forefront.

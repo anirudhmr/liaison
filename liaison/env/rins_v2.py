@@ -125,7 +125,6 @@ class Env(RINSEnv):
       self._static_graph_features = self._encode_static_graph_features()
     elif self.config.make_obs_for_bipartite_graphnet:
       self._static_graph_features = self._encode_static_bipartite_graph_features(e_f)
-
     self._n_resets += 1
     return restart(self._observation())
 
@@ -150,9 +149,6 @@ class Env(RINSEnv):
     # check if action is valid.
     # check if the previous step's mask was successfully applied
     for act in action:
-      if not mask[act]:
-        import pdb
-        pdb.set_trace()
       assert mask[act], (act, mask)
     # no duplicates
     assert len(set(action)) == len(action)

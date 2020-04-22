@@ -10,8 +10,6 @@ Requires env variables:
   SYMPH_IRS_PORT
 """
 
-from __future__ import absolute_import, division, print_function
-
 import copy
 import logging
 import os
@@ -25,6 +23,7 @@ from caraml.zmq import (ZmqClient, ZmqFileUploader, ZmqProxyThread, ZmqPub,
                         ZmqServer, ZmqSub, ZmqTimeoutError)
 from liaison.distributed import (LearnerDataPrefetcher, ParameterClient,
                                  SimpleParameterPublisher, Trajectory)
+from liaison.irs import get_irs_client
 from liaison.session.tracker import PeriodicTracker
 from liaison.utils import ConfigDict, logging
 from tensorflow.contrib.framework import nest
@@ -247,10 +246,13 @@ class Learner(object):
       self._ps_publisher.publish(*data)
 
   def _get_file_uploader(self):
-    return ZmqFileUploader(host=os.environ['SYMPH_IRS_HOST'],
-                           port=os.environ['SYMPH_IRS_PORT'],
-                           serializer='pyarrow',
-                           deserializer='pyarrow')
+    return ZmqFileUploader(
+        None,
+        None,
+        client=get_irs_client(timeout=5),
+        serializer='pyarrow',
+        deserializer='pyarrow',
+    )
 
   def _send_metagraph(self):
     fname = os.path.join(TEMP_FOLDER, str(uuid.uuid4()), 'learner.meta')

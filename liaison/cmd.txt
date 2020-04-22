@@ -283,3 +283,117 @@ python liaison/tmux/train.py --pdb_post_mortem -- \
 
 
 
+python liaison/tmux/train.py --pdb_post_mortem -- \
+  create -r /home/gridsan/addanki/results/{exp_id}/{experiment_name} \
+  -e 100-dataset \
+  --filter='.*supercloud_slurm' \
+  --pl_constraints='.*:supercloud_slurm' \
+  --bundle_actors \
+  --slurm_colocate_wunit \
+  -- \
+  --sess_config.learner.checkpoint_every=1000 \
+  --batch_size=4 \
+  --sess_config.bundled_actor.n_actors=4 \
+  --traj_length=16 \
+  --sess_config.learner.batch_size=8 \
+  --agent_config_file=liaison/configs/agent/gcn_ar.py \
+  --sess_config_file=liaison/configs/session_config.py \
+  --env_config_file=liaison/configs/env/rins.py \
+  --eval_config_file=liaison/configs/eval_config.py \
+  --sess_config.replay.class_path='liaison.replay.k_times_sample_replay' \
+  --sess_config.replay.max_times_sampled=4 \
+  --sess_config.replay.memory_size=128 \
+  --sess_config.learner.publish_every=25 \
+  --sess_config.shell.sync_period=20 \
+  \
+  --agent_config.freeze_graphnet_weights_step=100000000 \
+  \
+  --agent_config.model.num_blocks=4 \
+  --agent_config.model.d_model=64 \
+  --agent_config.model.num_heads=4 \
+  --agent_config.model.model_kwargs.n_prop_layers=4 \
+  \
+  --agent_config.ent_start_dec_step=1000 \
+  --agent_config.ent_dec_steps=40000 \
+  \
+  --agent_config.lr_start_dec_step=20000 \
+  --agent_config.lr_dec_steps=50000 \
+  --agent_config.lr_min=1e-5 \
+  \
+  --env_config.class_path=liaison.env.rins_v2 \
+  --env_config.muldi_actions=True \
+  --env_config.dataset=milp-cauction-100-filtered \
+  --env_config.max_nodes=1000 \
+  --env_config.max_edges=15000 \
+  --env_config.sample_every_n_resets=2 \
+  \
+  --env_config.starting_sol_schedule.enable=False \
+  \
+  --env_config.n_local_move_schedule.enable=True \
+  --env_config.n_local_move_schedule.start_step=2000 \
+  --env_config.n_local_move_schedule.start_value=10 \
+  --env_config.n_local_move_schedule.max_value=15 \
+  --env_config.n_local_move_schedule.dec_steps=30000 \
+  \
+  --env_config.k=5 \
+  --env_config.k_schedule.enable=False \
+  --env_config.k_schedule.values 5 5 \
+  --env_config.k_schedule.start_steps=10000 \
+  \
+  --env_config.dataset_schedule.enable=False \
+  --env_config.dataset_schedule.datasets 'milp-cauction-100-filtered' 'milp-cauction-300-filtered' \
+  --env_config.dataset_schedule.start_steps=10000 \
+  \
+  --eval_config.batch_size=8 \
+  --eval_config.env_config.n_local_moves=25
+
+
+
+python liaison/tmux/train.py --pdb_post_mortem -- \
+  create -r /home/gridsan/addanki/results/{exp_id}/{experiment_name} \
+  -e 100-dataset-no-ar \
+  --filter='.*supercloud_slurm' \
+  --pl_constraints='.*:supercloud_slurm' \
+  --bundle_actors \
+  --slurm_colocate_wunit \
+  -- \
+  --batch_size=8 \
+  --sess_config.bundled_actor.n_actors=4 \
+  --sess_config.learner.checkpoint_every=1000 \
+  --traj_length=32 \
+  --sess_config.learner.batch_size=8 \
+  --agent_config_file=liaison/configs/agent/gcn_rins.py \
+  --sess_config_file=liaison/configs/session_config.py \
+  --env_config_file=liaison/configs/env/rins.py \
+  --eval_config_file=liaison/configs/eval_config.py \
+  --sess_config.replay.class_path='liaison.replay.k_times_sample_replay' \
+  --sess_config.replay.max_times_sampled=4 \
+  --sess_config.replay.memory_size=128 \
+  --sess_config.learner.publish_every=25 \
+  --sess_config.shell.sync_period=20 \
+  \
+  --agent_config.model.class_path='liaison.agents.models.bipartite_gcn_rins' \
+  --agent_config.ent_start_dec_step=1000 \
+  --agent_config.ent_dec_steps=30000 \
+  \
+  --agent_config.lr_start_dec_step=20000 \
+  --agent_config.lr_dec_steps=50000 \
+  --agent_config.lr_min=1e-5 \
+  \
+  --env_config.class_path=liaison.env.rins_v2 \
+  --env_config.muldi_actions=False \
+  --env_config.dataset=milp-cauction-100-filtered \
+  --env_config.max_nodes=1000 \
+  --env_config.max_edges=25000 \
+  --env_config.sample_every_n_resets=2 \
+  \
+  --env_config.n_local_move_schedule.enable=True \
+  --env_config.n_local_move_schedule.start_step=2000 \
+  --env_config.n_local_move_schedule.start_value=5 \
+  --env_config.n_local_move_schedule.max_value=15 \
+  --env_config.n_local_move_schedule.dec_steps=30000 \
+  \
+  --env_config.k=5 \
+  \
+  --eval_config.batch_size=8 \
+  --eval_config.env_config.n_local_moves=25

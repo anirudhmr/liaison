@@ -14,7 +14,7 @@ from threading import Thread
 import liaison.utils as U
 from argon import to_nested_dicts
 from liaison.distributed import Learner, SimpleParameterServer
-from liaison.irs import IRSClient, IRSServer
+from liaison.irs import IRSClient, IRSProxy, IRSServer
 from liaison.loggers import (AvgPipeLogger, ConsoleLogger, DownSampleLogger,
                              FileStreamLogger, KVStreamLogger,
                              TensorplexLogger)
@@ -95,6 +95,8 @@ class Launcher:
       self.run_visualizers()
     elif component_name == 'irs':
       self.run_irs()
+    elif component_name == 'irs_proxy':
+      self.run_irs_proxy()
     else:
       raise ValueError('Unexpected component {}'.format(component_name))
 
@@ -445,3 +447,7 @@ class Launcher:
     self._irs_server.join()
     for thread in tensorplex_threads:
       thread.join()
+
+  def run_irs_proxy(self):
+    IRSProxy(serving_host=os.environ['SYMPH_IRS_PROXY_HOST'],
+             serving_port=os.environ['SYMPH_IRS_PROXY_PORT']).run()
