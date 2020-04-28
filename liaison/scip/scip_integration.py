@@ -1,5 +1,7 @@
 # Integrate scip with external RL environment
 
+import pdb
+
 import liaison.utils as U
 from liaison.utils import ConfigDict
 from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
@@ -20,55 +22,65 @@ class EvalHeur(Heur):
     # the improve_sol_fn being called.
     self._obj_vals = []
 
+  def return_fn(self, found_sol=True):
+    self._step += 1
+    if found_sol:
+      return dict(result=SCIP_RESULT.FOUNDSOL)
+    else:
+      return dict(result=SCIP_RESULT.DIDNOTFIND)
+
   def heurexec(self, heurtiming, nodeinfeasible):
     model = self.model
+    if model.getGap() > 1e10:
+      return self.return_fn(False)
     scip_sol = model.getBestSol()
     prev_obj = model.getSolObjVal(scip_sol)
     if len(self._obj_vals) == 0:
-      self._obj_vals.append((None, prev_obj, self._step, None, False))
+      self._obj_vals.append((None, prev_obj, self._step, model.getGap(), None, False))
     else:
       if self._obj_vals[-1][1] > prev_obj:
         # improvement in objective occured
-        self._obj_vals.append((self._obj_vals[-1][1], prev_obj, self._step,
-                               model.getGap(), None, False))
+        self._obj_vals.append(
+            (self._obj_vals[-1][1], prev_obj, self._step, model.getGap(), None, False))
 
+    print(f'Step: {self._step}, Obj:{prev_obj}, Gap:{model.getGap()}')
     varname2var = {v.name.lstrip('t_'): v for v in model.getVars()}
     # convert scip_sol to dict
     sol_d = {n: model.getSolVal(scip_sol, v) for n, v in varname2var.items()}
 
-    sol, stats = self.improve_sol_fn(model, sol_d, prev_obj, self._step)
+    if self._step > 0:
+      sol, stats = self.improve_sol_fn(model, sol_d, prev_obj, self._step)
+      if sol:
+        assert len(sol) >= len(sol_d), [len(sol), len(sol_d)]
+        # convert sol to sol_scip
+        sol_scip = model.createSol(self)
+        for var_name in sol:
+          try:
+            model.setSolVal(sol_scip, varname2var[var_name], sol[var_name])
+          except Exception as e:
+            print('Exception encountered')
+            print(e)
+            print('Var_name: ', var_name)
+            print('Solution:', sol)
+            print('varname2var: ', varname2var)
+            print(varname2var[var_name], sol[var_name])
+            pdb.set_trace()
+        # record the improved objective
+        improved_obj = model.getSolObjVal(sol_scip)
+        print(f'Prev_obj: {prev_obj} Improved_obj: {improved_obj}')
+        if improved_obj < prev_obj:
+          self._obj_vals.append((prev_obj, improved_obj, self._step, model.getGap(), stats, True))
+          # frees the solution as well
+          self.model.addSol(sol_scip, free=True)
+        assert improved_obj == model.getSolObjVal(model.getBestSol())
+        return self.return_fn(True)
+    return self.return_fn(False)
 
-    if sol:
-      # convert sol to sol_scip
-      sol_scip = model.createSol(self)
-
-      for var_name in sol:
-        try:
-          model.setSolVal(sol_scip, varname2var[var_name], sol[var_name])
-        except Exception:
-          pass
-
-      # record the improved objective
-      improved_obj = model.getSolObjVal(sol_scip)
-      print(f'Prev_obj: {prev_obj} Improved_obj: {improved_obj}')
-      if improved_obj < prev_obj:
-        self._obj_vals.append(
-            (prev_obj, improved_obj, self._step, model.getGap(), stats, True))
-        # frees the solution as well
-        self.model.addSol(sol_scip, free=True)
-      assert improved_obj == model.getSolObjVal(model.getBestSol())
-
-      self._step += 1
-      return {"result": SCIP_RESULT.FOUNDSOL}
-    self._step += 1
-    return {"result": SCIP_RESULT.DIDNOTFIND}
+  def done(self):
+    self._obj_vals.append((None, None, self._step, self.model.getGap(), None, False))
 
 
-def init_scip_params(model,
-                     seed,
-                     presolving=True,
-                     separating=True,
-                     conflict=True):
+def init_scip_params(model, seed, presolving=True, separating=True, conflict=True):
   # forked from liaison/daper/milp/features.py
 
   seed = seed % 2147483648  # SCIP seed range
@@ -100,18 +112,19 @@ def init_scip_params(model,
 
 def run_branch_and_bound_scip(m, heuristic):
   # m should already be presolved.
-  m.setIntParam('display/verblevel', 0)
   init_scip_params(m, seed=42)
 
+  # disable pscost for branching.
+  m.setParam('branching/pscost/priority', 100000000)
   # disable all other heuristics.
   params = m.getParams()
   for k, v in params.items():
-    if k.startswith('heuristics/') and k.endswith('/priority'):
-      try:
-        m.setParam(k, -536870912)
-      except ValueError:
-        # some priorities lie between [0.01 and 1]
-        m.setParam(k, 0.01)
+    if k.startswith('heuristics/') and k.endswith('/freq'):
+      m.setParam(k, -1)
+
+  # enable simplerounding heuristic to run at the
+  # root node.
+  m.setParam('heuristics/simplerounding/freq', 1)
 
   m.includeHeur(heuristic,
                 "PyEvalHeur",
@@ -120,6 +133,7 @@ def run_branch_and_bound_scip(m, heuristic):
                 timingmask=SCIP_HEURTIMING.BEFORENODE)
   # disable presolving
   m.setPresolve(SCIP_PARAMSETTING.OFF)
+  m.setSeparating(SCIP_PARAMSETTING.OFF)
 
   with U.Timer() as timer:
     m.optimize()

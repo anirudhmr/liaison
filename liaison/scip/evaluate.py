@@ -1,22 +1,25 @@
 # Evaluates the agent inside SCIP
 import copy
+import math
 import pickle
 import sys
 import time
+from math import fabs
 from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
-
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
+from liaison.daper.milp.primitives import IntegerVariable
 from liaison.env import StepType
 from liaison.env.batch import ParallelBatchedEnv, SerialBatchedEnv
 from liaison.env.utils.rins import get_sample
 from liaison.scip.scip_integration import (EvalHeur, init_scip_params,
                                            run_branch_and_bound_scip)
 from liaison.utils import ConfigDict
-from pyscipopt import Model
+
+EPS = 1e-2
 
 
 class Evaluator:
@@ -39,20 +42,19 @@ class Evaluator:
       dataset,
       dataset_type,
       graph_start_idx,
+      model,
       batch_size=1,  # num_envs
       use_parallel_envs=False,
       use_threaded_envs=False,
       **config):
     self.config = ConfigDict(config)
+    self.batch_size = batch_size
+    self.rng = np.random.RandomState(seed)
     # get the mip instance
     milp = get_sample(dataset, dataset_type, graph_start_idx)
-    # init scip model
-    self._model = model = Model()
-    model.setRealParam('limits/gap', args.gap)
-    model.hideOutput()
+    self._model = model
     milp.mip.add_to_scip_solver(model)
-    init_scip_params(model, seed=seed)
-    model.presolve()
+    self.k = env_config.k
 
     # init shell and environments
     # init environment
@@ -67,6 +69,9 @@ class Evaluator:
       })
       env_configs.append(env_config_copy)
 
+    milp = get_sample(dataset, dataset_type, graph_start_idx)
+    self.mip = milp.mip
+    self._optimal_lp_sol = milp.optimal_lp_sol
     if use_parallel_envs:
       self._env = ParallelBatchedEnv(batch_size,
                                      env_class,
@@ -76,7 +81,7 @@ class Evaluator:
     else:
       self._env = SerialBatchedEnv(batch_size, env_class, env_configs, seed)
 
-    # stop syncing
+    # disable sync
     shell_config['sync_period'] = None
     self._shell = shell_class(
         action_spec=self._env.action_spec(),
@@ -89,37 +94,116 @@ class Evaluator:
         **shell_config,
     )
 
-  def run(self):
-    heuristic = EvalHeur(self._primal_heuristic_callback)
+  def run(self, without_scip=False, without_agent=False, with_rins=False):
+    if without_scip:
+      return self.run_without_scip()
+    elif without_agent:
+      heuristic = EvalHeur(lambda *_, **__: (None, None))
+    elif with_rins:
+      heuristic = EvalHeur(self._rins_callback)
+    else:
+      heuristic = EvalHeur(self._primal_heuristic_callback)
+
     results = run_branch_and_bound_scip(self._model, heuristic)
+    heuristic.done()
     log_vals = heuristic._obj_vals
-    with open('/data/nms/tfp/dump.pkl', 'wb') as f:
+    with open(f'{self.config.results_dir}/out.pkl', 'wb') as f:
       pickle.dump(log_vals, f)
 
-  def _primal_heuristic_callback(self, model, sol, obj_val, step):
+  def rins_fn(self, i):
+    sol = self._env.func_call_ith_env('get_curr_soln', i)
+    var_names = self._env.func_call_ith_env('get_varnames', i)
+    errs = []
+    for var, val in self._optimal_lp_sol.items():
+      if isinstance(self.mip.varname2var[var], IntegerVariable) and var in var_names:
+        err = math.fabs(val - sol[var])
+        errs.append((err, var))
+    errs = sorted(errs, reverse=True)
+    var_names = [var for err, var in errs[:self.k]]
+    for err, var_name in errs:
+      if err == errs[self.k - 1][0]:
+        if var_name not in var_names:
+          var_names.append(var_name)
+    act = []
+    for vname in self.rng.choice(var_names, size=self.k, replace=False):
+      act.append(self._env.func_call_ith_env('varname2idx', i, vname))
+    return act
+
+  def _rins_callback(self, model, sol, obj_val, step):
     ts = self._env.func_call_with_common_args('reset_solution', sol, obj_val)
 
     start_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
-    start_qual = np.min(
-        ts.observation['curr_episode_log_values']['best_quality'])
+    assert math.fabs(obj_val - start_obj) <= EPS, (obj_val, start_obj, obj_val - start_obj)
+    start_qual = np.min(ts.observation['curr_episode_log_values']['best_quality'])
     n_local_moves_start = ts.observation['n_local_moves']
     stats = dict(mip_work=0)
-    while ts.observation[
-        'n_local_moves'] - n_local_moves_start <= self.config.n_local_moves:
+    while np.all(
+        ts.observation['n_local_moves'] - n_local_moves_start <= self.config.n_local_moves):
+      action = np.asarray([self.rins_fn(i) for i in range(self.batch_size)], np.int32)
+      for act in np.transpose(action):
+        ts = self._env.step(act)
+        stats['mip_work'] += ts.observation['curr_episode_log_values']['mip_work']
+
+    # get the best improved solution among all the environments
+    sol = self._env.func_call_ith_env(
+        'get_curr_soln', np.argmin(ts.observation['curr_episode_log_values']['best_quality']))
+    assert isinstance(sol, dict)
+
+    final_qual = np.min(ts.observation['curr_episode_log_values']['best_quality'])
+    final_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
+
+    # solution improved.
+    if final_obj < start_obj:
+      print(f'Start objective: {start_obj} Final Objective: {final_obj}')
+      print(f'Start Quality: {start_qual} Final Quality: {final_qual}')
+      return sol, stats
+    else:
+      return None, stats
+
+  def run_without_scip(self):
+    # run as a local-move solver independent of SCIP.
+    ts = self._env.reset()
+    start_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
+    start_qual = np.min(ts.observation['curr_episode_log_values']['best_quality'])
+    stats = dict(
+        obj=[np.min(ts.observation['curr_episode_log_values']['curr_obj'])],
+        quality=[np.min(ts.observation['curr_episode_log_values']['best_quality'])],
+    )
+    while np.all(ts.observation['n_local_moves'] <= self.config.n_local_moves):
       step_output = self._shell.step(step_type=ts.step_type,
                                      reward=ts.reward,
                                      observation=ts.observation)
       ts = self._env.step(step_output.action)
-      stats['mip_work'] += ts.observation['curr_episode_log_values'][
-          'mip_work']
+      stats['obj'].append(np.min(ts.observation['curr_episode_log_values']['curr_obj']))
+      stats['quality'].append(np.min(ts.observation['curr_episode_log_values']['best_quality']))
+
+    for k, l in stats.items():
+      print(f'{k} improved from {l[0]} to {l[-1]}')
+    with open(f'{self.config.results_dir}/out.pkl', 'wb') as f:
+      pickle.dump(stats, f)
+
+  def _primal_heuristic_callback(self, _, sol, obj_val, step):
+    ts = self._env.func_call_with_common_args('reset_solution', sol, obj_val)
+
+    start_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
+    assert math.fabs(obj_val - start_obj) <= EPS, (obj_val, start_obj, obj_val - start_obj)
+    start_qual = np.min(ts.observation['curr_episode_log_values']['best_quality'])
+    n_local_moves_start = ts.observation['n_local_moves']
+    stats = dict(mip_work=0)
+    while np.all(
+        ts.observation['n_local_moves'] - n_local_moves_start <= self.config.n_local_moves):
+      step_output = self._shell.step(step_type=ts.step_type,
+                                     reward=ts.reward,
+                                     observation=ts.observation)
+      ts = self._env.step(step_output.action)
+      stats['mip_work'] += ts.observation['curr_episode_log_values']['mip_work']
 
     # get the best improved solution among all the environments
     sol = self._env.func_call_ith_env(
-        'get_curr_soln',
-        np.argmin(ts.observation['curr_episode_log_values']['best_quality']))
+        'get_curr_soln', np.argmin(ts.observation['curr_episode_log_values']['best_quality']))
+    assert isinstance(sol, dict)
 
-    final_qual = np.min(
-        ts.observation['curr_episode_log_values']['best_quality'])
+    final_qual = np.min(ts.observation['curr_episode_log_values']['best_quality'])
     final_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
 
     # solution improved.

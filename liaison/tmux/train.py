@@ -14,7 +14,7 @@ from liaison.utils import ConfigDict
 
 IRS_NODE = 'lincoln_supercloud_control'
 IRS_PROXY_NODE = 'lincoln_supercloud_control'
-VISUALIZER_NODE = 'cloudlab_clemson_clgpu003'
+VISUALIZER_NODE = 'cloudlab_clemson_clgpu005'
 WHITELIST_NODES = list(set((IRS_NODE, IRS_PROXY_NODE, VISUALIZER_NODE)))
 
 parser = argon.ArgumentParser('Liaison trainer', add_help=False)

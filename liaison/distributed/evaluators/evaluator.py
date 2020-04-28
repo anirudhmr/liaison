@@ -159,13 +159,13 @@ class Evaluator:
           # filter out Nones and stack
           # note axis=1 stacks after the n_envs axis.
 
-          def f2(el):
-            if len(el.shape) == 1:
-              # add newaxis at the end if required.
-              return el[..., np.newaxis]
-            return el
+          # def f2(el):
+          #   if len(el.shape) == 1:
+          #     # add newaxis at the end if required.
+          #     return el[..., np.newaxis]
+          #   return el
 
-          return np.stack([f2(el) for el in l if el is not None], axis=1)
+          return np.stack([el for el in l if el is not None], axis=1)
 
         eval_log_values.append(nest.map_structure(f, *log_values))
 

@@ -47,7 +47,6 @@ def integral(curr_sol, mip, rng, k, *args, least_integral=True):
 
 
 def rins(curr_sol, mip, rng, k, *args):
-  continuous_sol = scip_solve(relax_integral_constraints(mip))
   errs = []
   for var, val in curr_sol.items():
     if isinstance(mip.varname2var[var], IntegerVariable):

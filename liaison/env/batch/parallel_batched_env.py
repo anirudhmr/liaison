@@ -26,13 +26,7 @@ class EnvWorker:
 
 class BatchedEnv(BaseBatchedEnv):
 
-  def __init__(self,
-               n_envs,
-               env_class,
-               env_configs,
-               seed,
-               use_threads=False,
-               **kwargs):
+  def __init__(self, n_envs, env_class, env_configs, seed, use_threads=False, **kwargs):
 
     super(BatchedEnv, self).__init__(n_envs, env_class, env_configs, seed)
 
@@ -49,8 +43,7 @@ class BatchedEnv(BaseBatchedEnv):
       send_queue = Queue(1)
       recv_queue = Queue(1)
       worker = Runnable(target=EnvWorker,
-                        args=(recv_queue, send_queue, i, seed, env_class,
-                              env_configs[i]))
+                        args=(recv_queue, send_queue, i, seed, env_class, env_configs[i]))
       worker.start()
       self._workers.append(worker)
       self._send_queues.append(send_queue)
@@ -85,15 +78,13 @@ class BatchedEnv(BaseBatchedEnv):
     return results
 
   def _setup_obs_spec(self):
-    self._obs_spec = self._stack_specs(
-        self._send_to_workers('observation_spec'))
+    self._obs_spec = self._stack_specs(self._send_to_workers('observation_spec'))
 
   def _setup_action_spec(self):
     self._action_spec = self._stack_specs(self._send_to_workers('action_spec'))
 
   def step(self, action):
-    return self._stack_ts(
-        self._send_to_workers('step', [(act, ) for act in action]))
+    return self._stack_ts(self._send_to_workers('step', [(act, ) for act in action]))
 
   def reset(self):
     return self._stack_ts(self._send_to_workers('reset'))
@@ -105,10 +96,9 @@ class BatchedEnv(BaseBatchedEnv):
     # call env.f with the provided arguments
     # The arguments are *not* split across the environments
     return self._stack_ts(
-        self._send_to_workers(f_name, [args] * self._n_workers,
-                              [kwargs] * self._n_workers))
+        self._send_to_workers(f_name, [args] * self._n_workers, [kwargs] * self._n_workers))
 
   def func_call_ith_env(self, func_name, i, *args, **kwargs):
     # gets the attr_name of the ith environment
     self._send_queues[i].put([func_name, args, kwargs])
-    return self._recv_queues[i].get()
+    return self._recv_queues[i].get()[0]

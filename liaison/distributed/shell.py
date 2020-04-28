@@ -85,16 +85,23 @@ class Shell:
                                                         shape=(),
                                                         name='shell_batch_size_ph')
       self._initial_state_op = self._agent.initial_state(self._batch_size_ph)
-      dummy_initial_state = self.sess.run(self._initial_state_op)  # weights are random.
+      # initialize weights randomly.
+      dummy_initial_state = self.sess.run(self._initial_state_op)
 
       self._mk_phs(dummy_initial_state)
       self._step_output = self._agent.step(self._step_type_ph, self._reward_ph,
                                            copy.copy(self._obs_ph), self._next_state_ph)
 
+      # initialize weights randomly.
       self.sess.run(tf.global_variables_initializer())
       self.sess.run(tf.local_variables_initializer())
       self._variables = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=agent_scope)
       self._variable_names = [var.name for var in self._variables]
+
+      # assert that all trainable variables are subset of self._variables
+      for var in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=agent_scope):
+        assert var.name in self._variable_names
+
       logging.info('Number of Variables identified for syncing: %d', len(self._variables))
       logging.info('Variable names for syncing: %s', ', '.join(self._variable_names))
       self._var_name_to_phs = dict()
@@ -161,18 +168,32 @@ class Shell:
     restore_map = {}
     # strip ":%d" out from variable names.
     var_names = list(map(lambda k: k.split(':')[0], self._variable_names))
+    var_names_left = set(var_names)
+    unrestored = []
     for v, _ in l:
       # edit the scope.
-      v2 = f'{self._agent_scope}/{v.lstrip("learner/")}'
+      v2 = f'{self._agent_scope}/{"/".join(v.split("/")[1:])}'
       if v2 in var_names:
         restore_map[v] = self._variables[var_names.index(v2)]
+        var_names_left.remove(v2)
+      else:
+        # not required for shell.
+        if 'adam' in v.lower() or 'value_torso' in v.lower() or 'optimize' in v.lower(
+        ) or 'global_step' in v.lower():
+          pass
+        else:
+          unrestored.append(v)
 
     if len(restore_map) == 0:
       print(f'WARNING: No variables found to restore in checkpoint {restore_map}!')
 
-    if len(restore_map) != len(l):
-      print(
-          f'WARNING: Restoring only {len(restore_map)} variables from {len(l)} found in the checkpoint {restore_path}!'
+    if var_names_left:
+      raise Exception(f'Not all required variables restored: {var_names_left}')
+
+    if unrestored:
+      print(unrestored)
+      raise Exception(
+          f'Restoring only {len(restore_map)} variables from {len(l)} found in the checkpoint {restore_path}!'
       )
     saver = tf.train.Saver(var_list=restore_map)
     saver.restore(self.sess, restore_path)

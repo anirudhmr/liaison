@@ -798,9 +798,15 @@ class Env(BaseEnv):
     np.random.seed(seed + self.id)
     self._rnd_state = np.random.RandomState(seed=seed + self.id)
 
+  def varname2idx(self, var_name):
+    return self._var_names.index(var_name)
+
+  def get_varnames(self):
+    return list(self._var_names)
+
   def get_curr_soln(self):
     sol = dict(self._curr_soln)
     # remove variables from sol which are pruned by pre-solving step.
-    for k in set(sol.keys()) - set(self._var_names):
-      del sol[k]
+    # for k in set(sol.keys()) - set(self._var_names):
+    #   del sol[k]
     return sol
