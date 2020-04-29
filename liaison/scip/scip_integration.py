@@ -111,9 +111,6 @@ def init_scip_params(model, seed, presolving=True, separating=True, conflict=Tru
 
 
 def run_branch_and_bound_scip(m, heuristic):
-  # m should already be presolved.
-  init_scip_params(m, seed=42)
-
   # disable pscost for branching.
   m.setParam('branching/pscost/priority', 100000000)
   # disable all other heuristics.

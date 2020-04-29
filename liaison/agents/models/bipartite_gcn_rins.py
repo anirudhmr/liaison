@@ -1,7 +1,6 @@
 """Graphnet based model."""
-import numpy as np
-
 import graph_nets as gn
+import numpy as np
 import sonnet as snt
 import tensorflow.keras as K
 import tree as nest
@@ -129,6 +128,7 @@ class Model(GCNRinsModel):
                graph_features.edges, right_features))
         right_features = self.activation(right_features)
 
+        # typo this should be c_to_v
         with tf.variable_scope('c_to_c'):
           left_features = self.conv_c_to_v(
               (left_features, (graph_features.senders, graph_features.receivers),

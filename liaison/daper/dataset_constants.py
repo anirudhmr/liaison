@@ -13,8 +13,6 @@ DATASET_PATH = {
     'milp-cauction-10': f'{DATASET_DIR}/datasets/milp/cauction/size-10',
     'milp-cauction-100': f'{DATASET_DIR}/datasets/milp/cauction/size-100',
     'milp-cauction-100-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-100-gap-.01',
-    # 'milp-cauction-100-filtered':
-    # '/nobackup/users/addanki/datasets/milp/cauction/size-100-gap-.01',
     'milp-cauction-mixed': f'{DATASET_DIR}/datasets/milp/cauction/size-mixed-small',
     'milp-cauction-200': f'{DATASET_DIR}/datasets/milp/cauction/size-200',
     'milp-cauction-300': f'{DATASET_DIR}/datasets/milp/cauction/size-300',
@@ -118,12 +116,14 @@ NORMALIZATION_CONSTANTS = {
     ),
     'milp-cauction-100-filtered':
     dict(
-        constraint_rhs_normalizer=1.0,
-        constraint_coeff_normalizer=1.0,
-        obj_coeff_normalizer=355.88,
-        obj_normalizer=7332.56,
-        max_nodes=703,
-        max_edges=8062,
+        rhs_vals=1.0,
+        constraint_coeff_vals=1.0,
+        obj_coeff_vals=355.88260533379963,
+        optimal_obj_vals=7332.562648075974,
+        optimal_var_vals=0.07080000000000002,
+        constraint_degree=56.618,
+        max_nodes=761,
+        max_edges=12472,
     ),
     'milp-cauction-300-filtered':
     dict(

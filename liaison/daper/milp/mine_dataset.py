@@ -10,6 +10,7 @@ import sys
 parser = argparse.ArgumentParser()
 parser.add_argument('-N', '--n_sample_per_proc', type=int, default=1)
 parser.add_argument('-j', '--n_procs', type=int, default=1)
+parser.add_argument('--n_procs_per_srun', type=int, default=2)
 parser.add_argument('-s', '--slurm_mode', action='store_true')
 REMAINDER = ''
 
@@ -40,16 +41,20 @@ def main():
     cmds.append(cmd_gen(seed))
     seed += args.n_sample_per_proc
 
-  if args.slurm_mode:
-    for i in range(math.ceil(len(cmds) / 2)):
-      if 2 * i + 1 < len(cmds):
-        cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1] + '; wait'
-      else:
-        cmd = cmds[2 * i]
-      print(f'srun --overcommit --mem=2G bash -c {shlex.quote(cmd)}')
-  else:
-    for cmd in cmds:
-      print(cmd)
+  M = args.n_procs_per_srun
+  for i in range(math.ceil(len(cmds) / float(M))):
+    join_cmds = []
+    for j in range(M):
+      idx = M * i + j
+      if idx < len(cmds):
+        join_cmds.append(cmds[idx])
+    cmd = ' & '.join(join_cmds)
+    if len(join_cmds) > 1:
+      cmd += '; wait'
+    if args.slurm_mode:
+      print(f'srun --overcommit --mem=2G {args.slurm_options} bash -c {shlex.quote(cmd)}')
+    else:
+      print(f'bash -c {shlex.quote(cmd)}')
 
 
 if __name__ == '__main__':
