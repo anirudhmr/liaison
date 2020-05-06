@@ -1,6 +1,7 @@
 # Integrate scip with external RL environment
 
 import pdb
+from math import fabs
 
 import liaison.utils as U
 from liaison.utils import ConfigDict
@@ -54,17 +55,20 @@ class EvalHeur(Heur):
         assert len(sol) >= len(sol_d), [len(sol), len(sol_d)]
         # convert sol to sol_scip
         sol_scip = model.createSol(self)
+        vars_with_exception = []
         for var_name in sol:
           try:
             model.setSolVal(sol_scip, varname2var[var_name], sol[var_name])
           except Exception as e:
-            print('Exception encountered')
-            print(e)
-            print('Var_name: ', var_name)
-            print('Solution:', sol)
-            print('varname2var: ', varname2var)
-            print(varname2var[var_name], sol[var_name])
-            pdb.set_trace()
+            vars_with_exception.append(var_name)
+            # print('Exception encountered')
+            # print(e)
+            # print('Var_name: ', var_name)
+            # print('Solution:', sol)
+            # print('varname2var: ', varname2var)
+            # print(varname2var[var_name], sol[var_name])
+        if vars_with_exception:
+          print(f'WARNING: Exception encountered in {len(vars_with_exception)} of {len(sol)}')
         # record the improved objective
         improved_obj = model.getSolObjVal(sol_scip)
         print(f'Prev_obj: {prev_obj} Improved_obj: {improved_obj}')
@@ -72,7 +76,7 @@ class EvalHeur(Heur):
           self._obj_vals.append((prev_obj, improved_obj, self._step, model.getGap(), stats, True))
           # frees the solution as well
           self.model.addSol(sol_scip, free=True)
-        assert improved_obj == model.getSolObjVal(model.getBestSol())
+        assert fabs(improved_obj - model.getSolObjVal(model.getBestSol())) <= 1e-3
         return self.return_fn(True)
     return self.return_fn(False)
 
@@ -80,7 +84,13 @@ class EvalHeur(Heur):
     self._obj_vals.append((None, None, self._step, self.model.getGap(), None, False))
 
 
-def init_scip_params(model, seed, presolving=True, separating=True, conflict=True):
+def init_scip_params(
+    model,
+    seed,
+    presolving=True,
+    conflict=True,
+    heur_frequency=-1,
+):
   # forked from liaison/daper/milp/features.py
 
   seed = seed % 2147483648  # SCIP seed range
@@ -93,44 +103,40 @@ def init_scip_params(model, seed, presolving=True, separating=True, conflict=Tru
   # Don't limit max rounds for now.
   # model.setIntParam('separating/maxrounds', 0)
 
-  # no restart
-  model.setIntParam('presolving/maxrestarts', 0)
-
-  # if asked, disable presolvinpoti
+  # disable presolving
   if not presolving:
+    model.setIntParam('presolving/maxrestarts', 0)
     model.setIntParam('presolving/maxrounds', 0)
     model.setIntParam('presolving/maxrestarts', 0)
+    model.setPresolving(SCIP_PARAMSETTING.OFF)
 
-  # if asked, disable separating (cuts)
-  if not separating:
-    model.setIntParam('separating/maxroundsroot', 0)
+  # disable separating (cuts)
+  model.setIntParam('separating/maxroundsroot', 0)
+  model.setSeparating(SCIP_PARAMSETTING.OFF)
 
   # if asked, disable conflict analysis (more cuts)
   if not conflict:
     model.setBoolParam('conflict/enable', False)
 
-
-def run_branch_and_bound_scip(m, heuristic):
   # disable pscost for branching.
-  m.setParam('branching/pscost/priority', 100000000)
-  # disable all other heuristics.
-  params = m.getParams()
-  for k, v in params.items():
-    if k.startswith('heuristics/') and k.endswith('/freq'):
-      m.setParam(k, -1)
+  model.setParam('branching/pscost/priority', 100000000)
 
+  # disable all heuristics.
+  for k, v in model.getParams().items():
+    if k.startswith('heuristics/') and k.endswith('/freq'):
+      model.setParam(k, heur_frequency)
   # enable simplerounding heuristic to run at the
   # root node.
-  m.setParam('heuristics/simplerounding/freq', 1)
+  model.setParam('heuristics/simplerounding/freq', 1)
 
+
+def run_branch_and_bound_scip(m, heuristic):
+  # m must be presolved before passing
   m.includeHeur(heuristic,
                 "PyEvalHeur",
                 "custom heuristic implemented in python to evaluate RL agent",
                 "Y",
                 timingmask=SCIP_HEURTIMING.BEFORENODE)
-  # disable presolving
-  m.setPresolve(SCIP_PARAMSETTING.OFF)
-  m.setSeparating(SCIP_PARAMSETTING.OFF)
 
   with U.Timer() as timer:
     m.optimize()

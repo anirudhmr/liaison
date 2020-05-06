@@ -5,7 +5,7 @@ import pickle
 import shlex
 import sys
 from math import ceil, fabs
-from multiprocessing.pool import Pool, ThreadPool
+from multiprocessing.pool import Pool
 from pathlib import Path
 
 import numpy as np
@@ -84,7 +84,7 @@ def _filter():
   else:
     files = [f'{args.input_dir}/{i}.pkl' for i in range(args.n_read_samples)]
 
-  with ThreadPool() as pool:
+  with Pool() as pool:
     scores = pool.map(compute_score, files)
   return list(filter(lambda k: k[0], scores))
 

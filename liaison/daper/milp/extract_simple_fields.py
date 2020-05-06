@@ -7,7 +7,7 @@ from liaison.daper.dataset_constants import DATASET_PATH
 from liaison.daper.milp.dataset import MILP, MILP_PRIMITIVE
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True)
+parser.add_argument('--dataset', '-d', required=True)
 parser.add_argument('--out_dir', '-o', required=True)
 args = parser.parse_args()
 

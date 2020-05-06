@@ -20,10 +20,10 @@ class Variable(ABC):
 
   def validate(self, val):
     if self.lower_bound is not None:
-      assert val >= self.lower_bound - 1e-5, (val, self.lower_bound)
+      assert val >= self.lower_bound - 1e-3, (val, self.lower_bound)
 
     if self.upper_bound is not None:
-      assert val <= self.upper_bound + 1e-5, (val, self.upper_bound)
+      assert val <= self.upper_bound + 1e-3, (val, self.upper_bound)
 
     return True
 
@@ -42,10 +42,7 @@ class ContinuousVariable(Variable):
       solver.variables.set_upper_bounds(self.name, self.upper_bound)
 
   def add_to_scip_solver(self, solver):
-    return solver.addVar(lb=self.lower_bound,
-                         ub=self.upper_bound,
-                         vtype="C",
-                         name=self.name)
+    return solver.addVar(lb=self.lower_bound, ub=self.upper_bound, vtype="C", name=self.name)
 
 
 class IntegerVariable(Variable):
@@ -59,28 +56,20 @@ class IntegerVariable(Variable):
       solver.variables.set_upper_bounds(self.name, self.upper_bound)
 
   def add_to_scip_solver(self, solver):
-    return solver.addVar(lb=self.lower_bound,
-                         ub=self.upper_bound,
-                         vtype="I",
-                         name=self.name)
+    return solver.addVar(lb=self.lower_bound, ub=self.upper_bound, vtype="I", name=self.name)
 
 
 class BinaryVariable(IntegerVariable):
 
   def __init__(self, var_name):
-    super(BinaryVariable, self).__init__(var_name,
-                                         lower_bound=0,
-                                         upper_bound=1)
+    super(BinaryVariable, self).__init__(var_name, lower_bound=0, upper_bound=1)
 
   def add_to_cplex_solver(self, solver):
     solver.variables.add(names=[self.name])
     solver.variables.set_types(self.name, solver.variables.type.binary)
 
   def add_to_scip_solver(self, solver):
-    return solver.addVar(lb=self.lower_bound,
-                         ub=self.upper_bound,
-                         vtype="B",
-                         name=self.name)
+    return solver.addVar(lb=self.lower_bound, ub=self.upper_bound, vtype="B", name=self.name)
 
 
 class Expression:
@@ -184,11 +173,9 @@ class Constraint:
     expr = self.expr.reduce(fixed_vars_to_values)
     if expr.is_constant:
       if self.sense == 'LE':
-        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs,
-                                                  os.getpid())
+        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs, os.getpid())
       else:
-        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs,
-                                                  os.getpid())
+        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs, os.getpid())
       return None
     else:
       # convert to 'LE' format
@@ -235,21 +222,20 @@ class Constraint:
       sense = 'G'
 
     import cplex
-    solver.linear_constraints.add(lin_expr=[
-        cplex.SparsePair(ind=self.expr.var_names, val=self.expr.coeffs)
-    ],
-                                  senses=[sense],
-                                  rhs=[self.rhs])
+    solver.linear_constraints.add(
+        lin_expr=[cplex.SparsePair(ind=self.expr.var_names, val=self.expr.coeffs)],
+        senses=[sense],
+        rhs=[self.rhs])
 
   def add_to_scip_solver(self, solver, varname2var):
     if self.sense == 'LE':
       solver.addCons(
-          quicksum((varname2var[var] * coeff for var, coeff in zip(
-              self.expr.var_names, self.expr.coeffs))) <= self.rhs)
+          quicksum((varname2var[var] * coeff
+                    for var, coeff in zip(self.expr.var_names, self.expr.coeffs))) <= self.rhs)
     elif self.sense == 'GE':
       solver.addCons(
-          quicksum((varname2var[var] * coeff for var, coeff in zip(
-              self.expr.var_names, self.expr.coeffs))) >= self.rhs)
+          quicksum((varname2var[var] * coeff
+                    for var, coeff in zip(self.expr.var_names, self.expr.coeffs))) >= self.rhs)
 
 
 class Objective:
@@ -293,10 +279,8 @@ class Objective:
 
   def add_to_scip_solver(self, solver, varname2var):
     solver.setObjective(
-        quicksum(
-            (varname2var[var] * coeff
-             for var, coeff in zip(self.expr.var_names, self.expr.coeffs))),
-        "minimize")
+        quicksum((varname2var[var] * coeff
+                  for var, coeff in zip(self.expr.var_names, self.expr.coeffs))), "minimize")
     solver.addObjoffset(self.expr.constant)
 
 
@@ -330,8 +314,7 @@ class MIPInstance:
     all_var_names += self.obj.expr.var_names
 
     assert set(all_var_names) == set(list(
-        self.varname2var.keys())), (set(all_var_names),
-                                    set(list(self.varname2var.keys())))
+        self.varname2var.keys())), (set(all_var_names), set(list(self.varname2var.keys())))
 
   def fix(self, fixed_ass: Dict[str, float], relax_integral_constraints=False):
     """
@@ -356,13 +339,9 @@ class MIPInstance:
     m.constraints = copy.deepcopy(self.constraints)
     # add fixed assignment constraints
     for var, val in fixed_ass.items():
-      c1 = m.new_constraint('LE',
-                            val + 1e-3,
-                            name=f'fix-var-{var}-to-LE-{val}')
+      c1 = m.new_constraint('LE', val + 1e-3, name=f'fix-var-{var}-to-LE-{val}')
       c1.add_term(var, 1)
-      c2 = m.new_constraint('GE',
-                            val - 1e-3,
-                            name=f'fix-var-{var}-to-GE-{val}')
+      c2 = m.new_constraint('GE', val - 1e-3, name=f'fix-var-{var}-to-GE-{val}')
       c2.add_term(var, 1)
 
     for vname, var in self.varname2var.items():
@@ -467,8 +446,7 @@ def scip_to_milps(model):
     elif t == 'INTEGER':
       v = IntegerVariable(var.name, var.getLbOriginal(), var.getUbOriginal())
     else:
-      v = ContinuousVariable(var.name, var.getLbOriginal(),
-                             var.getUbOriginal())
+      v = ContinuousVariable(var.name, var.getLbOriginal(), var.getUbOriginal())
     m.add_variable(v)
   m.validate()
   return m

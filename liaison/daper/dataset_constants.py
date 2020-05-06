@@ -10,6 +10,7 @@ DATASET_PATH = {
     'tsp-100': f'{DATASET_DIR}/datasets/tsp/n-100',
     'milp-facilities-3': f'{DATASET_DIR}/datasets/milp/facilities/size-3',
     'milp-facilities-10': f'{DATASET_DIR}/datasets/milp/facilities/size-10',
+    'milp-facilities-100': f'{DATASET_DIR}/datasets/milp/facilities/size-100',
     'milp-cauction-10': f'{DATASET_DIR}/datasets/milp/cauction/size-10',
     'milp-cauction-100': f'{DATASET_DIR}/datasets/milp/cauction/size-100',
     'milp-cauction-100-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-100-gap-.01',
@@ -27,6 +28,7 @@ DATASET_PATH = {
     'milp-indset-100': f'{DATASET_DIR}/datasets/milp/indset/size-100',
     'milp-bcol': f'{DATASET_DIR}/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
     'milp-corlat': f'{DATASET_DIR}/datasets/milp/corlat',
+    # 'milp-corlat': f'{DATASET_DIR}/datasets/milp/corlat-2',
     'milp-regions': f'{DATASET_DIR}/datasets/milp/mip_datasets/Regions200-mps'
 }
 
@@ -36,6 +38,7 @@ LENGTH_MAP = {
     'tsp-100': dict(train=1000, valid=100, test=100),
     'milp-facilities-3': dict(train=1000, valid=128, test=128),
     'milp-facilities-10': dict(train=10000, valid=1000, test=1000),
+    'milp-facilities-100': dict(train=1000, valid=100, test=100),
     'milp-cauction-10': dict(train=10000, valid=1000, test=1000),
     'milp-cauction-25': dict(train=2000, valid=100, test=100),
     'milp-cauction-25-filtered': dict(train=10000, valid=1000, test=1000),
@@ -52,6 +55,7 @@ LENGTH_MAP = {
     'milp-indset-10': dict(train=10000, valid=1000, test=1000),
     'milp-indset-100': dict(train=1000, valid=100, test=100),
     'milp-corlat': dict(train=256, valid=32, test=32),
+    # 'milp-corlat': dict(train=1600, valid=160, test=160),
 }
 
 DATASET_INFO_PATH = {
@@ -59,6 +63,8 @@ DATASET_INFO_PATH = {
     'milp-cauction-100-filtered': f'{DATASET_DIR}/dataset_infos/milp-cauction-100-filtered',
     'milp-cauction-300-filtered': f'{DATASET_DIR}/dataset_infos/milp-cauction-300-filtered',
     'milp-cauction-300-filtered-2': f'{DATASET_DIR}/dataset_infos/milp-cauction-300-filtered-2',
+    'milp-corlat': f'{DATASET_DIR}/dataset_infos/milp-corlat',
+    'milp-facilities-100': f'{DATASET_DIR}/dataset_infos/milp-facilities-100',
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -72,6 +78,18 @@ NORMALIZATION_CONSTANTS = {
          constraint_coeff_normalizer=0.15006158527422991,
          obj_coeff_normalizer=183.39600975244542,
          obj_normalizer=2633.6883431640854),
+    'milp-facilities-100':
+    dict(
+        constraint_rhs_normalizer=0.20705970002940888,
+        constraint_coeff_normalizer=0.16596997354171256,
+        obj_coeff_normalizer=114.33171071291811,
+        obj_normalizer=18216.969891266457,
+        optimal_var_vals=0.011125940594059407,
+        constraint_degree_normalizer=101.0,
+        cont_variable_normalizer=0.01,
+        max_nodes=20387,
+        max_edges=92659,
+    ),
     'milp-cauction-10':
     dict(constraint_rhs_normalizer=1.0,
          constraint_coeff_normalizer=1.0,
@@ -116,12 +134,12 @@ NORMALIZATION_CONSTANTS = {
     ),
     'milp-cauction-100-filtered':
     dict(
-        rhs_vals=1.0,
-        constraint_coeff_vals=1.0,
-        obj_coeff_vals=355.88260533379963,
-        optimal_obj_vals=7332.562648075974,
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=355.88260533379963,
+        obj_normalizer=7332.562648075974,
         optimal_var_vals=0.07080000000000002,
-        constraint_degree=56.618,
+        constraint_degree_normalizer=56.618,
         max_nodes=761,
         max_edges=12472,
     ),
@@ -147,14 +165,15 @@ NORMALIZATION_CONSTANTS = {
     ),
     'milp-corlat':
     dict(
-        constraint_rhs_normalizer=0.82,
-        constraint_coeff_normalizer=30.086,
-        obj_coeff_normalizer=5.518,
-        obj_normalizer=86.54,
-        max_nodes=1127,
-        max_edges=5730,
-        constraint_degree_normalizer=101,
-        cont_variable_normalizer=100.,
+        constraint_rhs_normalizer=0.8254324843758292,
+        constraint_coeff_normalizer=30.086661124645993,
+        obj_coeff_normalizer=5.51898978960396,
+        obj_normalizer=86.53515625,
+        optimal_var_vals=2.86012400696883,
+        constraint_degree_normalizer=101.0,
+        cont_variable_normalizer=3.5874568128346307,
+        max_nodes=1201,
+        max_edges=4547,
     ),
     'milp-cauction-mixed':
     dict(

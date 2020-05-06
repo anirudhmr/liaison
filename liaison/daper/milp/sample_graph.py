@@ -7,7 +7,9 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
+from liaison.daper.milp.mine_graph import LogBestSol
 from liaison.daper.milp.primitives import relax_integral_constraints
+from liaison.scip.evaluate import get_model
 from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
                        Model)
 
@@ -19,33 +21,12 @@ parser.add_argument('--time_limit', type=int, default=None)
 parser.add_argument('--seed', type=int, required=True)
 parser.add_argument('--score_threshold', type=float, default=-1e20)
 parser.add_argument('--gap', type=float, default=0.)
+parser.add_argument('--max_nodes', type=int)
 parser.add_argument('--n_threads', type=int, default=1)
 parser.add_argument('--only_collect_metadata',
                     action='store_true',
                     help='Only collects stats instead of writing the problem.')
 args = parser.parse_args()
-
-
-class LogBestSol(Heur):
-
-  def __init__(self):
-    super(LogBestSol, self).__init__()
-    self.primal_integral = 0.
-    self.i = 0
-    # list of tuples of (primal gap switch step, primal gap)
-    self.l = []
-
-  def heurexec(self, heurtiming, nodeinfeasible):
-    sol = self.model.getBestSol()
-    obj = self.model.getSolObjVal(sol)
-    self.primal_integral += obj
-    if self.l:
-      if self.l[-1][1] != obj:
-        self.l.append((self.i, obj))
-    else:
-      self.l.append((self.i, obj))
-    self.i += 1
-    return dict(result=SCIP_RESULT.DELAYED)
 
 
 def sample_milp_work(rng):
@@ -58,7 +39,7 @@ def sample_milp_work(rng):
   else:
     milp.mip = None
 
-  model = Model()
+  model = get_model(args.seed, args.gap, args.max_nodes)
   model.hideOutput()
   heur = LogBestSol()
   model.includeHeur(heur,
@@ -68,8 +49,8 @@ def sample_milp_work(rng):
                     timingmask=SCIP_HEURTIMING.BEFORENODE)
 
   mip.add_to_scip_solver(model)
-  model.setRealParam('limits/gap', args.gap)
   model.optimize()
+  heur.done()
   milp.optimal_objective = model.getObjVal()
   if not args.only_collect_metadata:
     milp.optimal_solution = {var.name: model.getVal(var) for var in model.getVars()}

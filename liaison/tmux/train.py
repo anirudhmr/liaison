@@ -14,7 +14,7 @@ from liaison.utils import ConfigDict
 
 IRS_NODE = 'lincoln_supercloud_control'
 IRS_PROXY_NODE = 'lincoln_supercloud_control'
-VISUALIZER_NODE = 'cloudlab_clemson_clgpu005'
+VISUALIZER_NODE = 'cloudlab_clemson_clgpu006'
 WHITELIST_NODES = list(set((IRS_NODE, IRS_PROXY_NODE, VISUALIZER_NODE)))
 
 parser = argon.ArgumentParser('Liaison trainer', add_help=False)
@@ -57,7 +57,11 @@ parser.add_argument('--coloc_constraints',
     then use the string:
       a;b;c p;q;r x;y;z
   ''')
-parser.add_argument('--disable_sweep', '--no_sweep', '--without_sweep', action='store_true')
+parser.add_argument('--disable_sweep',
+                    '--dont_sweep',
+                    '--no_sweep',
+                    '--without_sweep',
+                    action='store_true')
 parser.add_argument('--slurm_colocate_wunit', action='store_true')
 parser.add_argument('--slurm_per_gpu_allocation', action='store_true')
 parser.add_argument('--use_irs_proxy', action='store_true')
@@ -86,9 +90,9 @@ def train(argv):
   exps = []
   for work_id, params in enumerate(
       hyper.product(
-          # hyper.discrete('env_config.k', [10, 20]),
-          # hyper.discrete('agent_config.lr_init', [2e-4]),
-          hyper.discrete('agent_config.lr_init', [1e-4, 2e-4, 3e-4, 4e-4]),
+          hyper.discrete('env_config.k', [5, 10, 20]),
+          hyper.discrete('agent_config.lr_init', [1e-4, 2e-4]),
+          # hyper.discrete('agent_config.lr_init', [1e-4, 2e-4, 3e-4, 4e-4]),
           hyper.discrete('agent_config.ent_dec_init', [2e-2]),
           # hyper.discrete('env_config.graph_start_idx', list(range(8))),
       )):

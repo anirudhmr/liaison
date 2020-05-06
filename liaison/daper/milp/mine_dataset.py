@@ -52,7 +52,7 @@ def main():
     if len(join_cmds) > 1:
       cmd += '; wait'
     if args.slurm_mode:
-      print(f'srun --overcommit --mem=2G {args.slurm_options} bash -c {shlex.quote(cmd)}')
+      print(f'srun --overcommit --mem=2G bash -c {shlex.quote(cmd)}')
     else:
       print(f'bash -c {shlex.quote(cmd)}')
 

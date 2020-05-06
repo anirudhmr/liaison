@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
+from liaison.scip.evaluate import get_model
 from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
                        Model)
 
@@ -17,7 +18,9 @@ parser.add_argument('--problem_size', type=int, nargs='+', required=True)
 parser.add_argument('-N', '--n_samples', type=int, required=True)
 parser.add_argument('--seed', type=int, required=True)
 parser.add_argument('--gap', type=float, default=0.)
-args = parser.parse_args()
+parser.add_argument('--max_nodes', type=int)
+if __name__ == '__main__':
+  args = parser.parse_args()
 
 
 class LogBestSol(Heur):
@@ -41,6 +44,9 @@ class LogBestSol(Heur):
     self.i += 1
     return dict(result=SCIP_RESULT.DELAYED)
 
+  def done(self):
+    self.l.append((self.i, self.model.getSolObjVal(self.model.getBestSol())))
+
 
 def sample_problem_size(seed):
   rng = np.random.RandomState(seed)
@@ -60,18 +66,16 @@ def sample_milp_work(seed):
   mip = generate_instance(args.problem_type, milp.problem_size, np.random.RandomState(seed))
   milp.mip = None
 
-  model = Model()
-  model.hideOutput()
+  model = get_model(seed, args.gap, args.max_nodes)
   heur = LogBestSol()
   model.includeHeur(heur,
                     "PyHeur",
                     "custom heuristic implemented in python",
                     "Y",
                     timingmask=SCIP_HEURTIMING.BEFORENODE)
-
   mip.add_to_scip_solver(model)
-  model.setRealParam('limits/gap', args.gap)
   model.optimize()
+  heur.done()
   milp.optimal_objective = model.getObjVal()
   milp.is_optimal = (model.getStatus() == 'optimal')
   milp.optimal_sol_metadata.n_nodes = model.getNNodes()

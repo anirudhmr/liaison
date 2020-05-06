@@ -56,12 +56,20 @@ def spawner_fn(args):
           f'python {__file__} -- --worker_mode --input_pkl_path={inp_pkl_fname} --output_pkl_path={out_pkl_fname}'
       ]
 
-  for i in range(math.ceil(len(cmds) / 2)):
-    if 2 * i + 1 < len(cmds):
-      cmd = cmds[2 * i] + ' & ' + cmds[2 * i + 1] + '; wait'
+  M = args.n_procs_per_srun
+  for i in range(math.ceil(len(cmds) / float(M))):
+    join_cmds = []
+    for j in range(M):
+      idx = M * i + j
+      if idx < len(cmds):
+        join_cmds.append(cmds[idx])
+    cmd = ' & '.join(join_cmds)
+    if len(join_cmds) > 1:
+      cmd += '; wait'
+    if args.slurm_mode:
+      print(f'srun --overcommit --mem=2G bash -c {shlex.quote(cmd)}')
     else:
-      cmd = cmds[2 * i]
-    print(f'srun --overcommit --mem=2G bash -c {shlex.quote(cmd)}')
+      print(f'bash -c {shlex.quote(cmd)}')
 
 
 def main(argv):
@@ -78,11 +86,17 @@ def main(argv):
     args = parser.parse_args(argv[1:])
 
     Path(args.output_pkl_path).parent.mkdir(parents=True, exist_ok=True)
+    try:
+      p = worker_fn(args)
+    except AssertionError:
+      pass
     with open(args.output_pkl_path, 'wb') as f:
-      pickle.dump(worker_fn(args), f)
+      pickle.dump(p, f)
   else:
-    parser.add_argument('--dataset', help='Must be registered in dataset_constants.py')
-    parser.add_argument('--out_path', '--output_path', required=True, type=str)
+    parser.add_argument('-d', '--dataset', help='Must be registered in dataset_constants.py')
+    parser.add_argument('-o', '--out_path', '--output_path', required=True, type=str)
+    parser.add_argument('--n_procs_per_srun', type=int, default=2)
+    parser.add_argument('-s', '--slurm_mode', action='store_true')
     args = parser.parse_args(argv[1:])
     spawner_fn(args)
 

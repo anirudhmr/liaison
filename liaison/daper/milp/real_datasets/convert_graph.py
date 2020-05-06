@@ -8,7 +8,9 @@ from multiprocessing.pool import ThreadPool
 import numpy as np
 from liaison.daper.milp.dataset import MILP
 from liaison.daper.milp.generate_graph import generate_instance
-from liaison.daper.milp.primitives import scip_to_milps
+from liaison.daper.milp.mine_graph import LogBestSol
+from liaison.daper.milp.primitives import (relax_integral_constraints,
+                                           scip_to_milps)
 from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
                        Model)
 
@@ -19,28 +21,6 @@ parser.add_argument('-t', '--time_limit', type=int, default=None)
 parser.add_argument('--gap', type=float, default=0.)
 parser.add_argument('--problem_type', type=str, required=True)
 args = parser.parse_args()
-
-
-class LogBestSol(Heur):
-
-  def __init__(self):
-    super(LogBestSol, self).__init__()
-    self.primal_integral = 0.
-    self.i = 0
-    # list of tuples of (primal gap switch step, primal gap)
-    self.l = []
-
-  def heurexec(self, heurtiming, nodeinfeasible):
-    sol = self.model.getBestSol()
-    obj = self.model.getSolObjVal(sol)
-    self.primal_integral += obj
-    if self.l:
-      if self.l[-1][1] != obj:
-        self.l.append((self.i, obj))
-    else:
-      self.l.append((self.i, obj))
-    self.i += 1
-    return dict(result=SCIP_RESULT.DELAYED)
 
 
 def convert():
@@ -61,11 +41,9 @@ def convert():
   milp.mip = scip_to_milps(model)
 
   model.optimize()
+  heur.done()
   milp.optimal_objective = model.getObjVal()
-  milp.optimal_solution = {
-      var.name: model.getVal(var)
-      for var in model.getVars()
-  }
+  milp.optimal_solution = {var.name: model.getVal(var) for var in model.getVars()}
   milp.is_optimal = (model.getStatus() == 'optimal')
   milp.optimal_sol_metadata.n_nodes = model.getNNodes()
   milp.optimal_sol_metadata.gap = model.getGap()
@@ -75,14 +53,19 @@ def convert():
   feasible_sol = model.getSols()[-1]
   milp.feasible_objective = model.getSolObjVal(feasible_sol)
   milp.feasible_solution = {
-      var.name: feasible_sol[var]
+      var.name: model.getSolVal(feasible_sol, var)
       for var in model.getVars()
   }
+  model = Model()
+  model.hideOutput()
+  relax_integral_constraints(milp.mip).add_to_scip_solver(model)
+  model.optimize()
+  assert model.getStatus() == 'optimal'
+  milp.optimal_lp_sol = {var.name: model.getVal(var) for var in model.getVars()}
   return milp
 
 
 def main():
-
   milp = convert()
   os.makedirs(os.path.dirname(args.out_file), exist_ok=True)
   with open(args.out_file, 'wb') as f:

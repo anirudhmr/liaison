@@ -1,4 +1,5 @@
 import functools
+import math
 from math import fabs
 
 import numpy as np
@@ -52,7 +53,26 @@ def rins(curr_sol, mip, rng, k, *args):
     if isinstance(mip.varname2var[var], IntegerVariable):
       err = fabs(val - continuous_sol[var])
       errs.append((err, var))
+  errs = sorted(errs, reverse=True)
+  var_names = [var for err, var in errs[0:k]]
+  for err, var_name in errs:
+    if err == errs[k - 1][0]:
+      if var_name not in var_names:
+        var_names.append(var_name)
+  # unfix variables.
+  return rng.choice(var_names, size=k, replace=False)
 
+
+def rens(curr_sol, mip, rng, k, env, *args):
+  # return k variables to unfix.
+  assert env.config.use_rens_submip_bounds
+  errs = []
+  optimal_lp_sol = mip.optimal_lp_sol
+  for var, val in curr_sol.items():
+    if isinstance(mip.varname2var[var], IntegerVariable):
+      # if lp relaxation is not integral -- consider it to unfix  .
+      if fabs(math.modf(optimal_lp_sol[var])[0]) <= 1e-3:
+        errs.append((fabs(val - optimal_lp_sol[var]), var))
   errs = sorted(errs, reverse=True)
   var_names = [var for err, var in errs[0:k]]
   for err, var_name in errs:
@@ -69,25 +89,19 @@ def random(curr_sol, mip, rng, k, env):
   return [env._var_names[i] for i in indices]
 
 
-def choose_heuristic(heuristic):
-  if heuristic == 'random':
-    return random
-  elif heuristic == 'rins':
-    return rins
-  elif heuristic == 'least_integral':
-    return functools.partial(integral, least_integral=True)
-  elif heuristic == 'most_integral':
-    return functools.partial(integral, least_integral=False)
-  elif heuristic == 'greedy':
-    return greedy
-  else:
-    raise Exception(f'Unknown heuristic: {heuristic}')
+CHOOSE_HEURISTIC = dict(
+    random=random,
+    rins=rins,
+    rens=rens,
+    least_integral=functools.partial(integral, least_integral=True),
+    most_integral=functools.partial(integral, least_integral=False),
+)
 
 
 def run(heuristic, k, n_trials, seeds, env, muldi_actions=False):
   assert len(seeds) == n_trials
 
-  heuristic_fn = choose_heuristic(heuristic)
+  heuristic_fn = CHOOSE_HEURISTIC[heuristic]
   log_vals = [[] for _ in range(n_trials)]
   for trial_i, seed in zip(range(n_trials), seeds):
     rng = np.random.RandomState(seed)

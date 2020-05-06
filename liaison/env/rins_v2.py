@@ -170,16 +170,15 @@ class Env(RINSEnv):
     self._curr_soln = curr_sol
     self._prev_obj = self._curr_obj
     self._curr_obj = curr_obj
-    assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj, os.getpid())
+    # assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj, os.getpid())
 
     # restock the limit for unfixes in this episode.
     curr_lp_sol = curr_sol
     curr_lp_obj = curr_obj
     self._n_local_moves += 1
     # lower the objective the better (minimization)
-    if milp.is_optimal:
-      assert curr_obj - milp.optimal_objective >= -1e-4, (curr_obj, milp.optimal_objective,
-                                                          os.getpid())
+    # if milp.is_optimal:
+    # assert curr_obj - milp.optimal_objective >= -1e-4, (curr_obj, milp.optimal_objective)
     rew = self._compute_reward(self._prev_obj, curr_obj, mip_stats)
     self._qualities.append(self._primal_gap(curr_obj))
     self._final_quality = self._qualities[-1]

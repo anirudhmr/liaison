@@ -9,6 +9,7 @@ from multiprocessing.pool import ThreadPool
 from threading import Thread
 
 import numpy as np
+
 import tree as nest
 from liaison.daper.milp.heuristics.heuristic_fn import run as heuristic_run
 from liaison.daper.milp.primitives import IntegerVariable
@@ -18,8 +19,20 @@ from liaison.env.utils.rins import get_sample
 from liaison.scip.scip_integration import (EvalHeur, init_scip_params,
                                            run_branch_and_bound_scip)
 from liaison.utils import ConfigDict
+from pyscipopt import Model
 
 EPS = 1e-2
+
+
+def get_model(seed, gap=0.0, nodes=None, heur_frequency=-1):
+  model = Model()
+  # model.hideOutput()
+  model.setIntParam("display/verblevel", 4)
+  init_scip_params(model, seed=seed, presolving=True, heur_frequency=heur_frequency)
+  model.setRealParam('limits/gap', gap)
+  if nodes is not None:
+    model.setParam('limits/nodes', nodes)
+  return model
 
 
 class Evaluator:
@@ -42,7 +55,9 @@ class Evaluator:
       dataset,
       dataset_type,
       graph_start_idx,
-      model,
+      gap,
+      max_nodes,
+      heur_frequency,
       batch_size=1,  # num_envs
       use_parallel_envs=False,
       use_threaded_envs=False,
@@ -50,12 +65,15 @@ class Evaluator:
     self.config = ConfigDict(config)
     self.batch_size = batch_size
     self.rng = np.random.RandomState(seed)
+    self.env_config = env_config
     # get the mip instance
     milp = get_sample(dataset, dataset_type, graph_start_idx)
-    self._model = model
+    model = get_model(seed, gap, max_nodes, heur_frequency)
     milp.mip.add_to_scip_solver(model)
+    # presolve isnce the agent uses pre-solved model for its input.
+    model.presolve()
     self.k = env_config.k
-
+    self._model = model
     # init shell and environments
     # init environment
     env_configs = []
@@ -94,13 +112,19 @@ class Evaluator:
         **shell_config,
     )
 
-  def run(self, without_scip=False, without_agent=False, with_rins=False):
+  def run(self, without_scip=False, without_agent=False, heuristic=None):
     if without_scip:
       return self.run_without_scip()
+    elif heuristic:
+      if heuristic == 'rins':
+        self._heuristic = self.rins_fn
+      elif heuristic == 'rens':
+        self._heuristic = self.rens_fn
+      else:
+        raise Exception(f'{heuristic} not found!')
+      heuristic = EvalHeur(self._heuristic_callback)
     elif without_agent:
       heuristic = EvalHeur(lambda *_, **__: (None, None))
-    elif with_rins:
-      heuristic = EvalHeur(self._rins_callback)
     else:
       heuristic = EvalHeur(self._primal_heuristic_callback)
 
@@ -129,7 +153,29 @@ class Evaluator:
       act.append(self._env.func_call_ith_env('varname2idx', i, vname))
     return act
 
-  def _rins_callback(self, model, sol, obj_val, step):
+  def rens_fn(self, i):
+    assert self.env_config.use_rens_submip_bounds
+    sol = self._env.func_call_ith_env('get_curr_soln', i)
+    var_names = self._env.func_call_ith_env('get_varnames', i)
+    errs = []
+    for var, val in self._optimal_lp_sol.items():
+      if isinstance(self.mip.varname2var[var], IntegerVariable) and var in var_names:
+        # if lp relaxation is not integral -- consider it to unfix  .
+        if math.fabs(math.modf(val)[0]) <= 1e-3:
+          err = math.fabs(val - sol[var])
+          errs.append((err, var))
+    errs = sorted(errs, reverse=True)
+    var_names = [var for err, var in errs[:self.k]]
+    for err, var_name in errs:
+      if err == errs[self.k - 1][0]:
+        if var_name not in var_names:
+          var_names.append(var_name)
+    act = []
+    for vname in self.rng.choice(var_names, size=self.k, replace=False):
+      act.append(self._env.func_call_ith_env('varname2idx', i, vname))
+    return act
+
+  def _heuristic_callback(self, model, sol, obj_val, step):
     ts = self._env.func_call_with_common_args('reset_solution', sol, obj_val)
 
     start_obj = np.min(ts.observation['curr_episode_log_values']['curr_obj'])
@@ -139,7 +185,7 @@ class Evaluator:
     stats = dict(mip_work=0)
     while np.all(
         ts.observation['n_local_moves'] - n_local_moves_start <= self.config.n_local_moves):
-      action = np.asarray([self.rins_fn(i) for i in range(self.batch_size)], np.int32)
+      action = np.asarray([self._heuristic(i) for i in range(self.batch_size)], np.int32)
       for act in np.transpose(action):
         ts = self._env.step(act)
         stats['mip_work'] += ts.observation['curr_episode_log_values']['mip_work']

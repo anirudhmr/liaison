@@ -28,27 +28,19 @@ parser.add_argument('--n_local_moves', type=int, required=True)
 parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--gap', type=float, default=.0)
-parser.add_argument('--nodes', type=int)
+parser.add_argument('--max_nodes', type=int)
 parser.add_argument('-n', '--name', required=True)
 parser.add_argument('--use_parallel_envs', action='store_true')
 parser.add_argument('--use_threaded_envs', action='store_true')
 parser.add_argument('--without_scip', action='store_true')
 parser.add_argument('--without_agent', action='store_true')
-parser.add_argument('--rins', action='store_true')
 parser.add_argument('--gpu_ids', '-g', type=int, nargs='+')
+parser.add_argument('--heuristic', type=str)
+parser.add_argument('--heur_frequency',
+                    type=int,
+                    default=-1,
+                    help='Use -1 to completely turn off heuristics.')
 args = None
-
-
-def get_model():
-  global args
-  model = Model()
-  # model.hideOutput()
-  model.setIntParam("display/verblevel", 4)
-  init_scip_params(model, seed=args.seed, presolving=False)
-  model.setRealParam('limits/gap', args.gap)
-  if args.nodes is not None:
-    model.setParam('limits/nodes', args.nodes)
-  return model
 
 
 def main(argv):
@@ -74,8 +66,9 @@ def main(argv):
   elif args.without_agent:
     results_dir = Path(
         f'/data/nms/tfp/evaluation/without_agent/{args.name}/{env_config.graph_start_idx}/')
-  elif args.rins:
-    results_dir = Path(f'/data/nms/tfp/evaluation/rins/{args.name}/{env_config.graph_start_idx}/')
+  elif args.heuristic:
+    results_dir = Path(
+        f'/data/nms/tfp/evaluation/{args.heuristic}/{args.name}/{env_config.graph_start_idx}/')
   else:
     results_dir = Path(f'/data/nms/tfp/evaluation/scip/{args.name}/{env_config.graph_start_idx}')
   results_dir.mkdir(parents=True, exist_ok=True)
@@ -90,18 +83,18 @@ def main(argv):
                         dataset=env_config.dataset,
                         dataset_type=env_config.dataset_type,
                         graph_start_idx=env_config.graph_start_idx,
-                        batch_size=args.batch_size,
-                        model=get_model(),
                         gap=args.gap,
-                        nodes=args.nodes,
+                        max_nodes=args.max_nodes,
+                        batch_size=args.batch_size,
                         n_local_moves=args.n_local_moves,
                         results_dir=results_dir,
                         use_parallel_envs=args.use_parallel_envs,
                         use_threaded_envs=args.use_threaded_envs,
+                        heur_frequency=args.heur_frequency,
                         **sess_config)
   evaluator.run(without_scip=args.without_scip,
                 without_agent=args.without_agent,
-                with_rins=args.rins)
+                heuristic=args.heuristic)
   print('Done!')
 
 

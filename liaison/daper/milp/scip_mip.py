@@ -89,6 +89,10 @@ class SCIPMIPInstance:
 
     return fixed_model
 
+  def chgVarBounds(self, vname, lb, ub):
+    self.model.chgVarLbGlobal(self.varname2var[vname], lb - EPSILON)
+    self.model.chgVarUbGlobal(self.varname2var[vname], ub + EPSILON)
+
   def get_feasible_solution(self):
     # get any feasible solution.
 

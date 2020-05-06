@@ -1,14 +1,16 @@
 import copy
+import math
 import os
 import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
-import graph_nets as gn
-import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
+
+import graph_nets as gn
+import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -124,8 +126,11 @@ class Env(BaseEnv):
       self.max_k = k
     self.max_local_moves = n_local_moves
     self.seed = seed
+    if max_nodes < 0:
+      max_nodes = NORMALIZATION_CONSTANTS[dataset]['max_nodes']
+    if max_edges < 0:
+      max_edges = NORMALIZATION_CONSTANTS[dataset]['max_edges']
     self._max_nodes = max_nodes
-    assert self._max_nodes > 0
     self._max_edges = max_edges
     self.set_seed(seed)
     self._dataset = dataset
@@ -565,29 +570,6 @@ class Env(BaseEnv):
       self._prev_obj = self._curr_obj
     self._curr_obj = obj_val
 
-  def reset(self):
-    raise Exception('Deprecated: Use rins_v2 module instead.')
-    if self._n_resets % self._sample_every_n_resets == 0:
-      milp, sol, obj = self._sample()
-    self.milp = milp
-    self._init_ds(milp)
-    self._init_features()
-    var_names = self._var_names
-    self._change_sol(sol, obj, sol, obj)
-    self._best_quality = self._primal_gap(obj)
-    self._final_quality = self._best_quality
-    self._qualities = [self._best_quality]
-
-    self._unfixed_variables = set(
-        [var for var in var_names if isinstance(milp.mip.varname2var[var], ContinuousVariable)])
-    # static features computed only once per episode.
-    if self.config.make_obs_for_graphnet:
-      self._static_graph_features = self._encode_static_graph_features()
-    elif self.config.make_obs_for_bipartite_graphnet:
-      self._static_graph_features = self._encode_static_bipartite_graph_features()
-    self._n_resets += 1
-    return restart(self._observation())
-
   def reset_solution(self, sol, obj_val):
     # call at the beginning of a local move.
     assert self._globals[Env.GLOBAL_UNFIX_LEFT] == self.k
@@ -667,6 +649,7 @@ class Env(BaseEnv):
     self._n_steps += 1
     milp = self.milp
     mip = self.mip
+    optimal_lp_sol = milp.optimal_lp_sol
     curr_sol = self._curr_soln
     curr_obj = self._curr_obj
     var_names = self._var_names
@@ -694,6 +677,19 @@ class Env(BaseEnv):
       local_search_case = True
       sub_mip_model.freeTransform()
       mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
+      if self.config.use_rens_submip_bounds:
+        varname2var = {}
+        for var in sub_mip_model.getVars(transformed=False):
+          varname2var[var.name.lstrip('t_')] = var
+        for vname in unfix_vars:
+          # change the bounds of unfixed integer variables.
+          if isinstance(milp.mip.varname2var[vname], IntegerVariable):
+            var = varname2var[vname]
+            f, c = math.floor(optimal_lp_sol[vname]), math.ceil(optimal_lp_sol[vname])
+            if c == f:
+              continue
+            sub_mip_model.chgVarLbGlobal(var, f)
+            sub_mip_model.chgVarUbGlobal(var, c)
       ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip_model)
       curr_sol = ass
       # # add back the newly found solutions for the sub-mip.
@@ -704,7 +700,7 @@ class Env(BaseEnv):
       self._curr_soln = curr_sol
       self._prev_obj = self._curr_obj
       self._curr_obj = curr_obj
-      assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj, os.getpid())
+      # assert curr_obj <= self._prev_obj + 1e-4, (curr_obj, self._prev_obj, os.getpid())
       # restock the limit for unfixes in this episode.
       globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
       curr_lp_sol = curr_sol
@@ -721,16 +717,14 @@ class Env(BaseEnv):
       else:
         curr_lp_sol = curr_sol
         curr_lp_obj = curr_obj
-
     # }
     ###################################################
 
     ## Estimate reward
     if local_search_case:
       # lower the objective the better (minimization)
-      if milp.is_optimal:
-        assert curr_obj - milp.optimal_objective >= -1e-4, (curr_obj, milp.optimal_objective,
-                                                            os.getpid())
+      # if milp.is_optimal:
+      #   assert curr_obj - milp.optimal_objective >= -1e-4, (curr_obj, milp.optimal_objective)
       rew = self._compute_reward(self._prev_obj, curr_obj, mip_stats)
       self._qualities.append(self._primal_gap(curr_obj))
       self._final_quality = self._qualities[-1]
