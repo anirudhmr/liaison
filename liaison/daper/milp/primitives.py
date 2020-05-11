@@ -173,9 +173,9 @@ class Constraint:
     expr = self.expr.reduce(fixed_vars_to_values)
     if expr.is_constant:
       if self.sense == 'LE':
-        assert expr.constant <= self.rhs + 1e-4, (expr.constant, self.rhs, os.getpid())
+        assert expr.constant <= self.rhs + 1e-3, (expr.constant, self.rhs, os.getpid())
       else:
-        assert expr.constant >= self.rhs - 1e-4, (expr.constant, self.rhs, os.getpid())
+        assert expr.constant >= self.rhs - 1e-3, (expr.constant, self.rhs, os.getpid())
       return None
     else:
       # convert to 'LE' format

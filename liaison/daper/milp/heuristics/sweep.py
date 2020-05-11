@@ -22,7 +22,7 @@ def main():
   args, remainder = parser.parse_known_args(sys.argv[1:])
   try:
     for work_id, params in enumerate(
-        hyper.product(hyper.discrete('k', [5, 10, 25, 50]), )):
+        hyper.product(hyper.discrete('k', [5, 10, 15, 20, 40, 50, 80]), )):
       params = ConfigDict(params)
       d = '_'.join([f'{k}:{v}' for k, v in sorted(params.items())])
       cmd = f'python liaison/daper/milp/heuristics/run_dataset.py --out_dir={args.out_dir}/{d} --k={params.k} {" ".join(remainder)}'

@@ -88,10 +88,10 @@ def main(argv):
     Path(args.output_pkl_path).parent.mkdir(parents=True, exist_ok=True)
     try:
       p = worker_fn(args)
+      with open(args.output_pkl_path, 'wb') as f:
+        pickle.dump(p, f)
     except AssertionError:
       pass
-    with open(args.output_pkl_path, 'wb') as f:
-      pickle.dump(p, f)
   else:
     parser.add_argument('-d', '--dataset', help='Must be registered in dataset_constants.py')
     parser.add_argument('-o', '--out_path', '--output_path', required=True, type=str)

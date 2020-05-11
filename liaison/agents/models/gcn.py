@@ -32,8 +32,7 @@ GLOBAL_BLOCK_OPT = {
 def make_mlp(layer_sizes, activation, activate_final, seed, layer_norm=False):
   mlp = snt.nets.MLP(
       layer_sizes,
-      initializers=dict(w=glorot_uniform(seed),
-                        b=initializers.init_ops.Constant(0)),
+      initializers=dict(w=glorot_uniform(seed), b=initializers.init_ops.Constant(0)),
       activate_final=activate_final,
       activation=get_activation_from_str(activation),
   )
@@ -80,28 +79,24 @@ class Model:
       self._encode_net = gn.modules.GraphIndependent(
           edge_model_fn=lambda: snt.Linear(edge_embed_dim, name='edge_output'),
           node_model_fn=lambda: snt.Linear(node_embed_dim, name='node_output'),
-          global_model_fn=lambda: snt.Linear(global_embed_dim,
-                                             name='global_output'))
+          global_model_fn=lambda: snt.Linear(global_embed_dim, name='global_output'))
 
     with tf.variable_scope('graphnet_model'):
       # global(node(edge))
       self._graphnet = gn.modules.GraphNetwork(
           edge_model_fn=lambda: self._edge_model,
           node_model_fn=lambda: self._node_model,
-          global_model_fn=lambda: lambda x:
-          x,  # Don't summarize nodes/edges to the globals.
+          global_model_fn=lambda: lambda x: x,  # Don't summarize nodes/edges to the globals.
           node_block_opt=NODE_BLOCK_OPT,
           edge_block_opt=EDGE_BLOCK_OPT,
           global_block_opt=GLOBAL_BLOCK_OPT,
-          reducer=tf.unsored_segment_sum
-          if sum_aggregation else tf.unsorted_segment_mean)
+          reducer=tf.unsored_segment_sum if sum_aggregation else tf.unsorted_segment_mean)
 
     with tf.variable_scope('policy_network'):
       print('WARNING: IMP TODO: Remove bias from the final layer.')
       self.policy_torso = snt.nets.MLP(
           policy_torso_hidden_layer_sizes + [1],
-          initializers=dict(w=glorot_uniform(seed),
-                            b=initializers.init_ops.Constant(0)),
+          initializers=dict(w=glorot_uniform(seed), b=initializers.init_ops.Constant(0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
@@ -109,8 +104,7 @@ class Model:
     with tf.variable_scope('value_network'):
       self.value_torso = snt.nets.MLP(
           value_torso_hidden_layer_sizes + [1],
-          initializers=dict(w=glorot_uniform(seed),
-                            b=initializers.init_ops.Constant(0)),
+          initializers=dict(w=glorot_uniform(seed), b=initializers.init_ops.Constant(0)),
           activate_final=False,
           activation=get_activation_from_str(self.activation),
       )
@@ -148,7 +142,6 @@ class Model:
     return graph_features
 
   def get_logits_and_next_state(self, step_type, _, obs, __):
-
     self._validate_observations(obs)
     log_vals = {}
     graph_features = obs['graph_features']
@@ -156,11 +149,9 @@ class Model:
     # Run multiple rounds of graph convolutions
     graph_features = self._convolve(graph_features)
     # broadcast globals and attach them to node features
-    graph_features = graph_features.replace(nodes=tf.concat([
-        graph_features.nodes,
-        gn.blocks.broadcast_globals_to_nodes(graph_features)
-    ],
-                                                            axis=-1))
+    graph_features = graph_features.replace(nodes=tf.concat(
+        [graph_features.nodes,
+         gn.blocks.broadcast_globals_to_nodes(graph_features)], axis=-1))
 
     # get logits over nodes
     logits = self.policy_torso(graph_features.nodes)
@@ -169,16 +160,25 @@ class Model:
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
+    if self.choose_stop_switch:
+      logits = self._add_stop_action(logits)
+
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     mask = obs['node_mask']
     logits = tf.scatter_nd(indices, logits, tf.shape(mask))
     logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
     return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
 
+  def _add_stop_action(self, logits, graph_features):
+    # logits -> First estimate logp
+    logits = logits - tf.reduce_logsumexp(logits, axis=-1)
+    # Now calculate the logits for the switch binary action.
+    switch_logits = gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)(graph_features)
+    switch_logits = tf.squeeze(self.switch_torso(value), axis=-1)
+
   def get_value(self, _, __, obs, ___):
     self._validate_observations(obs)
     with tf.variable_scope('value_network'):
       graph_features = self._convolve(obs['graph_features'])
-      value = gn.blocks.NodesToGlobalsAggregator(
-          tf.unsorted_segment_mean)(graph_features)
+      value = gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)(graph_features)
       return tf.squeeze(self.value_torso(value), axis=-1)

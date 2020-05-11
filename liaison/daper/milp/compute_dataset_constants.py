@@ -6,11 +6,12 @@ from math import fabs
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import trange
+
 from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
                                              LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import ContinuousVariable
-from tqdm import trange
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--datasets', nargs='+', default=[], required=True)
@@ -69,7 +70,7 @@ def print_constants(dataset):
       stats_max['max_nodes'].append(len(v_f['var_names']) + len(c_f['values']) + 1)
       stats_max['max_edges'].append(len(e_f['values']))
 
-  print(f"'\n{dataset}': dict(")
+  print(f"\n'{dataset}': dict(")
   for k, v in stats.items():
     print(f'{k}={fabs(np.mean(v))},')
   for k, v in stats_max.items():

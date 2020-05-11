@@ -125,8 +125,8 @@ def setup_network(*,
 
   for proc in itertools.chain(actors, [ps, replay, learner]):
     proc.connects('tensorplex')
-    proc.connects('tensorplex-var')
     proc.connects('tensorplex-system')
+    proc.connects('tensorplex-var')
     proc.connects('irs')
     if irs_proxy:
       proc.connects('irs-proxy')
@@ -141,5 +141,5 @@ def setup_network(*,
   if visualizers:
     visualizers.binds('visualizers-tb')
     visualizers.binds('visualizers-system-tb')
-    visualizers.binds('visualizers-var-tb')
     visualizers.binds('visualizers-profiler-ui')
+    visualizers.binds('visualizers-var-tb')

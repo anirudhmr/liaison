@@ -2,16 +2,17 @@ export KMP_AFFINITY=none
 N=16
 N_LOCAL_MOVES=20
 MAX_NODES=20
-# DATASET=milp-cauction-100-filtered
-# RESTORE_FROM=/data/nms/tfp/results/1419/100-dataset-no-ar/checkpoints/0/246000/learner-246000
-# NAME=gcn_100
-# K=5
-
-DATASET='milp-facilities-100'
-RESTORE_FROM='/home/gridsan/addanki/results/1433/milp-facilities-100-2/checkpoints/0/98000/learner-98000'
-NAME=facilities_100
+DATASET=milp-cauction-100-filtered
+RESTORE_FROM=/data/nms/tfp/results/1419/100-dataset-no-ar/checkpoints/0/246000/learner-246000
+NAME=gcn_100
 K=5
-EXTRA_ARGS="--agent_config.model.n_prop_layers=4 --agent_config.model.edge_embed_dim=16 --agent_config.model.node_embed_dim=16 --agent_config.model.global_embed_dim=8"
+EXTRA_ARGS=""
+
+# DATASET='milp-facilities-100'
+# RESTORE_FROM='/home/gridsan/addanki/results/1433/milp-facilities-100-2/checkpoints/0/98000/learner-98000'
+# NAME=facilities_100
+# K=5
+# EXTRA_ARGS="--agent_config.model.n_prop_layers=4 --agent_config.model.edge_embed_dim=16 --agent_config.model.node_embed_dim=16 --agent_config.model.global_embed_dim=8"
 
 # DATASET='milp-corlat'
 # RESTORE_FROM='/home/gridsan/addanki/results/1429/corlat/checkpoints/0/90000/learner-90000'
@@ -82,7 +83,7 @@ for i in `seq 0 $N`; do
     -n $NAME \
     --max_nodes=${MAX_NODES} \
     --gap=.05 \
-    --heuristic=rins\
+    --heuristic=rins \
     --use_parallel_envs \
     --n_local_moves=${N_LOCAL_MOVES} \
     --batch_size=8 \

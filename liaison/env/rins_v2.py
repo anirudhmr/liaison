@@ -40,9 +40,7 @@ class Env(RINSEnv):
                                  pre_solving_time=0.,
                                  time_elapsed=0.)
 
-    self._varnames2varidx = {}
-    for i, var_name in enumerate(self._var_names):
-      self._varnames2varidx[var_name] = i
+    self._varnames2varidx = {var_name: i for i, var_name in enumerate(self._var_names)}
     # optimal solution can be used for supervised auxiliary tasks.
     self._optimal_soln = np.float32([milp.optimal_solution[v] for v in self._var_names])
     self._optimal_lp_soln = np.float32([milp.optimal_lp_sol[v] for v in self._var_names])
@@ -80,8 +78,8 @@ class Env(RINSEnv):
     variable_nodes[:, Env.N_VARIABLE_FIELDS:] = v_f['values']
     objective_nodes = np.zeros((1, Env.N_OBJECTIVE_FIELDS), dtype=np.float32)
     # TODO: Add variable stats fields here.
-    self._objective_nodes = objective_nodes
     self._variable_nodes = variable_nodes
+    self._objective_nodes = objective_nodes
 
   def _encode_static_bipartite_graph_features(self, e_f):
     milp = self.milp
@@ -118,6 +116,7 @@ class Env(RINSEnv):
 
     self._unfixed_variables = filter(lambda v: v.vtype() == 'CONTINUOUS', mip.vars)
     self._unfixed_variables = set(map(lambda v: v.name.lstrip('t_'), self._unfixed_variables))
+    self._vars_unfixed_so_far = []
 
     # static features computed only once per episode.
     if self.config.make_obs_for_graphnet:

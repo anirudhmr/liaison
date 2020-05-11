@@ -22,7 +22,7 @@ parser.add_argument('--k', type=int, required=True)
 parser.add_config_file(name='env', required=True)
 
 # random heuristic
-parser.add_argument('--n_trials', type=int, required=True)
+parser.add_argument('--n_trials', type=int, default=1, required=True)
 parser.add_argument('--random_seeds', type=int, nargs='+', required=True)
 parser.add_argument('--run_random_only', action='store_true')
 parser.add_argument('--disable_maxcuts', action='store_true')
@@ -55,14 +55,9 @@ def main(argv):
 
   # determine the max allowed k value.
   env = make_env(args.k)
-  k_val = min(
-      args.k,
-      sum([
-          isinstance(var, IntegerVariable)
-          for var in env.milp.mip.varname2var.values()
-      ]))
-  res = run_heuristic('random', k_val, args.n_trials, args.random_seeds,
-                      make_env(k_val))
+  k_val = min(args.k,
+              sum([isinstance(var, IntegerVariable) for var in env.milp.mip.varname2var.values()]))
+  res = run_heuristic('random', k_val, args.n_trials, args.random_seeds, make_env(k_val))
   heuristic.random.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
                           k=k_val,
@@ -84,8 +79,7 @@ def main(argv):
     #                                n_local_moves=args.n_local_moves,
     #                                k=k_val,
     #                                results=res)
-    res = run_heuristic('rins', k_val, args.n_trials, args.random_seeds,
-                        make_env(k_val))
+    res = run_heuristic('rins', k_val, args.n_trials, args.random_seeds, make_env(k_val))
     heuristic.rins.update(seeds=args.random_seeds,
                           n_local_moves=args.n_local_moves,
                           k=k_val,
@@ -99,4 +93,3 @@ def main(argv):
 
 if __name__ == '__main__':
   app.run(main)
-  # main()

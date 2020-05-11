@@ -1,16 +1,16 @@
 import copy
 import math
 import os
+import pdb
 import pickle
 from math import fabs
 from typing import Any, Dict, Text, Tuple, Union
 
+import graph_nets as gn
+import liaison.utils as U
 import networkx as nx
 import numpy as np
 import scipy
-
-import graph_nets as gn
-import liaison.utils as U
 import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
 from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
@@ -156,6 +156,7 @@ class Env(BaseEnv):
     # map from sample to length of the mip
     self._sample_lengths = None
     self._n_resets = 0
+    self._vars_unfixed_so_far = []
     self.reset()
 
   def _get_n_graphs(self):
@@ -435,114 +436,6 @@ class Env(BaseEnv):
                 receivers=pad_first_dim(receivers, self._max_edges),
                 n_edge=np.int32(len(edges)))
 
-  def _init_ds(self, milp):
-    # Initialize data structures
-    self._ep_return = 0
-    self._n_steps = 0
-    self._n_local_moves = 0
-    self._reset_next_step = False
-    self._mip_works = []
-    # mip stats for the current step
-    self._mip_stats = ConfigDict(mip_work=0,
-                                 n_cuts=0,
-                                 n_cuts_applied=0,
-                                 n_lps=0,
-                                 solving_time=0.,
-                                 pre_solving_time=0.,
-                                 time_elapsed=0.)
-
-    self._var_names = var_names = list(milp.mip.varname2var.keys())
-    self._varnames2varidx = {}
-    for i, var_name in enumerate(self._var_names):
-      self._varnames2varidx[var_name] = i
-    # optimal solution can be used for supervised auxiliary tasks.
-    self._optimal_soln = np.float32([milp.optimal_solution[v] for v in self._var_names])
-    self._optimal_lp_soln = np.float32([milp.optimal_lp_sol[v] for v in self._var_names])
-
-    globals_ = np.zeros(Env.N_GLOBAL_FIELDS, dtype=np.float32)
-    globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
-    globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
-    globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
-    self._globals = globals_
-
-  def _init_features(self):
-    var_names = self._var_names
-    milp = self.milp
-    # first construct variable nodes
-    variable_nodes = np.zeros((len(var_names), Env.N_VARIABLE_FIELDS), dtype=np.float32)
-
-    variable_nodes[:, Env.VARIABLE_IS_INTEGER_FIELD] = [
-        isinstance(milp.mip.varname2var[var_name], IntegerVariable) for var_name in var_names
-    ]
-    variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD] = [
-        milp.optimal_lp_sol[v] for v in var_names
-    ]
-    if 'cont_variable_normalizer' in self.config:
-      variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD] /= self.config.cont_variable_normalizer
-    variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD] = np_slack_down(
-        variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD])
-    variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD] = np_slack_up(
-        variable_nodes[:, Env.VARIABLE_OPTIMAL_LP_SOLN_FIELD])
-
-    variable_nodes = self._reset_mask(variable_nodes)
-    for var_name, coeff in zip(milp.mip.obj.expr.var_names, milp.mip.obj.expr.coeffs):
-      variable_nodes[self._varnames2varidx[var_name], Env.
-                     VARIABLE_OBJ_COEFF_FIELD] = coeff / self.config.obj_coeff_normalizer
-
-    variable_stats_degrees = {}
-    for i, cons in enumerate(milp.mip.constraints):
-      for var in cons.expr.var_names:
-        if var in variable_stats_degrees:
-          variable_stats_degrees[var].append(len(cons))
-        else:
-          variable_stats_degrees[var] = [len(cons)]
-
-    for i, var_name in self._varnames2varidx.items():
-      l = variable_stats_degrees.get(var_name, None)
-      # TODO: Normalize these fields.
-      if l:
-        variable_nodes[i, Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD] = max(l)
-        variable_nodes[i, Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD] = np.mean(l)
-        variable_nodes[i, Env.VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD] = np.std(l)
-        variable_nodes[i, Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD] = min(l)
-
-    # Normalization
-    for field in [
-        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MAX_FIELD,
-        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MIN_FIELD,
-        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_MEAN_FIELD,
-        Env.VARIABLE_STATS_CONSTRAINT_DEGREES_STD_FIELD,
-    ]:
-      if np.mean(variable_nodes[:, field]):
-        variable_nodes[:, field] /= np.mean(variable_nodes[:, field])
-
-    # now construct constraint nodes
-    constraint_nodes = np.zeros((len(milp.mip.constraints), Env.N_CONSTRAINT_FIELDS),
-                                dtype=np.float32)
-    for i, c in enumerate(milp.mip.constraints):
-      c = c.cast_sense_to_le()
-      constraint_nodes[
-          i, Env.
-          CONSTRAINT_CONSTANT_FIELD] = c.rhs / self.config.constraint_rhs_normalizer / self.config.constraint_coeff_normalizer
-      # Normalize this?
-      constraint_nodes[i, Env.CONSTRAINT_DEGREE_FIELD] = len(c)
-      if 'constraint_degree_normalizer' in self.config:
-        constraint_nodes[i, Env.
-                         CONSTRAINT_DEGREE_FIELD] /= self.config.constraint_degree_normalizer
-
-      coeffs = list(c.expr.coeffs)
-      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MEAN_FIELD] = np.mean(
-          coeffs) / self.config.constraint_coeff_normalizer
-      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MIN_FIELD] = np.min(
-          coeffs) / self.config.constraint_coeff_normalizer
-      constraint_nodes[i, Env.CONSTRAINT_STATS_COEFF_MAX_FIELD] = np.max(
-          coeffs) / self.config.constraint_coeff_normalizer
-
-    objective_nodes = np.zeros((1, Env.N_OBJECTIVE_FIELDS), dtype=np.float32)
-    self._variable_nodes = variable_nodes
-    self._objective_nodes = objective_nodes
-    self._constraint_nodes = constraint_nodes
-
   def _change_sol(self, sol, obj_val, lp_sol, lp_obj_val):
     # initialize or change the current solution
     var_names = self._var_names
@@ -656,6 +549,7 @@ class Env(BaseEnv):
     globals_ = self._globals
     variable_nodes = self._variable_nodes
     sub_mip_model = self._sub_mip_model
+    vars_unfixed_so_far = self._vars_unfixed_so_far
     mask = variable_nodes[:, Env.VARIABLE_MASK_FIELD]
     # action is the next node to unfix.
     action = int(action)
@@ -663,7 +557,8 @@ class Env(BaseEnv):
     assert mask[action], mask
 
     globals_[Env.GLOBAL_UNFIX_LEFT] -= 1
-    unfix_vars = self._unfixed_variables | set([var_names[action]])
+    vars_unfixed_so_far.append(var_names[action])
+    unfix_vars = self._unfixed_variables | set(vars_unfixed_so_far)
 
     fixed_assignment = {var: curr_sol[var] for var in var_names if var not in unfix_vars}
 
@@ -706,6 +601,7 @@ class Env(BaseEnv):
       curr_lp_sol = curr_sol
       curr_lp_obj = curr_obj
       self._n_local_moves += 1
+      self._vars_unfixed_so_far = []
     else:
       # run lp
       local_search_case = False

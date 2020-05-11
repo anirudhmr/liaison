@@ -91,10 +91,10 @@ def train(argv):
   for work_id, params in enumerate(
       hyper.product(
           hyper.discrete('env_config.k', [5, 10, 20]),
-          hyper.discrete('agent_config.lr_init', [1e-4, 2e-4]),
-          # hyper.discrete('agent_config.lr_init', [1e-4, 2e-4, 3e-4, 4e-4]),
-          hyper.discrete('agent_config.ent_dec_init', [2e-2]),
+          # hyper.discrete('agent_config.lr_init', [1e-4, 2e-4]),
+          hyper.discrete('agent_config.lr_init', [1e-4, 2e-4, 3e-4, 4e-4]),
           # hyper.discrete('env_config.graph_start_idx', list(range(8))),
+          hyper.discrete('agent_config.ent_dec_init', [2e-2]),
       )):
     exp = cluster.new_experiment('%s-%d' % (tp.experiment_name, work_id), env_name='liaison')
     # start tensorboard only for the first work unit.
