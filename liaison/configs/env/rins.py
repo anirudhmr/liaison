@@ -36,6 +36,8 @@ def get_config():
 
   config.delta_reward = False
   config.primal_gap_reward = True
+  config.primal_gap_reward_with_work = False
+  config.work_normalizer = 1.
 
   config.disable_maxcuts = False
 
@@ -73,5 +75,9 @@ def get_config():
   config.muldi_actions = False
   config.sample_every_n_resets = 10
   config.use_rens_submip_bounds = False
+
+  config.adapt_k = ConfigDict()
+  config.adapt_k.enable = False
+  config.adapt_k.min_k = 5  # For max_k just use config.k
 
   return config

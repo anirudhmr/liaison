@@ -5,6 +5,7 @@ from pathlib import Path
 
 from liaison.daper.dataset_constants import DATASET_PATH
 from liaison.daper.milp.dataset import MILP, MILP_PRIMITIVE
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', '-d', required=True)
@@ -38,8 +39,8 @@ def write_graph(graph, fname):
 
 def main():
   for dtype in ['train', 'valid', 'test']:
-    d = f'{DATASET_PATH[args.dataset]}/{dtype}'
-    for fname in os.listdir(d):
+    d = f'{DATASET_PATH[args.dataset].replace("/data/nms/tfp/", "/home/arc/vol/mnt/nms/tfp/")}/{dtype}'
+    for fname in tqdm(os.listdir(d)):
       graph = load_graph(f'{d}/{fname}')
       graph = convert_graph(graph)
       write_graph(graph, f'{args.out_dir}/{dtype}/{fname}')

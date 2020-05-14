@@ -50,6 +50,8 @@ class Env(RINSEnv):
     globals_[Env.GLOBAL_UNFIX_LEFT] = self.k
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     self._globals = globals_
+    self._n_steps_in_this_local_move = 0
+    self._set_stop_switch_mask()
 
   def _init_features(self, var_names, v_f):
     mip = self.mip

@@ -3,7 +3,8 @@ N=16
 N_LOCAL_MOVES=20
 MAX_NODES=20
 DATASET=milp-cauction-100-filtered
-RESTORE_FROM=/data/nms/tfp/results/1419/100-dataset-no-ar/checkpoints/0/246000/learner-246000
+# RESTORE_FROM=/data/nms/tfp/results/1419/100-dataset-no-ar/checkpoints/0/246000/learner-246000
+RESTORE_FROM=/home/gridsan/addanki/results/1446/100-dataset-no-ar/checkpoints/3/163000/learner-163000
 NAME=gcn_100
 K=5
 EXTRA_ARGS=""
@@ -14,12 +15,12 @@ EXTRA_ARGS=""
 # K=5
 # EXTRA_ARGS="--agent_config.model.n_prop_layers=4 --agent_config.model.edge_embed_dim=16 --agent_config.model.node_embed_dim=16 --agent_config.model.global_embed_dim=8"
 
-# DATASET='milp-corlat'
-# RESTORE_FROM='/home/gridsan/addanki/results/1429/corlat/checkpoints/0/90000/learner-90000'
-# NAME=corlat
-# K=5
-# MAX_NODES=10000
-# EXTRA_ARGS="--heur_frequency=10000 --agent_config.model.n_prop_layers=8"
+DATASET='milp-corlat'
+RESTORE_FROM='/home/gridsan/addanki/results/1462/corlat/checkpoints/2/10000/learner-10000'
+NAME=corlat
+K=50
+MAX_NODES=20
+EXTRA_ARGS="--heur_frequency=10000 --agent_config.model.n_prop_layers=4 --agent_config.model.choose_stop_switch=True --env_config.primal_gap_reward=False --env_config.primal_gap_reward_with_work=True --env_config.adapt_k.min_k=0"
 
 for i in `seq 0 $N`; do
   python liaison/scip/run_graph.py -- \

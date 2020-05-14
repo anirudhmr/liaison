@@ -75,23 +75,17 @@ class SCIPMIPInstance:
 
       if v.lstrip('t_') in fixed_ass:
         l = u = fixed_ass[v.lstrip('t_')]
+        assert var.vtype != 'CONTINUOUS'  # cannot fix countinuous variables.
       else:
         # set all other variable bounds to the original
         l, u = self.originalVarBounds[v]
         fixed_model.chgVarType(fixed_model_var, self.originalVarTypes[v])
-
-      fixed_model.chgVarLbGlobal(fixed_model_var, l - EPSILON)
-      fixed_model.chgVarUbGlobal(fixed_model_var, u + EPSILON)
-
+      fixed_model.chgVarLbGlobal(fixed_model_var, l)
+      fixed_model.chgVarUbGlobal(fixed_model_var, u)
     if relax_integral_constraints:
       for v in fixed_model.getVars():
         fixed_model.chgVarType(v, 'CONTINUOUS')
-
     return fixed_model
-
-  def chgVarBounds(self, vname, lb, ub):
-    self.model.chgVarLbGlobal(self.varname2var[vname], lb - EPSILON)
-    self.model.chgVarUbGlobal(self.varname2var[vname], ub + EPSILON)
 
   def get_feasible_solution(self):
     # get any feasible solution.

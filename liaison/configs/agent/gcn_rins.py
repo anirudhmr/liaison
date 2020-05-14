@@ -27,6 +27,7 @@ def get_config():
 
   config.model.sum_aggregation = False
   config.model.use_layer_norm = True
+  config.model.choose_stop_switch = False
 
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0

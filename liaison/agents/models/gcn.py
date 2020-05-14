@@ -130,9 +130,7 @@ class Model:
     for i in range(self.n_prop_layers):
       with tf.variable_scope('prop_layer_%d' % i):
         # one round of message passing
-        new_graph_features = self._graphnet(graph_features)
-
-        graph_features = new_graph_features
+        graph_features = self._graphnet(graph_features)
         # residual connections
         # graph_features = graph_features.replace(
         #     nodes=new_graph_features.nodes + graph_features.nodes,
@@ -160,21 +158,11 @@ class Model:
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
 
-    if self.choose_stop_switch:
-      logits = self._add_stop_action(logits)
-
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_node)
     mask = obs['node_mask']
     logits = tf.scatter_nd(indices, logits, tf.shape(mask))
     logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
     return logits, self._dummy_state(tf.shape(step_type)[0]), log_vals
-
-  def _add_stop_action(self, logits, graph_features):
-    # logits -> First estimate logp
-    logits = logits - tf.reduce_logsumexp(logits, axis=-1)
-    # Now calculate the logits for the switch binary action.
-    switch_logits = gn.blocks.NodesToGlobalsAggregator(tf.unsorted_segment_mean)(graph_features)
-    switch_logits = tf.squeeze(self.switch_torso(value), axis=-1)
 
   def get_value(self, _, __, obs, ___):
     self._validate_observations(obs)

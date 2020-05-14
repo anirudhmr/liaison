@@ -148,6 +148,7 @@ class Env(BaseEnv):
     self._prev_best_quality = np.nan
     self._prev_final_quality = np.nan
     self._prev_mean_work = np.nan
+    self._prev_k = np.nan
     self._reset_next_step = True
     if 'SYMPH_PS_SERVING_HOST' in os.environ:
       self._global_step_fetcher = GlobalStepFetcher(min_request_spacing=4)
@@ -303,7 +304,12 @@ class Env(BaseEnv):
 
       graph_features.update(left_nodes=left_nodes, right_nodes=right_nodes)
 
-    mask = pad_last_dim(self._variable_nodes[:, Env.VARIABLE_MASK_FIELD], self._max_nodes)
+    mask = self._variable_nodes[:, Env.VARIABLE_MASK_FIELD]
+    if self.config.adapt_k.enable:
+      mask = pad_last_dim(mask, 1 + self._max_nodes)
+      mask[-1] = self._stop_switch_mask
+    else:
+      mask = pad_last_dim(mask, self._max_nodes)
     return dict(graph_features=graph_features, node_mask=mask, mask=mask)
 
   def _observation(self):
@@ -350,6 +356,7 @@ class Env(BaseEnv):
             best_quality=np.float32(self._prev_best_quality),
             final_quality=np.float32(self._prev_final_quality),
             mip_work=np.float32(self._prev_mean_work),
+            k_val=np.float32(self._prev_k),
         ),
         curr_episode_log_values=dict(ep_return=np.float32(self._ep_return),
                                      avg_quality=np.float32(np.mean(self._qualities)),
@@ -526,20 +533,25 @@ class Env(BaseEnv):
   def _compute_reward(self, prev_obj, curr_obj, mip_stats):
     # old way of assigning reward -> change to incremental delta rewards.
     # rew = -1 * curr_obj / milp.optimal_objective
-    assert self.config.delta_reward != self.config.primal_gap_reward
     if self.config.delta_reward:
       rew = (prev_obj - curr_obj) / self.config.obj_normalizer
     elif self.config.primal_gap_reward:
       rew = -1.0 * self._primal_gap(curr_obj)
+    elif self.config.primal_gap_reward_with_work:
+      rew = -1.0 * self._primal_gap(curr_obj) * (1 +
+                                                 mip_stats.mip_work / self.config.work_normalizer)
     else:
       raise Exception('unspecified reward scheme.')
     return rew
 
+  def _set_stop_switch_mask(self):
+    self._stop_switch_mask = (self._n_steps_in_this_local_move >= self.config.adapt_k.min_k)
+
   def step(self, action):
     if self._reset_next_step:
       return self.reset()
-
     self._n_steps += 1
+    self._n_steps_in_this_local_move += 1
     milp = self.milp
     mip = self.mip
     optimal_lp_sol = milp.optimal_lp_sol
@@ -554,12 +566,15 @@ class Env(BaseEnv):
     # action is the next node to unfix.
     action = int(action)
     # check if the previous step's mask was successfully applied
-    assert mask[action], mask
-
     globals_[Env.GLOBAL_UNFIX_LEFT] -= 1
-    vars_unfixed_so_far.append(var_names[action])
+    if action < self._max_nodes:
+      assert mask[action], mask
+      local_search_case = (globals_[Env.GLOBAL_UNFIX_LEFT] == 0)
+      vars_unfixed_so_far.append(var_names[action])
+    else:
+      assert self.config.adapt_k.enable
+      local_search_case = True
     unfix_vars = self._unfixed_variables | set(vars_unfixed_so_far)
-
     fixed_assignment = {var: curr_sol[var] for var in var_names if var not in unfix_vars}
 
     # process the unfixed variables at this step and
@@ -567,9 +582,8 @@ class Env(BaseEnv):
     # populates curr_sol, local_search_case and curr_lp_sol fields before exiting
     ###################################################
     # {
-    if globals_[Env.GLOBAL_UNFIX_LEFT] == 0:
+    if local_search_case:
       # run mip
-      local_search_case = True
       sub_mip_model.freeTransform()
       mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
       if self.config.use_rens_submip_bounds:
@@ -601,10 +615,10 @@ class Env(BaseEnv):
       curr_lp_sol = curr_sol
       curr_lp_obj = curr_obj
       self._n_local_moves += 1
+      self._n_steps_in_this_local_move = 0
       self._vars_unfixed_so_far = []
     else:
       # run lp
-      local_search_case = False
       if self.config.lp_features:
         sub_mip_model.freeTransform()
         mip = mip.fix(fixed_assignment, relax_integral_constraints=True, scip_model=sub_mip_model)
@@ -643,17 +657,18 @@ class Env(BaseEnv):
     globals_[Env.GLOBAL_STEP_NUMBER] = self._n_steps / np.sqrt(self.k * self.max_local_moves)
     globals_[Env.GLOBAL_N_LOCAL_MOVES] = self._n_local_moves
     globals_[Env.GLOBAL_LOCAL_SEARCH_STEP] = local_search_case
-
     self._globals = globals_
     self._variable_nodes = variable_nodes
+    self._set_stop_switch_mask()
 
-    if self._n_steps >= self.k * self.max_local_moves:
+    if self._n_local_moves >= self.max_local_moves:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)
       self._prev_best_quality = self._best_quality
       self._prev_final_quality = self._final_quality
       self._prev_mean_work = np.mean(self._mip_works)
+      self._prev_k = self._n_steps / self._n_local_moves
       return termination(rew, self._observation())
     else:
       return transition(rew, self._observation())

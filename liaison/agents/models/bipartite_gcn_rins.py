@@ -25,9 +25,11 @@ class Model(GCNRinsModel):
                global_embed_dim=8,
                policy_torso_hidden_layer_sizes=[64, 64],
                value_torso_hidden_layer_sizes=[64, 64],
+               switch_torso_hidden_layer_sizes=[32, 32],
                action_spec=None,
                sum_aggregation=True,
                memory_hack=False,
+               choose_stop_switch=False,
                **kwargs):
     self.activation = get_activation_from_str(activation)
     self.n_prop_layers = n_prop_layers
@@ -37,6 +39,7 @@ class Model(GCNRinsModel):
     self.edge_embed_dim = edge_embed_dim
     self.node_embed_dim = node_embed_dim
     self.global_embed_dim = global_embed_dim
+    self.choose_stop_switch = choose_stop_switch
     self.config = ConfigDict(kwargs)
 
     with tf.variable_scope('encode'):
@@ -107,6 +110,14 @@ class Model(GCNRinsModel):
           activate_final=False,
           activation=self.activation,
       )
+    if self.choose_stop_switch:
+      with tf.variable_scope('switch_network'):
+        self.switch_torso = snt.nets.MLP(
+            switch_torso_hidden_layer_sizes + [1],
+            initializers=dict(w=glorot_uniform(seed), b=initializers.init_ops.Constant(0)),
+            activate_final=False,
+            activation=self.activation,
+        )
 
   def _validate_observations(self, obs):
     for k in ['graph_features', 'node_mask']:
@@ -161,7 +172,7 @@ class Model(GCNRinsModel):
                                infer_shape(obs['node_mask']) + [infer_shape(left_nodes)[-1]])
     return left_nodes, graph_features.n_left_nodes
 
-  def get_logits(self, graph_features, node_mask):
+  def get_logits(self, graph_features, mask):
     """
       graph_embeddings: Message propagated graph embeddings.
                         Use self.compute_graph_embeddings to compute and cache
@@ -180,11 +191,33 @@ class Model(GCNRinsModel):
     log_vals = {}
     # record norm *before* adding -INF to invalid spots
     log_vals['opt/logits_norm'] = tf.linalg.norm(logits)
-
     indices = gn.utils_tf.sparse_to_dense_indices(graph_features.n_left_nodes)
-    logits = tf.scatter_nd(indices, logits, tf.shape(node_mask))
-    logits = tf.where(tf.equal(node_mask, 1), logits, tf.fill(tf.shape(node_mask), -INF))
+    if self.choose_stop_switch:
+      node_mask = mask[:, :-1]
+      logits = tf.scatter_nd(indices, logits, tf.shape(node_mask))
+      logits = tf.where(tf.equal(node_mask, 1), logits, tf.fill(tf.shape(node_mask), -INF))
+      # logits -> First estimate logp
+      logits -= tf.expand_dims(tf.reduce_logsumexp(logits, axis=-1), 1)
+      # append switch logits to the end of logits.
+      logits = tf.concat([logits, tf.expand_dims(self._add_stop_action(graph_features), 1)],
+                         axis=-1)
+    else:
+      logits = tf.scatter_nd(indices, logits, tf.shape(mask))
+    logits = tf.where(tf.equal(mask, 1), logits, tf.fill(tf.shape(mask), -INF))
     return logits, log_vals
+
+  def _add_stop_action(self, graph_features):
+    with tf.variable_scope('switch_network'):
+      # aggregate left and right nodes seperately.
+      left_nodes = graph_features.left_nodes
+      num_graphs = infer_shape(graph_features.n_left_nodes)[0]
+      left_indices = gn.utils_tf.repeat(tf.range(num_graphs), graph_features.n_left_nodes, axis=0)
+      left_agg = tf.unsorted_segment_mean(left_nodes[:infer_shape(left_indices)[0]], left_indices,
+                                          num_graphs)
+      switch_logits = tf.concat([left_agg, graph_features.globals], axis=-1)
+      # Now calculate the logits for the switch binary action.
+      switch_logits = tf.squeeze(self.switch_torso(switch_logits), axis=-1)
+      return switch_logits
 
   def get_auxiliary_loss(self, graph_features: gn.graphs.GraphsTuple, obs):
     """
