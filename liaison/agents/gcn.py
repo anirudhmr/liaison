@@ -10,13 +10,17 @@ from liaison.utils import ConfigDict
 
 class Agent(BaseAgent):
 
-  def __init__(self, name, action_spec, seed, model=None, **kwargs):
+  def __init__(self, name, action_spec, seed, model=None, choose_stop_switch=False, **kwargs):
 
     self.set_seed(seed)
     self.config = ConfigDict(**kwargs)
     self._name = name
     self._action_spec = action_spec
-    self._load_model(name, action_spec=action_spec, **(model or {}))
+    self.choose_stop_switch = choose_stop_switch
+    self._load_model(name,
+                     action_spec=action_spec,
+                     choose_stop_switch=choose_stop_switch,
+                     **(model or {}))
 
   def initial_state(self, bs):
     return self._model.get_initial_state(bs)
@@ -148,6 +152,7 @@ class Agent(BaseAgent):
                                config.discount_factor,
                                self._get_entropy_regularization_constant(),
                                bootstrap_value=bootstrap_value,
+                               choose_stop_switch=self.choose_stop_switch,
                                **config.loss)
         loss = self.loss.loss
         if config.loss.al_coeff.init_val > 0:

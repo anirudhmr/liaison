@@ -138,9 +138,9 @@ class Evaluator:
                    step_type=ts.step_type,
                    **obs['curr_episode_log_values'])
           if step_output:
-            d.update(action=step_output.action)
+            d.update(action=step_output.action, logits=step_output.logits)
           else:
-            d.update(action=None)
+            d.update(action=None, logits=None)
           log_values.append(d)
 
           for i in range(len(env_mask)):

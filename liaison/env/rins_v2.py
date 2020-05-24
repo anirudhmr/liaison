@@ -10,8 +10,6 @@ import numpy as np
 from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
                                              LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
-from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
-                                           MIPInstance)
 from liaison.daper.milp.scip_mip import SCIPMIPInstance
 from liaison.daper.milp.scip_utils import del_scip_model
 from liaison.env.environment import restart, termination, transition
@@ -82,6 +80,8 @@ class Env(RINSEnv):
     # TODO: Add variable stats fields here.
     self._variable_nodes = variable_nodes
     self._objective_nodes = objective_nodes
+    self.k = min(self._original_k, np.sum(variable_nodes[:, Env.VARIABLE_MASK_FIELD]))
+    assert self.k > 0
 
   def _encode_static_bipartite_graph_features(self, e_f):
     milp = self.milp
@@ -108,8 +108,9 @@ class Env(RINSEnv):
     sol, obj, mip = self._sol, self._obj, self.mip
     c_f, e_f, v_f = load_pickled_features(self._dataset, self._dataset_type, self._milp_choice)
     self._var_names = var_names = list(map(lambda v: v.name.lstrip('t_'), mip.vars))
-    self._init_ds()
+    # call init_features before init_ds
     self._init_features(var_names, v_f)
+    self._init_ds()
     self._constraint_nodes = np.float32(c_f['values'])
     self._change_sol(sol, obj, sol, obj)
     self._best_quality = self._primal_gap(obj)
@@ -200,8 +201,8 @@ class Env(RINSEnv):
 
     self._globals = globals_
     self._variable_nodes = variable_nodes
-
-    if self._n_steps >= self.max_local_moves:
+    self._reset_next_step |= (self._n_steps >= self.max_local_moves)
+    if self._reset_next_step:
       self._reset_next_step = True
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)

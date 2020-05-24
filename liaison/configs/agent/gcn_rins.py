@@ -27,7 +27,6 @@ def get_config():
 
   config.model.sum_aggregation = False
   config.model.use_layer_norm = True
-  config.model.choose_stop_switch = False
 
   config.clip_rho_threshold = 1.0
   config.clip_pg_rho_threshold = 1.0
@@ -46,5 +45,6 @@ def get_config():
 
   # applicable for agent 'liaison.agents.gcn_large_batch'
   config.apply_grads_every = 1
+  config.choose_stop_switch = False
 
   return config

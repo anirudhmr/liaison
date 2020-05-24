@@ -21,6 +21,7 @@ class Loss:
                bootstrap_value,
                clip_rho_threshold=1.0,
                clip_pg_rho_threshold=1.0,
+               choose_stop_switch=False,
                **kwargs):
     """Policy gradient loss with vtrace importance weighting.
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
@@ -71,7 +72,15 @@ class Loss:
     vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
 
     # The entropy for valid actions
-    entropy = tf.reduce_sum(tf.boolean_mask(compute_entropy(target_logits), valid_mask))
+    if choose_stop_switch:
+      switch_logits = tf.expand_dims(target_logits[..., -1], -1)
+      # add 0 to the logits
+      entropy = compute_entropy(tf.concat(
+          [switch_logits, tf.zeros_like(switch_logits)], axis=-1)) + \
+                compute_entropy(target_logits[..., :-1])
+      entropy = tf.reduce_sum(tf.boolean_mask(entropy, valid_mask))
+    else:
+      entropy = tf.reduce_sum(tf.boolean_mask(compute_entropy(target_logits), valid_mask))
 
     # The summed weighted loss
     total_loss = (pi_loss + vf_loss * vf_loss_coeff - entropy * entropy_coeff)

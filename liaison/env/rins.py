@@ -13,8 +13,7 @@ import numpy as np
 import scipy
 import tree as nest
 from liaison.daper.dataset_constants import LENGTH_MAP, NORMALIZATION_CONSTANTS
-from liaison.daper.milp.primitives import (ContinuousVariable, IntegerVariable,
-                                           MIPInstance)
+from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.rins import *
@@ -43,7 +42,6 @@ class Env(BaseEnv):
   VARIABLE_IS_INTEGER_FIELD = 3
   # optimal lp solution (for the continuous relaxation)
   VARIABLE_OPTIMAL_LP_SOLN_FIELD = 4
-
   # see Learning to Branch in Mixed Integer Programming paper from Khalil et al.,
   # for a description of some of the following features.
   VARIABLE_OBJ_COEFF_FIELD = 5
@@ -63,7 +61,12 @@ class Env(BaseEnv):
   VARIABLE_OPTIMAL_LP_SOLN_SLACK_DOWN_FIELD = 13
   VARIABLE_OPTIMAL_LP_SOLN_SLACK_UP_FIELD = 14
   # TODO: Add variable lower and upper bound vals.
-  N_VARIABLE_FIELDS = 15
+
+  # At which step was this variable unfixed.
+  # Normalized to be in [0, 1]
+  VARIABLE_UNFIX_STEP = 15
+
+  N_VARIABLE_FIELDS = 16
 
   # constant used in the constraints.
   CONSTRAINT_CONSTANT_FIELD = 0
@@ -119,7 +122,7 @@ class Env(BaseEnv):
     """
     self.config = ConfigDict(env_config)
     self.id = id
-    self.k = k
+    self.k = self._original_k = k
     if self.config.k_schedule.enable:
       self.max_k = max(self.config.k_schedule.values)
     else:
@@ -647,7 +650,12 @@ class Env(BaseEnv):
 
     ## update the node features.
     variable_nodes = self._reset_mask(variable_nodes)
-    if not local_search_case:
+    if local_search_case:
+      variable_nodes[:, Env.VARIABLE_UNFIX_STEP] = 0
+    else:
+      variable_nodes[:, Env.VARIABLE_UNFIX_STEP] *= (self._n_steps_in_this_local_move - 1)
+      variable_nodes[action, Env.VARIABLE_UNFIX_STEP] = self._n_steps_in_this_local_move
+      variable_nodes[:, Env.VARIABLE_UNFIX_STEP] /= self._n_steps_in_this_local_move
       for node in unfix_vars:
         variable_nodes[self._varnames2varidx[node], Env.VARIABLE_MASK_FIELD] = 0
 
@@ -661,8 +669,8 @@ class Env(BaseEnv):
     self._variable_nodes = variable_nodes
     self._set_stop_switch_mask()
 
-    if self._n_local_moves >= self.max_local_moves:
-      self._reset_next_step = True
+    self._reset_next_step |= self._n_local_moves >= self.max_local_moves
+    if self._reset_next_step:
       self._prev_ep_return = self._ep_return
       self._prev_avg_quality = np.mean(self._qualities)
       self._prev_best_quality = self._best_quality

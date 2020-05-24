@@ -51,10 +51,7 @@ def scip_solve(mip):
 def unroll(milps):
   milp = np.random.choice(milps)
   opt_sol = milp.optimal_solution
-  fixed_vars_to_vals = {
-      var: opt_sol[var]
-      for var in random.sample(list(opt_sol), args.k)
-  }
+  fixed_vars_to_vals = {var: opt_sol[var] for var in random.sample(list(opt_sol), args.k)}
   obj = scip_solve(milp.mip.unfix(fixed_vars_to_vals, integral_relax=False))
   assert obj >= milp.optimal_objective - 1e-4, (obj, milp.optimal_objective)
 
