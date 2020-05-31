@@ -17,6 +17,7 @@ from liaison.daper.milp.primitives import IntegerVariable, MIPInstance
 from liaison.env import Env as BaseEnv
 from liaison.env.environment import restart, termination, transition
 from liaison.env.utils.rins import *
+from liaison.env.utils.rins import get_sample
 from liaison.specs import ArraySpec, BoundedArraySpec
 from liaison.utils import ConfigDict
 from pyscipopt import SCIP_PARAMSETTING, Model
@@ -475,7 +476,7 @@ class Env(BaseEnv):
 
   def reset_solution(self, sol, obj_val):
     # call at the beginning of a local move.
-    assert self._globals[Env.GLOBAL_UNFIX_LEFT] == self.k
+    # assert self._globals[Env.GLOBAL_UNFIX_LEFT] == self.k
     self._change_sol(sol, obj_val, sol, obj_val)
 
     self._best_quality = self._primal_gap(obj_val)
@@ -483,7 +484,7 @@ class Env(BaseEnv):
     self._qualities = [self._best_quality]
     return restart(self._observation())
 
-  def _scip_solve(self, mip, solver=None):
+  def _scip_solve(self, solver):
     """solves a mip/lp using scip"""
     if solver is None:
       solver = Model()
@@ -503,8 +504,6 @@ class Env(BaseEnv):
     solver.setIntParam('randomization/permutationseed', 0)
     solver.setIntParam('randomization/randomseedshift', 0)
 
-    if mip is not None:
-      mip.add_to_scip_solver(solver)
     with U.Timer() as timer:
       solver.optimize()
     assert solver.getStatus() == 'optimal', solver.getStatus()
@@ -550,6 +549,33 @@ class Env(BaseEnv):
   def _set_stop_switch_mask(self):
     self._stop_switch_mask = (self._n_steps_in_this_local_move >= self.config.adapt_k.min_k)
 
+  def _add_rens_submip_bounds(self, sub_mip_model):
+    milp = self.milp
+    optimal_lp_sol = milp.optimal_lp_sol
+    varname2var = {}
+    for var in sub_mip_model.getVars(transformed=False):
+      varname2var[var.name.lstrip('t_')] = var
+    for vname in unfix_vars:
+      # change the bounds of unfixed integer variables.
+      if isinstance(milp.mip.varname2var[vname], IntegerVariable):
+        var = varname2var[vname]
+        f, c = math.floor(optimal_lp_sol[vname]), math.ceil(optimal_lp_sol[vname])
+        if c == f:
+          continue
+        sub_mip_model.chgVarLbGlobal(var, f)
+        sub_mip_model.chgVarUbGlobal(var, c)
+
+  def _add_sol_to_submip(self, model, sol):
+    # convert sol to sol_scip
+    sol_scip = model.createSol()
+    varname2var = {v.name.lstrip('t_'): v for v in model.getVars()}
+    for var_name, val in sol.items():
+      try:
+        model.setSolVal(sol_scip, varname2var[var_name], val)
+      except Exception as e:
+        pass
+    model.addSol(sol_scip)
+
   def step(self, action):
     if self._reset_next_step:
       return self.reset()
@@ -557,7 +583,6 @@ class Env(BaseEnv):
     self._n_steps_in_this_local_move += 1
     milp = self.milp
     mip = self.mip
-    optimal_lp_sol = milp.optimal_lp_sol
     curr_sol = self._curr_soln
     curr_obj = self._curr_obj
     var_names = self._var_names
@@ -590,19 +615,9 @@ class Env(BaseEnv):
       sub_mip_model.freeTransform()
       mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
       if self.config.use_rens_submip_bounds:
-        varname2var = {}
-        for var in sub_mip_model.getVars(transformed=False):
-          varname2var[var.name.lstrip('t_')] = var
-        for vname in unfix_vars:
-          # change the bounds of unfixed integer variables.
-          if isinstance(milp.mip.varname2var[vname], IntegerVariable):
-            var = varname2var[vname]
-            f, c = math.floor(optimal_lp_sol[vname]), math.ceil(optimal_lp_sol[vname])
-            if c == f:
-              continue
-            sub_mip_model.chgVarLbGlobal(var, f)
-            sub_mip_model.chgVarUbGlobal(var, c)
-      ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip_model)
+        self._add_rens_submip_bounds(sub_mip_model)
+      self._add_sol_to_submip(sub_mip_model, curr_sol)
+      ass, curr_obj, mip_stats = self._scip_solve(sub_mip_model)
       curr_sol = ass
       # # add back the newly found solutions for the sub-mip.
       # # this updates the current solution to the new local one.
@@ -625,7 +640,7 @@ class Env(BaseEnv):
       if self.config.lp_features:
         sub_mip_model.freeTransform()
         mip = mip.fix(fixed_assignment, relax_integral_constraints=True, scip_model=sub_mip_model)
-        ass, curr_lp_obj, _ = self._scip_solve(mip=None, solver=sub_mip_model)
+        ass, curr_lp_obj, _ = self._scip_solve(sub_mip_model)
         curr_lp_sol = ass
       else:
         curr_lp_sol = curr_sol

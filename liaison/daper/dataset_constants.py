@@ -1,6 +1,7 @@
 from pathlib import Path
 
-DATASET_DIR = '/data/nms/tfp'
+# DATASET_DIR = '/data/nms/tfp'
+DATASET_DIR = '/home/gridsan/addanki/data/nms/tfp/'
 if not Path(DATASET_DIR).is_dir():
   DATASET_DIR = '/home/gridsan/addanki/data/nms/tfp/'
 
@@ -12,7 +13,7 @@ DATASET_PATH = {
     'milp-facilities-10': f'{DATASET_DIR}/datasets/milp/facilities/size-10',
     'milp-facilities-100': f'{DATASET_DIR}/datasets/milp/facilities/size-100',
     'milp-cauction-10': f'{DATASET_DIR}/datasets/milp/cauction/size-10',
-    'milp-cauction-100': f'{DATASET_DIR}/datasets/milp/cauction/size-100',
+    # 'milp-cauction-100': f'{DATASET_DIR}/datasets/milp/cauction/size-100',
     'milp-cauction-100-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-100-gap-.01',
     'milp-cauction-mixed': f'{DATASET_DIR}/datasets/milp/cauction/size-mixed-small',
     'milp-cauction-200': f'{DATASET_DIR}/datasets/milp/cauction/size-200',
@@ -23,9 +24,9 @@ DATASET_PATH = {
     'milp-cauction-25-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-25-filtered',
     'milp-cauction-50-filtered': f'{DATASET_DIR}/datasets/milp/cauction/size-50-filtered',
     'milp-setcover-10': f'{DATASET_DIR}/datasets/milp/setcover/size-10',
-    'milp-setcover-100': f'{DATASET_DIR}/datasets/milp/setcover/size-100',
+    'milp-setcover-100-filtered': f'{DATASET_DIR}/datasets/milp/setcover/size-100-filtered',
     'milp-indset-10': f'{DATASET_DIR}/datasets/milp/indset/size-10',
-    'milp-indset-100': f'{DATASET_DIR}/datasets/milp/indset/size-100-cleaned',
+    'milp-indset-100-filtered': f'{DATASET_DIR}/datasets/milp/indset/size-100-filtered',
     'milp-bcol': f'{DATASET_DIR}/datasets/milp/mip_datasets/BCOL-CLS/BCOL/capacitated_lot_sizing',
     # 'milp-corlat': f'{DATASET_DIR}/datasets/milp/corlat-2',
     'milp-corlat': f'{DATASET_DIR}/datasets/milp/corlat-2-cleaned',
@@ -51,11 +52,9 @@ LENGTH_MAP = {
     'milp-cauction-300-filtered': dict(train=1000, valid=200, test=200),
     'milp-cauction-300-filtered-2': dict(train=100, valid=50, test=49),
     'milp-setcover-10': dict(train=10000, valid=1000, test=1000),
-    'milp-setcover-100': dict(train=1000, valid=100, test=100),
+    'milp-setcover-100-filtered': dict(train=1000, valid=100, test=100),
     'milp-indset-10': dict(train=10000, valid=1000, test=1000),
-    'milp-indset-100': dict(train=900, valid=90, test=90),
-    # 'milp-corlat': dict(train=256, valid=32, test=32),
-    # 'milp-corlat': dict(train=1600, valid=160, test=160),
+    'milp-indset-100-filtered': dict(train=1000, valid=100, test=100),
     'milp-corlat': dict(train=1546, valid=155, test=155),
 }
 
@@ -66,7 +65,8 @@ DATASET_INFO_PATH = {
     'milp-cauction-300-filtered-2': f'{DATASET_DIR}/dataset_infos/milp-cauction-300-filtered-2',
     'milp-facilities-100': f'{DATASET_DIR}/dataset_infos/milp-facilities-100',
     'milp-corlat': f'{DATASET_DIR}/dataset_infos/milp-corlat2',
-    'milp-indset-100': f'{DATASET_DIR}/dataset_infos/milp-indset-100',
+    'milp-setcover-100-filtered': f'{DATASET_DIR}/dataset_infos/setcover/size-100-filtered',
+    'milp-indset-100-filtered': f'{DATASET_DIR}/dataset_infos/indset/size-100-filtered',
 }
 
 NORMALIZATION_CONSTANTS = {
@@ -205,5 +205,27 @@ NORMALIZATION_CONSTANTS = {
         obj_normalizer=1872.97,
         max_nodes=179,
         max_edges=2114,
+    ),
+    'milp-setcover-100-filtered':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=50.537635,
+        obj_normalizer=264.641,
+        optimal_var_vals=0.046421000000000004,
+        constraint_degree_normalizer=71.784,
+        max_nodes=1533,
+        max_edges=52769,
+    ),
+    'milp-indset-100-filtered':
+    dict(
+        constraint_rhs_normalizer=1.0,
+        constraint_coeff_normalizer=1.0,
+        obj_coeff_normalizer=1.0,
+        obj_normalizer=216.796,
+        optimal_var_vals=0.43359200000000003,
+        constraint_degree_normalizer=4.258,
+        max_nodes=2640,
+        max_edges=10263,
     ),
 }

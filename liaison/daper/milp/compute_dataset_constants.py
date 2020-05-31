@@ -6,12 +6,11 @@ from math import fabs
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import trange
-
 from liaison.daper.dataset_constants import (DATASET_INFO_PATH, DATASET_PATH,
                                              LENGTH_MAP,
                                              NORMALIZATION_CONSTANTS)
 from liaison.daper.milp.primitives import ContinuousVariable
+from tqdm import trange
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--datasets', nargs='+', default=[], required=True)
@@ -23,7 +22,7 @@ plt.style.use('seaborn')
 
 def read_pkl(fname):
   # run on liaison.csail.mit.edu node.
-  fname = fname.replace('/data/', '/home/arc/vol/mnt/')
+  # fname = fname.replace('/data/', '/home/arc/vol/mnt/')
   with open(fname, 'rb') as f:
     return pickle.load(f)
 
@@ -61,7 +60,7 @@ def print_constants(dataset):
         cont_vars.append(val)
     stats['cont_variable_normalizer'].append(np.mean(cont_vars))
 
-  stats_max = dict(max_nodes=[], max_edges=[])
+  stats_max = dict(max_nodes=[], max_edges=[], variables=[], constraints=[])
   # add valid and test as well for max nodes, edges
   for dataset_type in ['train', 'valid', 'test']:
     for i in trange(LENGTH_MAP[dataset][dataset_type]):
@@ -69,6 +68,8 @@ def print_constants(dataset):
       c_f, e_f, v_f = pkl['mip_features']
       stats_max['max_nodes'].append(len(v_f['var_names']) + len(c_f['values']) + 1)
       stats_max['max_edges'].append(len(e_f['values']))
+      stats_max['variables'].append(len(v_f['var_names']))
+      stats_max['constraints'].append(len(c_f['values']))
 
   print(f"\n'{dataset}': dict(")
   for k, v in stats.items():

@@ -78,6 +78,6 @@ def get_config():
 
   config.adapt_k = ConfigDict()
   config.adapt_k.enable = False
-  config.adapt_k.min_k = 5  # For max_k just use config.k
+  config.adapt_k.min_k = 0  # For max_k just use config.k
 
   return config

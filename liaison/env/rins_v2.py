@@ -164,7 +164,7 @@ class Env(RINSEnv):
     # run sub-mip
     sub_mip_model.freeTransform()
     mip.fix(fixed_assignment, relax_integral_constraints=False, scip_model=sub_mip_model)
-    ass, curr_obj, mip_stats = self._scip_solve(mip=None, solver=sub_mip_model)
+    ass, curr_obj, mip_stats = self._scip_solve(sub_mip_model)
     curr_sol = ass
     # # add back the newly found solutions for the sub-mip.
     # # this updates the current solution to the new local one.

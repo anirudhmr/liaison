@@ -4,7 +4,6 @@ import pickle
 import time
 
 import numpy as np
-
 from liaison.daper.dataset_constants import DATASET_INFO_PATH, DATASET_PATH
 from liaison.daper.milp.primitives import relax_integral_constraints
 from liaison.daper.milp.scip_utils import del_scip_model
@@ -32,7 +31,6 @@ def pad_last_dim(features: np.ndarray, pad_to_len):
                 mode='constant')
 
 
-# @functools.lru_cache(maxsize=100)
 def get_sample(dataset, dataset_type, graph_idx):
   dataset_path = DATASET_PATH[dataset]
 

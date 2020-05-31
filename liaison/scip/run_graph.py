@@ -2,6 +2,9 @@
 # as primal heuristic in SCIP.
 import os
 import pickle
+import signal
+import sys
+import traceback
 from pathlib import Path
 
 import liaison.utils as U
@@ -32,7 +35,7 @@ parser.add_argument('--max_nodes', type=int)
 parser.add_argument('-n', '--name', required=True)
 parser.add_argument('--use_parallel_envs', action='store_true')
 parser.add_argument('--use_threaded_envs', action='store_true')
-parser.add_argument('--without_scip', action='store_true')
+parser.add_argument('--standalone', action='store_true')
 parser.add_argument('--without_agent', action='store_true')
 parser.add_argument('--gpu_ids', '-g', type=int, nargs='+')
 parser.add_argument('--heuristic', type=str)
@@ -60,9 +63,14 @@ def main(argv):
 
   agent_class = U.import_obj(agent_config.class_name, agent_config.class_path)
 
-  if args.without_scip:
-    results_dir = Path(
-        f'/data/nms/tfp/evaluation/without_scip/{args.name}/{env_config.graph_start_idx}/')
+  if args.standalone:
+    if args.heuristic:
+      results_dir = Path(
+          f'/data/nms/tfp/evaluation/standalone/{args.heuristic}/{args.name}/{env_config.graph_start_idx}/'
+      )
+    else:
+      results_dir = Path(
+          f'/data/nms/tfp/evaluation/standalone/agent/{args.name}/{env_config.graph_start_idx}/')
   elif args.without_agent:
     results_dir = Path(
         f'/data/nms/tfp/evaluation/without_agent/{args.name}/{env_config.graph_start_idx}/')
@@ -91,12 +99,20 @@ def main(argv):
                         use_parallel_envs=args.use_parallel_envs,
                         use_threaded_envs=args.use_threaded_envs,
                         heur_frequency=args.heur_frequency,
+                        create_shell=(args.heuristic is None),
                         **sess_config)
-  evaluator.run(without_scip=args.without_scip,
+  evaluator.run(standalone=args.standalone,
                 without_agent=args.without_agent,
                 heuristic=args.heuristic)
   print('Done!')
 
 
 if __name__ == "__main__":
-  app.run(main)
+  os.setpgrp()  # create new process group, become its leader
+  try:
+    app.run(main)
+  except Exception as e:
+    print(traceback.format_exc())
+    raise e
+  # finally:
+  #   os.killpg(0, signal.SIGKILL)  # kill all processes in my group

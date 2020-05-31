@@ -39,7 +39,7 @@ def write_graph(graph, fname):
 
 def main():
   for dtype in ['train', 'valid', 'test']:
-    d = f'{DATASET_PATH[args.dataset].replace("/data/nms/tfp/", "/home/arc/vol/mnt/nms/tfp/")}/{dtype}'
+    d = f'{DATASET_PATH[args.dataset]}/{dtype}'
     for fname in tqdm(os.listdir(d)):
       graph = load_graph(f'{d}/{fname}')
       graph = convert_graph(graph)

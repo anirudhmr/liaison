@@ -1,12 +1,9 @@
 # Integrate scip with external RL environment
-
-import pdb
 from math import fabs
 
 import liaison.utils as U
 from liaison.utils import ConfigDict
-from pyscipopt import (SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur,
-                       Model)
+from pyscipopt import SCIP_HEURTIMING, SCIP_PARAMSETTING, SCIP_RESULT, Heur
 
 
 class EvalHeur(Heur):
@@ -27,8 +24,7 @@ class EvalHeur(Heur):
     self._step += 1
     if found_sol:
       return dict(result=SCIP_RESULT.FOUNDSOL)
-    else:
-      return dict(result=SCIP_RESULT.DIDNOTFIND)
+    return dict(result=SCIP_RESULT.DIDNOTFIND)
 
   def heurexec(self, heurtiming, nodeinfeasible):
     model = self.model
@@ -37,10 +33,11 @@ class EvalHeur(Heur):
     scip_sol = model.getBestSol()
     prev_obj = model.getSolObjVal(scip_sol)
     if len(self._obj_vals) == 0:
+      # Initialize with the starting gap.
       self._obj_vals.append((None, prev_obj, self._step, model.getGap(), None, False))
     else:
       if self._obj_vals[-1][1] > prev_obj:
-        # improvement in objective occured
+        # improvement in objective occured in branch-and-bound algorithm
         self._obj_vals.append(
             (self._obj_vals[-1][1], prev_obj, self._step, model.getGap(), None, False))
 
@@ -61,12 +58,6 @@ class EvalHeur(Heur):
             model.setSolVal(sol_scip, varname2var[var_name], sol[var_name])
           except Exception as e:
             vars_with_exception.append(var_name)
-            # print('Exception encountered')
-            # print(e)
-            # print('Var_name: ', var_name)
-            # print('Solution:', sol)
-            # print('varname2var: ', varname2var)
-            # print(varname2var[var_name], sol[var_name])
         if vars_with_exception:
           print(f'WARNING: Exception encountered in {len(vars_with_exception)} of {len(sol)}')
         # record the improved objective
@@ -74,7 +65,6 @@ class EvalHeur(Heur):
         print(f'Prev_obj: {prev_obj} Improved_obj: {improved_obj}')
         if improved_obj < prev_obj:
           self._obj_vals.append((prev_obj, improved_obj, self._step, model.getGap(), stats, True))
-          # frees the solution as well
           self.model.addSol(sol_scip, free=True)
         assert fabs(improved_obj - model.getSolObjVal(model.getBestSol())) <= 1e-3
         return self.return_fn(True)
