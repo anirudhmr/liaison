@@ -1,9 +1,9 @@
 export KMP_AFFINITY=none
 N=32
 N_LOCAL_MOVES=100
-MAX_NODES=50  # Irrelevant
+MAX_NODES=50  # IRRELEVANT
 EXTRA_ARGS=""
-HEURITSTICS="random rins"
+HEURISTICS="least_integral most_integral"
 
 case $1 in
 
@@ -11,6 +11,20 @@ case $1 in
     NAME=cauction_100
     DATASET=milp-cauction-100-filtered
     K=5
+    RESTORE_FROM=/home/gridsan/addanki/results/1481/100-dataset-no-ar/checkpoints/1/250000/learner-250000
+    ;;
+
+  cauction_transfer_k)
+    NAME=cauction_transfer_k
+    DATASET=milp-cauction-100-filtered
+    K=10
+    RESTORE_FROM=/home/gridsan/addanki/results/1481/100-dataset-no-ar/checkpoints/1/250000/learner-250000
+    ;;
+
+  cauction_transfer_to_300)
+    NAME=cauction_transfer_to_300
+    DATASET=milp-cauction-300-filtered
+    K=15
     RESTORE_FROM=/home/gridsan/addanki/results/1481/100-dataset-no-ar/checkpoints/1/250000/learner-250000
     ;;
 
@@ -75,10 +89,9 @@ for i in `seq 0 $((N-1))`; do
   --gpu_ids=`expr $i % 2` \
   --env_config.graph_start_idx=$i \
   ${EXTRA_ARGS} &
-done
-wait
+done; wait
 
-for heuristic in $HEURITSTICS; do
+for heuristic in $HEURISTICS; do
   for i in `seq 0 $((N-1))`; do
     python liaison/scip/run_graph.py -- \
     -n $NAME \
@@ -104,7 +117,6 @@ for heuristic in $HEURITSTICS; do
     --env_config.graph_start_idx=$i \
     ${EXTRA_ARGS} &
   done
-done
+done; wait
 
-wait
 sudo killall run_graph.py

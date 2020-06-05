@@ -3,6 +3,7 @@ import functools
 import math
 import pickle
 from math import fabs
+from multiprocessing.pool import ThreadPool
 
 import numpy as np
 import tree as nest
@@ -50,26 +51,17 @@ class Evaluator:
       dataset,
       dataset_type,
       graph_start_idx,
-      gap,
-      max_nodes,
-      heur_frequency,
       batch_size=1,  # num_envs
       use_parallel_envs=False,
       use_threaded_envs=False,
       create_shell=True,
       **config):
-    self.config = ConfigDict(config)
+    self.config = ConfigDict(seed=seed, **config)
     self.batch_size = batch_size
     self.rng = np.random.RandomState(seed)
     self.env_config = env_config
     # get the mip instance
-    milp = get_sample(dataset, dataset_type, graph_start_idx)
-    model = get_model(seed, gap, max_nodes, heur_frequency)
-    milp.mip.add_to_scip_solver(model)
-    # presolve isnce the agent uses pre-solved model for its input.
-    model.presolve()
     self.k = env_config.k
-    self._model = model
     # init shell and environments
     # init environment
     env_configs = []
@@ -121,6 +113,7 @@ class Evaluator:
     return True
 
   def run(self, standalone=False, without_agent=False, heuristic=None):
+    config = self.config
     self._heuristic = None
     if heuristic == 'rins':
       self._heuristic = self.rins_fn
@@ -146,7 +139,11 @@ class Evaluator:
     else:
       heuristic = EvalHeur(self._scip_callback)
 
-    run_branch_and_bound_scip(self._model, heuristic)
+    model = get_model(config.seed, config.gap, config.max_nodes, config.heur_frequency)
+    self.mip.add_to_scip_solver(model)
+    # presolve isnce the agent uses pre-solved model for its input.
+    model.presolve()
+    run_branch_and_bound_scip(model, heuristic)
     heuristic.done()
     log_vals = heuristic._obj_vals
     with open(f'{self.config.results_dir}/out.pkl', 'wb') as f:
@@ -185,9 +182,11 @@ class Evaluator:
     return (err, var)
 
   def integral(self, sol, var_names, least_integral):
+    int_vars = list(
+        filter(lambda v: isinstance(self.mip.varname2var[v], IntegerVariable), var_names))
     errs = [
-        self.integral_fn(sol, var) for var in filter(
-            lambda v: isinstance(self.mip.varname2var[v], IntegerVariable), var_names)
+        self.integral_fn(sol, var)
+        for var in np.random.choice(int_vars, min(2 * self.k, len(int_vars)), replace=False)
     ]
     if least_integral:
       # Furthest away.

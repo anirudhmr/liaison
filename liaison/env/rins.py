@@ -45,6 +45,7 @@ class Env(BaseEnv):
   VARIABLE_OPTIMAL_LP_SOLN_FIELD = 4
   # see Learning to Branch in Mixed Integer Programming paper from Khalil et al.,
   # for a description of some of the following features.
+  # add a flag to indicate if the variable appears in the objective or not.
   VARIABLE_OBJ_COEFF_FIELD = 5
 
   VARIABLE_N_CONSTRAINTS_FIELD = 6

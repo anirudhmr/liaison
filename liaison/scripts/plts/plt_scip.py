@@ -1,5 +1,7 @@
 import argparse
 import functools
+import json
+import pdb
 import pickle
 import traceback
 from math import fabs
@@ -36,6 +38,8 @@ parser.add_argument('--no_legend', action='store_true')
 parser.add_argument('--ignore_exceptions', '-i', action='store_true')
 parser.add_argument('--extension', default='png')
 parser.add_argument('--scip', action='store_true')
+parser.add_argument('--plt_cases', action='store_true')
+parser.add_argument('--load_integral_heuristics', action='store_true')
 global args
 
 
@@ -101,6 +105,27 @@ def save_fig(fname):
   plt.savefig(fname + '.png', bbox_inches='tight')
 
 
+class NumpyEncoder(json.JSONEncoder):
+
+  def default(self, obj):
+    if isinstance(obj, np.ndarray):
+      return obj.tolist()
+    elif isinstance(obj, np.float32):
+      return float(obj)
+    return json.JSONEncoder.default(self, obj)
+
+
+def save_json(fname, j):
+  save_path = Path(fname)
+  save_path.parent.mkdir(parents=True, exist_ok=True)
+  with open(fname + '.json', 'w') as f:
+    json.dump(dict(dataset=args.dataset, name=args.name, **j),
+              f,
+              indent=4,
+              sort_keys=True,
+              cls=NumpyEncoder)
+
+
 def plt_fn():
   agent_pis = []
   no_agent_pis = []
@@ -116,6 +141,13 @@ def plt_fn():
   rins_final_gaps = []
   random_final_gaps = []
 
+  agents = []
+  rinss = []
+  lis = []
+  mis = []
+  randoms = []
+  no_agents = []
+
   for graph in trange(args.n_samples):
     try:
       if args.scip:
@@ -123,10 +155,16 @@ def plt_fn():
         rins = load_pickle(f'rins/{args.name}/{graph}/out.pkl')
         random = load_pickle(f'random/{args.name}/{graph}/out.pkl')
         no_agent = load_pickle(f'without_agent/{args.name}/{graph}/out.pkl')
+        if args.load_integral_heuristics:
+          li = load_pickle(f'least_integral/{args.name}/{graph}/out.pkl')
+          mi = load_pickle(f'most_integral/{args.name}/{graph}/out.pkl')
       else:
         agent = load_pickle(f'standalone/agent/{args.name}/{graph}/out.pkl')
         rins = load_pickle(f'standalone/rins/{args.name}/{graph}/out.pkl')
         random = load_pickle(f'standalone/random/{args.name}/{graph}/out.pkl')
+        if args.load_integral_heuristics:
+          li = load_pickle(f'standalone/least_integral/{args.name}/{graph}/out.pkl')
+          mi = load_pickle(f'standalone/most_integral/{args.name}/{graph}/out.pkl')
     except Exception as e:
       if args.ignore_exceptions:
         continue
@@ -140,21 +178,49 @@ def plt_fn():
       rins = f(rins)
       random = f(random)
       no_agent = f(no_agent)
+      if args.load_integral_heuristics:
+        li = f(li)
+        mi = f(mi)
 
     agent_pis.append(compute_primal_integral(agent))
     random_pis.append(compute_primal_integral(random))
     rins_pis.append(compute_primal_integral(rins))
     if args.scip: no_agent_pis.append(compute_primal_integral(no_agent))
+    if args.load_integral_heuristics:
+      li_pis.append(compute_primal_integral(li))
+      mi_pis.append(compute_primal_integral(mi))
 
     if args.scip:
       agent_final_gaps.append(agent[-2][-1])
       random_final_gaps.append(random[-2][-1])
       rins_final_gaps.append(rins[-2][-1])
       no_agent_final_gaps.append(no_agent[-2][-1])
+      if args.load_integral_heuristics:
+        li_final_gaps.append(li[-2][-1])
+        mi_final_gaps.append(mi[-2][-1])
     else:
       agent_final_gaps.append(agent['quality'][-1])
       random_final_gaps.append(random['quality'][-1])
       rins_final_gaps.append(rins['quality'][-1])
+      if args.load_integral_heuristics:
+        li_final_gaps.append(li['quality'][-1])
+        mi_final_gaps.append(mi['quality'][-1])
+
+    if args.scip:
+      agents.append(agent[:-1])
+      randoms.append(random[:-1])
+      rinss.append(rins[:-1])
+      no_agents.append(no_agent[:-1])
+      if args.load_integral_heuristics:
+        lis.append(li[:-1])
+        mis.append(mi[:-1])
+    else:
+      agents.append(agent['quality'])
+      randoms.append(random['quality'])
+      rinss.append(rins['quality'])
+      if args.load_integral_heuristics:
+        lis.append(li['quality'])
+        mis.append(mi['quality'])
 
   def plt_cdfs(key, ys, labels, ylabel):
     kwargs = {'linewidth': args.line_width}
@@ -172,6 +238,8 @@ def plt_fn():
       plt.legend()
     plt.tight_layout()
     save_fig(f'{args.output_dir}/{args.name}/%s/{key}' % ('scip' if args.scip else 'standalone'))
+    save_json(f'{args.output_dir}/{args.name}/%s/{key}' % ('scip' if args.scip else 'standalone'),
+              dict(labels=labels, ys=ys, ys_mean=list(map(np.mean, ys)), std=list(map(np.std, y))))
 
   def plt_bars(key, ys, labels, ylabel):
     kwargs = {
@@ -192,25 +260,65 @@ def plt_fn():
       plt.legend()
     padding = 1.5 * width
     plt.xlim(-padding, xs[-1] + padding)
-    # plt.gca().axes.get_xaxis().set_visible(False)
-    plt.xticks([], [])
-    plt.xlabel('$\it{cauction}$')
+    plt.gca().axes.get_xaxis().set_visible(False)
+    # plt.xticks([], [])
+    # plt.xlabel('$\it{%s}$' % args.dataset.split('milp-')[0].split('-')[0])
     plt.ylabel(ylabel)
     save_fig(f'{args.output_dir}/{args.name}/%s/hist_{key}' %
              ('scip' if args.scip else 'standalone'))
+    save_json(
+        f'{args.output_dir}/{args.name}/%s/hist_{key}' % ('scip' if args.scip else 'standalone'),
+        dict(labels=labels, ys=list(map(np.mean, ys)), std=list(map(np.std, ys))))
+
+  def plt_cases(key, ys, labels, ylabel):
+    kwargs = {'font.size': 12, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10}
+    mpl.rcParams.update(kwargs)
+    plt.figure(figsize=(5, 2.5))
+    for i, (label, y, color) in enumerate(zip(labels, ys, COLORS)):
+      if len(y) <= 1:
+        continue
+      if args.scip:
+        x, y = zip(*y)
+        y = list(y)
+        y[-1] = y[-2]
+        plt.plot(x, y, label=label, color=color, linewidth=args.line_width)
+      else:
+        plt.plot(y, label=label, color=color, linewidth=args.line_width)
+    if not args.no_legend:
+      plt.legend()
+    plt.xlabel('Iteration #')
+    plt.ylabel(ylabel)
+    save_fig(f'{args.output_dir}/{args.name}/%s/cases/{key}' %
+             ('scip' if args.scip else 'standalone'))
+    plt.close()
 
   labels = ['Agent', 'Random', 'RINS']
+
+  l1 = [agent_final_gaps, random_final_gaps, rins_final_gaps]
+  l2 = [agent_pis, random_pis, rins_pis]
+  l3 = [agents, randoms, rinss]
+
+  if args.load_integral_heuristics:
+    labels += ['Least Integral', 'Most Integral']
+    l1 += [li_final_gaps, mi_final_gaps]
+    l2 += [li_pis, mi_pis]
+    l3 += [lis, mis]
+
   if args.scip:
     labels += ['No heuristic']
+    l1 += [no_agent_final_gaps]
+    l2 += [no_agent_pis]
+    l3 += [no_agents]
+
   for f in (plt_bars, plt_cdfs):
     mpl.rcParams.update(mpl_params)
-    if args.scip:
-      f('pg', [agent_final_gaps, random_final_gaps, rins_final_gaps, no_agent_final_gaps], labels,
-        'Primal Gap')
-      f('pi', [agent_pis, random_pis, rins_pis, no_agent_pis], labels, 'Primal Integral')
-    else:
-      f('pg', [agent_final_gaps, random_final_gaps, rins_final_gaps], labels, 'Primal Gap')
-      f('pi', [agent_pis, random_pis, rins_pis], labels, 'Primal Integral')
+    f('pg', l1, labels, 'Primal Gap')
+    f('pi', l2, labels, 'Primal Integral')
+
+  if args.plt_cases:
+    for i, l in enumerate(zip(*l3)):
+      mpl.rcParams.update(mpl_params)
+      plt_cases(f'{i}', l, labels, 'Primal Gap')
 
 
 def main(argv):

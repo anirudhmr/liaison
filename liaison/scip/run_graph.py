@@ -113,6 +113,5 @@ if __name__ == "__main__":
     app.run(main)
   except Exception as e:
     print(traceback.format_exc())
-    raise e
-  # finally:
-  #   os.killpg(0, signal.SIGKILL)  # kill all processes in my group
+  finally:
+    os.killpg(0, signal.SIGKILL)  # kill all processes in my group

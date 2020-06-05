@@ -10,7 +10,7 @@ mpl_params = {
     'axes.xmargin': .1
 }
 
-COLORS = ['red', 'green', 'blue', 'magenta', 'cyan']
+COLORS = ['red', 'green', 'blue', 'magenta', 'cyan', 'brown']
 # Why not purple?
 
 
